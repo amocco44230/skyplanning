@@ -2193,7 +2193,13 @@ function renderPlanningEquipe(){
 
   const inner=`
     ${monthNavHtml()}
-    ${myTeam?`<div class="legend-hint">Planning en lecture seule de l'équipe <b>${escapeHtml(myTeam)}</b>.</div>`:`<div class="legend-hint">Aucune équipe ne vous a été assignée pour le moment — seul votre planning est affiché ici.</div>`}
+    <div class="toolbar" style="flex-wrap:wrap;gap:10px;margin-bottom:2px;">
+      <div>${myTeam?`<div class="legend-hint" style="margin:0;">Planning en lecture seule de l'équipe <b>${escapeHtml(myTeam)}</b>.</div>`:`<div class="legend-hint" style="margin:0;">Aucune équipe ne vous a été assignée pour le moment — seul votre planning est affiché ici.</div>`}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-primary" id="peqNewDesidBtn" style="width:auto;margin:0;">🖐️ Demande de désidérata</button>
+        <button class="btn btn-primary" id="peqNewExchBtn" style="width:auto;margin:0;">🔄 Proposer un échange</button>
+      </div>
+    </div>
     ${monthOk ? `
     ${legendHtml(false)}
     ${gridHtml({employees:teamEmployees, readonly:true, alerts:[]})}
@@ -2211,6 +2217,17 @@ function renderPlanningEquipe(){
   `;
   renderShell(inner,'Planning équipe'+(myTeam?' — '+myTeam:''));
   bindMonthNav(render);
+  document.getElementById('peqNewDesidBtn').addEventListener('click',()=>{
+    state.modal={type:'new-desiderata', data:{dateStart:'',dateEnd:'',code:state.codes[0]?state.codes[0].code:'',comment:''}};
+    render();
+  });
+  document.getElementById('peqNewExchBtn').addEventListener('click',()=>{
+    const username=state.currentUser.username;
+    const colleagues=state.users.filter(u=>u.role==='employee' && u.username!==username && belongsToTeam(u));
+    if(!colleagues.length){ toast('Aucun collègue disponible dans votre service pour un échange.', true); return; }
+    state.modal={type:'new-exchange', data:{targetUsername:colleagues[0].username, dateA:'', dateB:'', comment:''}, colleagues};
+    render();
+  });
 }
 function changesLogHtml(changes){
   if(!changes.length) return '';
