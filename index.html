@@ -945,6 +945,20 @@ async function persistExchanges(){ await storageSet('exchanges', JSON.stringify(
 async function persistAlertRules(){ await storageSet('alertRules', JSON.stringify(state.alertRules), true); }
 async function persistMonthValidations(){ await storageSet('monthValidations', JSON.stringify(state.monthValidations), true); }
 async function persistPostValidationChanges(){ await storageSet('postValidationChanges', JSON.stringify(state.postValidationChanges), true); }
+async function cancelPostValidationChange(id){
+  const chg=state.postValidationChanges.find(c=>c.id===id);
+  if(!chg) return;
+  if(!state.schedules[chg.username]) state.schedules[chg.username]={};
+  const key=chg.year+'-'+String(chg.month+1).padStart(2,'0')+'-'+String(chg.day).padStart(2,'0');
+  if(chg.oldCode) state.schedules[chg.username][key]=chg.oldCode; else delete state.schedules[chg.username][key];
+  await persistSchedules();
+  const wasAcked=chg.acknowledged;
+  state.postValidationChanges=state.postValidationChanges.filter(c=>c.id!==id);
+  await persistPostValidationChanges();
+  if(wasAcked){
+    await pushNotification(chg.username, 'Une modification de votre planning du '+fmtDateFr(chg.year,chg.month,chg.day)+' a été annulée — retour à '+(chg.oldCode||'Vide')+'.');
+  }
+}
 function monthValidationKey(service,year,month){ return service+':'+year+'-'+String(month+1).padStart(2,'0'); }
 function isMonthValidated(service,year,month){
   if(!service) return false; // pas de service assigné = reste verrouillé par défaut (sécurité)
@@ -1670,7 +1684,13 @@ function renderShell(innerHtml,title){
       <div class="sidebar-nav">
         ${items.map(it=>{
           const badge = it.id==='desideratas'
-            ? state.desideratas.filter(d=>d.status==='pending'&&!d.archived).length
+            ? state.desideratas.filter(d=>{
+                if(d.status!=='pending' || d.archived) return false;
+                const scope=getAdminScope(state.currentUser);
+                if(!scope) return true;
+                const u=state.users.find(x=>x.username===d.username);
+                return u && scope.includes(u.team);
+              }).length
             : it.id==='alertes'
               ? currentMonthAlertCount()
               : it.id==='echanges'
@@ -2210,9 +2230,12 @@ function changesLogHtml(changes){
         </div>
         <div class="helper" style="margin-top:4px;">Modifié le ${new Date(c.changedAt).toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short'})} par ${escapeHtml(c.changedBy)}</div>
       </div>
-      ${c.acknowledged
-        ? `<span class="status-badge" style="background:#E7F6EC;color:#1E7B3C;">Validé</span>`
-        : `<button class="icon-btn" data-ack-change="${c.id}" style="color:var(--ok);border-color:var(--ok);">Valider</button>`}
+      <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
+        ${c.acknowledged
+          ? `<span class="status-badge" style="background:#E7F6EC;color:#1E7B3C;">Validé</span>`
+          : `<button class="icon-btn" data-ack-change="${c.id}" style="color:var(--ok);border-color:var(--ok);">Valider</button>`}
+        <button class="icon-btn" data-del-change="${c.id}" style="color:var(--danger);border-color:var(--danger);" title="Annuler cette modification et revenir au code précédent">Supprimer</button>
+      </div>
     </div>`;
   }).join('');
   const pendingCount=changes.filter(c=>!c.acknowledged).length;
@@ -3162,6 +3185,16 @@ function renderCalendrierAdmin(){
         toast('Modification validée.');
         render();
       }
+    });
+  });
+  document.querySelectorAll('[data-del-change]').forEach(btn=>{
+    btn.addEventListener('click', async()=>{
+      const chg=state.postValidationChanges.find(c=>c.id===btn.dataset.delChange);
+      if(!chg) return;
+      if(!confirm('Annuler cette modification et revenir au code précédent ('+(chg.oldCode||'Vide')+') ?')) return;
+      await cancelPostValidationChange(chg.id);
+      toast('Modification annulée — planning restauré.');
+      render();
     });
   });
   const ackAllBtn=document.getElementById('ackAllChanges');
