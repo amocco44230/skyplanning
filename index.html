@@ -45,6 +45,7 @@
   .login-mark.skyplanning-logo{width:auto;height:auto;background:none;border-radius:0;padding:0;margin-bottom:22px;color:#E8342A;font-family:'Manrope';font-weight:800;font-size:28px;letter-spacing:.01em;justify-content:flex-start;}
   .login-card h1{font-size:21px;margin:0 0 4px;font-weight:800;color:var(--ink);}
   .login-card p.sub{margin:0 0 26px;color:var(--ink-soft);font-size:14px;}
+  .login-version{margin-top:22px;text-align:center;font-size:11px;color:var(--ink-soft);opacity:.6;letter-spacing:.02em;}
   .field{margin-bottom:16px;}
   .field label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margin-bottom:6px;letter-spacing:.02em;}
   .field input{width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14.5px;color:var(--ink);background:#FBFCFE;outline:none;transition:border-color .15s;}
@@ -289,7 +290,7 @@
   .change-pastille{position:absolute;bottom:2px;left:2px;width:7px;height:7px;border-radius:50%;z-index:3;cursor:help;}
   .change-pastille.pending{background:#F5A623;box-shadow:0 0 0 2px rgba(245,166,35,.3);}
   .change-pastille.acked{background:#8A94A6;}
-  .grid-holiday-mark{position:absolute;top:1px;left:2px;font-size:7px;font-weight:900;color:var(--danger);line-height:1;z-index:3;pointer-events:none;}
+  .grid-holiday-mark{position:absolute;top:1px;left:2px;font-size:11px;font-weight:900;color:var(--danger);line-height:1;z-index:3;pointer-events:none;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 2px #fff,0 0 2px #fff;}
   .cmt-dot{position:absolute;top:3px;width:7px;height:7px;border-radius:50%;z-index:2;}
   .cmt-dot.pub{right:3px;background:var(--danger);}
   .cmt-dot.priv{right:13px;background:var(--primary);}
@@ -405,7 +406,7 @@
   table.annual-grid td.annual-cell.selected{box-shadow:inset 0 0 0 2px #5B3EA6;}
   table.annual-grid .annual-cell-inner{position:relative;width:100%;height:100%;}
   table.annual-grid .annual-cell-official{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:8.5px;font-weight:800;}
-  table.annual-grid .annual-holiday-mark{position:absolute;top:1px;left:2px;font-size:6.5px;font-weight:900;color:var(--danger);line-height:1;z-index:3;pointer-events:none;}
+  table.annual-grid .annual-holiday-mark{position:absolute;top:1px;left:2px;font-size:9.5px;font-weight:900;color:var(--danger);line-height:1;z-index:3;pointer-events:none;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 2px #fff,0 0 2px #fff;}
   table.annual-grid .annual-draft-bubble{position:absolute;bottom:-2px;right:-2px;width:14px;height:14px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:7.2px;font-weight:900;box-shadow:0 0 0 1.5px #fff,0 1px 2px rgba(0,0,0,.2);z-index:3;pointer-events:none;}
   table.annual-grid td.annual-cell:hover .annual-cell-official{outline:2px solid var(--primary);outline-offset:-2px;}
 
@@ -436,7 +437,7 @@
     .annual-month-block-title{font-size:12px;}
     .annual-cell-official{font-size:7.5px;}
     .annual-draft-bubble{width:14px;height:14px;font-size:6.1px;}
-    .annual-holiday-mark{font-size:5.5px;}
+    .annual-holiday-mark{font-size:7.5px;}
     .cp-form-body{flex-direction:column;align-items:stretch;}
   }
 
@@ -543,6 +544,8 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+const APP_VERSION = 'v1.1';
+const APP_VERSION_DATE = '21/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
    ============================================================ */
@@ -1423,16 +1426,22 @@ async function paintCell(username,year,month,day){
   render();
   try{
     await persistSchedules();
-    await pushNotification(username, message);
     const emp=state.users.find(u=>u.username===username);
-    if(emp && emp.team && oldCode!==newCode && isMonthValidated(emp.team,year,month)){
+    const monthValidated = !!(emp && emp.team && isMonthValidated(emp.team,year,month));
+    if(emp && emp.team && oldCode!==newCode && monthValidated){
+      // Mois déjà validé : on NE notifie PAS tout de suite. On journalise juste
+      // le changement ; la notification ne part que lorsque l'admin valide
+      // (acquitte) cette modification — voir data-ack-change / ackAllChanges.
       state.postValidationChanges.push({
         id:genId(), service:emp.team, year, month, day, username, name:emp.name,
-        oldCode, newCode, changedAt:new Date().toISOString(), changedBy:state.currentUser.username, acknowledged:false
+        oldCode, newCode, message, changedAt:new Date().toISOString(), changedBy:state.currentUser.username, acknowledged:false
       });
       await persistPostValidationChanges();
       render();
     }
+    // Mois pas encore validé : AUCUNE notification à l'édition. Le salarié ne voit
+    // de toute façon pas encore son planning ; il sera notifié en une seule fois
+    // pour tout le service au moment où l'admin validera le mois (voir plus bas).
   }catch(e){ toast('Erreur de sauvegarde','err'); }
 }
 
@@ -1457,6 +1466,7 @@ function renderLogin(){
         </div>
         <button type="submit" class="btn btn-primary">Se connecter</button>
       </form>
+      <div class="login-version">${APP_VERSION} — ${APP_VERSION_DATE}</div>
     </div>
   </div>`;
   document.getElementById('loginForm').addEventListener('submit',e=>{
@@ -2665,7 +2675,7 @@ function renderCalendrierAdmin(){
     ${canValidate && !validated ? `<div class="legend-hint lock-hint">🔒 Ce mois n'est <b>pas encore validé</b> pour ${escapeHtml(svcFilter)} — les salariés de ce service ne voient rien sur leur planning pour ${MOIS[m]} ${y} (leurs désidératas restent accessibles). Cliquez sur « Valider le mois » quand vous êtes prêt.</div>` : ''}
     ${alerts.length?`<div class="legend-hint alert-hint">⚠ <b>${alerts.length} alerte${alerts.length>1?'s':''}</b> détectée${alerts.length>1?'s':''} ce mois-ci — cases entourées de violet, détail dans l'onglet <b>Alertes</b>.</div>`:''}
     ${pendingChanges.length?`<div class="legend-hint change-hint">✎ <b>${pendingChanges.length} modification${pendingChanges.length>1?'s':''}</b> apportée${pendingChanges.length>1?'s':''} depuis la validation du mois — cases encadrées en orange, détail tout en bas de page.</div>`:''}
-    <div class="legend-hint">Cliquez d'abord sur un <b>code</b> ci-dessous, puis sur les cases du planning pour l'appliquer. Un second clic efface la case. Double-cliquez sur une case pour ajouter un commentaire. Chaque modification envoie automatiquement une notification au salarié concerné.</div>
+    <div class="legend-hint">Cliquez d'abord sur un <b>code</b> ci-dessous, puis sur les cases du planning pour l'appliquer. Un second clic efface la case. Double-cliquez sur une case pour ajouter un commentaire. Avant validation du mois, chaque modification notifie aussitôt le salarié ; une fois le mois validé, la notification ne part que lorsque vous validez la modification ci-dessous.</div>
     ${legendHtml(true)}
     ${gridHtml({employees, readonly:false, alerts, changes:allChangesThisMonth})}
     ${commentsRecapHtml(y,m, (svcFilter==='ALL' && !scope)?null:employees.map(e=>e.username))}
@@ -2682,13 +2692,24 @@ function renderCalendrierAdmin(){
   document.querySelectorAll('[data-ack-change]').forEach(btn=>{
     btn.addEventListener('click', async()=>{
       const chg=state.postValidationChanges.find(c=>c.id===btn.dataset.ackChange);
-      if(chg){ chg.acknowledged=true; chg.acknowledgedAt=new Date().toISOString(); chg.acknowledgedBy=state.currentUser.username; await persistPostValidationChanges(); toast('Modification validée.'); render(); }
+      if(chg){
+        chg.acknowledged=true; chg.acknowledgedAt=new Date().toISOString(); chg.acknowledgedBy=state.currentUser.username;
+        await persistPostValidationChanges();
+        await pushNotification(chg.username, chg.message || ('Votre planning de '+MOIS[chg.month]+' '+chg.year+' a été modifié.'));
+        toast('Modification validée.');
+        render();
+      }
     });
   });
   const ackAllBtn=document.getElementById('ackAllChanges');
   if(ackAllBtn) ackAllBtn.addEventListener('click', async()=>{
     const now=new Date().toISOString();
-    changes.forEach(c=>{ if(!c.acknowledged){ c.acknowledged=true; c.acknowledgedAt=now; c.acknowledgedBy=state.currentUser.username; } });
+    for(const c of changes){
+      if(!c.acknowledged){
+        c.acknowledged=true; c.acknowledgedAt=now; c.acknowledgedBy=state.currentUser.username;
+        await pushNotification(c.username, c.message || ('Votre planning de '+MOIS[c.month]+' '+c.year+' a été modifié.'));
+      }
+    }
     await persistPostValidationChanges();
     toast('Toutes les modifications ont été validées.');
     render();
