@@ -1241,6 +1241,64 @@ async function refuseExchange(id,adminComment){
 }
 function exchangeStatusLabel(s){ return s==='pending'?'En attente':s==='validated'?'Validé':'Refusé'; }
 function exchangeStatusColor(s){ return desidStatusColor(s); }
+function weekDatesAround(dateKey){
+  const d=new Date(dateKey+'T00:00:00');
+  const dow=(d.getDay()+6)%7; // 0=lundi
+  const monday=addDays(d,-dow);
+  const days=[];
+  for(let i=0;i<7;i++) days.push(dkey(addDays(monday,i)));
+  return days;
+}
+function exchangeMiniRowHtml(username, weekDates, overrideDateKey, overrideCode){
+  const cells=weekDates.map(dk=>{
+    const isOverride = dk===overrideDateKey;
+    const code = isOverride ? overrideCode : getDayCodeByKey(username, dk);
+    const info = code?codeInfo(code):null;
+    const dd=dk.slice(8,10);
+    return `<div style="flex:1;min-width:30px;text-align:center;">
+      <div style="font-size:9px;color:var(--ink-soft);margin-bottom:2px;">${dd}</div>
+      <div style="height:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;background:${info?info.color:'#EDEFF2'};color:${info?info.text:'#B7BEC9'};${isOverride?'outline:2px solid var(--primary);outline-offset:-2px;':''}">${code||'—'}</div>
+    </div>`;
+  }).join('');
+  return `<div style="display:flex;gap:3px;">${cells}</div>`;
+}
+// Simule l'échange (sans rien persister) pour détecter si le valider ferait
+// apparaître une NOUVELLE alerte d'effectif/charge par rapport à la situation
+// actuelle. Mutation + calcul + restauration se font de façon synchrone, donc
+// sans risque d'être lues entre-temps par un autre traitement.
+function computeExchangeAlertImpact(ex){
+  const ru=state.users.find(u=>u.username===ex.requesterUsername);
+  const tu=state.users.find(u=>u.username===ex.targetUsername);
+  if(!ru || !tu) return [];
+  const relevantServices=new Set([ru.team, tu.team].filter(Boolean));
+  if(!relevantServices.size) return [];
+  const monthsToCheck=new Set([ex.dateA.slice(0,7), ex.dateB.slice(0,7)]);
+  const sigOf=a=> a.rule.id+'|'+(a.rule.type==='daily_group'?a.date:(a.employee.username+'|'+a.weekStart))+'|'+a.kind;
+  const collect=()=>{
+    const map=new Map();
+    monthsToCheck.forEach(key=>{
+      const [yy,mm]=key.split('-').map(Number);
+      computeAllAlerts(yy, mm-1).filter(a=>relevantServices.has(a.rule.service)).forEach(a=>map.set(sigOf(a), a));
+    });
+    return map;
+  };
+  const beforeAlerts=collect();
+  if(!state.schedules[ex.requesterUsername]) state.schedules[ex.requesterUsername]={};
+  if(!state.schedules[ex.targetUsername]) state.schedules[ex.targetUsername]={};
+  const savedA=state.schedules[ex.requesterUsername][ex.dateA];
+  const savedB=state.schedules[ex.targetUsername][ex.dateB];
+  if(ex.codeB) state.schedules[ex.requesterUsername][ex.dateA]=ex.codeB; else delete state.schedules[ex.requesterUsername][ex.dateA];
+  if(ex.codeA) state.schedules[ex.targetUsername][ex.dateB]=ex.codeA; else delete state.schedules[ex.targetUsername][ex.dateB];
+  const afterAlerts=collect();
+  if(savedA!==undefined) state.schedules[ex.requesterUsername][ex.dateA]=savedA; else delete state.schedules[ex.requesterUsername][ex.dateA];
+  if(savedB!==undefined) state.schedules[ex.targetUsername][ex.dateB]=savedB; else delete state.schedules[ex.targetUsername][ex.dateB];
+  const newOnes=[];
+  afterAlerts.forEach((a,key)=>{ if(!beforeAlerts.has(key)) newOnes.push(a); });
+  return newOnes.map(a=> a.rule.type==='daily_group'
+    ? (a.rule.label+' — '+fmtDateKeyFr(a.date)+' ('+(a.kind==='min'?'sous-effectif':'sur-effectif')+')')
+    : (a.rule.label+' — '+a.employee.name+' S'+a.weekNum+' ('+(a.kind==='min'?'sous-charge':'sur-charge')+')')
+  );
+}
 
 /* ============================================================
    ALERTES — moteur de calcul (toujours recalculé à la volée,
@@ -2526,30 +2584,51 @@ function renderAdminEchanges(){
     const sc=exchangeStatusColor(ex.status);
     const infoA=ex.codeA?codeInfo(ex.codeA):null;
     const infoB=ex.codeB?codeInfo(ex.codeB):null;
+    const weekA=weekDatesAround(ex.dateA), weekB=weekDatesAround(ex.dateB);
+    const alertImpact = ex.status==='pending' ? computeExchangeAlertImpact(ex) : [];
     return `
-    <div class="desid-row">
-      <div class="desid-row-main">
-        <div class="desid-row-name">${escapeHtml(ex.requesterName)} ↔ ${escapeHtml(ex.targetName)}</div>
-        <div class="desid-row-period">
-          <b>${escapeHtml(ex.requesterName)}</b> le ${fmtDateKeyFr(ex.dateA)}
-          <span class="chip" style="background:${infoA?infoA.color:'#EDEFF2'};color:${infoA?infoA.text:'#333'};margin:0 6px;">${ex.codeA||'Vide'}</span>
-          → devient <span class="chip" style="background:${infoB?infoB.color:'#EDEFF2'};color:${infoB?infoB.text:'#333'};">${ex.codeB||'Vide'}</span>
+    <div class="desid-row" style="flex-direction:column;align-items:stretch;">
+      <div style="display:flex;gap:14px;flex-wrap:wrap;">
+        <div class="desid-row-main">
+          <div class="desid-row-name">${escapeHtml(ex.requesterName)} ↔ ${escapeHtml(ex.targetName)}</div>
+          <div class="desid-row-period">
+            <b>${escapeHtml(ex.requesterName)}</b> le ${fmtDateKeyFr(ex.dateA)}
+            <span class="chip" style="background:${infoA?infoA.color:'#EDEFF2'};color:${infoA?infoA.text:'#333'};margin:0 6px;">${ex.codeA||'Vide'}</span>
+            → devient <span class="chip" style="background:${infoB?infoB.color:'#EDEFF2'};color:${infoB?infoB.text:'#333'};">${ex.codeB||'Vide'}</span>
+          </div>
+          <div class="desid-row-period">
+            <b>${escapeHtml(ex.targetName)}</b> le ${fmtDateKeyFr(ex.dateB)}
+            <span class="chip" style="background:${infoB?infoB.color:'#EDEFF2'};color:${infoB?infoB.text:'#333'};margin:0 6px;">${ex.codeB||'Vide'}</span>
+            → devient <span class="chip" style="background:${infoA?infoA.color:'#EDEFF2'};color:${infoA?infoA.text:'#333'};">${ex.codeA||'Vide'}</span>
+          </div>
+          ${ex.comment?`<div class="desid-row-comment">« ${escapeHtml(ex.comment)} »</div>`:''}
+          ${ex.adminComment?`<div class="desid-row-comment" style="color:var(--primary);">Réponse : ${escapeHtml(ex.adminComment)}</div>`:''}
         </div>
-        <div class="desid-row-period">
-          <b>${escapeHtml(ex.targetName)}</b> le ${fmtDateKeyFr(ex.dateB)}
-          <span class="chip" style="background:${infoB?infoB.color:'#EDEFF2'};color:${infoB?infoB.text:'#333'};margin:0 6px;">${ex.codeB||'Vide'}</span>
-          → devient <span class="chip" style="background:${infoA?infoA.color:'#EDEFF2'};color:${infoA?infoA.text:'#333'};">${ex.codeA||'Vide'}</span>
+        <div class="desid-row-side">
+          <span class="status-badge" style="background:${sc.bg};color:${sc.fg};">${exchangeStatusLabel(ex.status)}</span>
+          ${ex.status==='pending' ? `
+            <button class="icon-btn" style="color:var(--ok);border-color:var(--ok);" data-exch-validate="${ex.id}">Valider</button>
+            <button class="icon-btn" style="color:var(--danger);border-color:var(--danger);" data-exch-refuse="${ex.id}">Refuser</button>
+          ` : ''}
         </div>
-        ${ex.comment?`<div class="desid-row-comment">« ${escapeHtml(ex.comment)} »</div>`:''}
-        ${ex.adminComment?`<div class="desid-row-comment" style="color:var(--primary);">Réponse : ${escapeHtml(ex.adminComment)}</div>`:''}
       </div>
-      <div class="desid-row-side">
-        <span class="status-badge" style="background:${sc.bg};color:${sc.fg};">${exchangeStatusLabel(ex.status)}</span>
-        ${ex.status==='pending' ? `
-          <button class="icon-btn" style="color:var(--ok);border-color:var(--ok);" data-exch-validate="${ex.id}">Valider</button>
-          <button class="icon-btn" style="color:var(--danger);border-color:var(--danger);" data-exch-refuse="${ex.id}">Refuser</button>
-        ` : ''}
+      <div style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--border);display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+        <div>
+          <div style="font-size:11px;font-weight:800;color:var(--ink-soft);margin-bottom:3px;text-transform:uppercase;">${escapeHtml(ex.requesterName)} — avant</div>
+          ${exchangeMiniRowHtml(ex.requesterUsername, weekA, null, null)}
+          <div style="font-size:11px;font-weight:800;color:var(--primary);margin:8px 0 3px;text-transform:uppercase;">${escapeHtml(ex.requesterName)} — après échange</div>
+          ${exchangeMiniRowHtml(ex.requesterUsername, weekA, ex.dateA, ex.codeB||null)}
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:800;color:var(--ink-soft);margin-bottom:3px;text-transform:uppercase;">${escapeHtml(ex.targetName)} — avant</div>
+          ${exchangeMiniRowHtml(ex.targetUsername, weekB, null, null)}
+          <div style="font-size:11px;font-weight:800;color:var(--primary);margin:8px 0 3px;text-transform:uppercase;">${escapeHtml(ex.targetName)} — après échange</div>
+          ${exchangeMiniRowHtml(ex.targetUsername, weekB, ex.dateB, ex.codeA||null)}
+        </div>
       </div>
+      ${ex.status==='pending' ? (alertImpact.length
+        ? `<div class="legend-hint alert-hint" style="margin-top:12px;margin-bottom:0;">⚠ Valider cet échange générerait ${alertImpact.length} alerte${alertImpact.length>1?'s':''} : ${alertImpact.map(l=>escapeHtml(l)).join(' · ')}</div>`
+        : `<div class="helper" style="margin-top:10px;color:var(--ok);font-weight:600;">✓ Aucune alerte d'effectif détectée si vous validez cet échange.</div>`) : ''}
     </div>`;
   };
 
