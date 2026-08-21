@@ -36,7 +36,9 @@
             background-image: radial-gradient(circle at top right, #003380 0%, var(--af-blue) 70%);
         }
 
-        header { margin-top: 1rem; }
+        header { 
+            margin-top: 1rem; 
+        }
 
         .logo-container {
             background-color: var(--af-white);
@@ -112,16 +114,21 @@
         }
 
         #status-msg {
-            margin-top: 1rem;
-            font-size: 0.85rem;
+            margin-top: 1.5rem;
+            font-size: 0.9rem;
             color: #A0B2D6;
             word-break: break-all;
+            padding: 0 1rem;
         }
 
         footer {
             margin-bottom: 1rem;
             font-size: 0.9rem;
             color: rgba(255, 255, 255, 0.7);
+        }
+
+        footer strong {
+            color: var(--af-white);
         }
     </style>
 </head>
@@ -147,7 +154,7 @@
     </footer>
 
     <script>
-        // Ta configuration Firebase
+        // Remplace avec tes vraies clés Firebase
         const firebaseConfig = {
             apiKey: "VOTRE_API_KEY",
             authDomain: "VOTRE_PROJECT_ID.firebaseapp.com",
@@ -157,37 +164,65 @@
             appId: "VOTRE_APP_ID"
         };
 
-        // Initialisation
+        // Initialisation de Firebase
         firebase.initializeApp(firebaseConfig);
         const messaging = firebase.messaging();
 
+        // Enregistrement préventif du Service Worker dès le chargement de la page
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/firebase-messaging-sw.js')
+                .then((registration) => {
+                    console.log('Service Worker enregistré avec succès :', registration);
+                })
+                .catch((err) => {
+                    console.error('Erreur lors de l\'enregistrement du Service Worker :', err);
+                });
+        }
+
         function demanderNotification() {
             const statusMsg = document.getElementById('status-msg');
+            
+            if (!('Notification' in window)) {
+                statusMsg.innerText = "Ce navigateur ne prend pas en charge les notifications push.";
+                return;
+            }
+
             statusMsg.innerText = "Demande d'autorisation en cours...";
 
             Notification.requestPermission().then((permission) => {
                 if (permission === 'granted') {
-                    statusMsg.innerText = "Autorisation accordée ! Récupération du jeton...";
-                    
-                    // Récupérer le token FCM (Clé VAPID Firebase requise)
-                    messaging.getToken({ vapidKey: "VOTRE_CLE_VAPID_PUBLIC" }).then((currentToken) => {
-                        if (currentToken) {
-                            console.log("Token FCM :", currentToken);
-                            statusMsg.innerText = "Notifications activées avec succès !";
-                            
-                            // Déclenche une notification locale de confirmation immédiate
-                            new Notification("SKYPLANNING", {
-                                body: "Les notifications sont bien configurées sur votre appareil !",
-                                icon: "https://skyplanninghop.netlify.app/logo.png"
-                            });
-                        } else {
-                            statusMsg.innerText = "Impossible de récupérer le jeton.";
-                        }
+                    statusMsg.innerText = "Autorisation accordée ! En attente du Service Worker...";
+
+                    // On attend impérativement que le Service Worker soit totalement prêt
+                    navigator.serviceWorker.ready.then((serviceWorkerRegistration) => {
+                        statusMsg.innerText = "Récupération du jeton Firebase...";
+                        
+                        messaging.getToken({ 
+                            vapidKey: "VOTRE_CLE_VAPID_PUBLIC",
+                            serviceWorkerRegistration: serviceWorkerRegistration 
+                        }).then((currentToken) => {
+                            if (currentToken) {
+                                console.log("Token FCM :", currentToken);
+                                statusMsg.innerText = "Notifications activées avec succès !";
+                                
+                                // Déclenche une notification locale de test
+                                new Notification("SKYPLANNING", {
+                                    body: "Les notifications push sont fonctionnelles !",
+                                    icon: "https://skyplanninghop.netlify.app/logo.png"
+                                });
+                            } else {
+                                statusMsg.innerText = "Impossible d'obtenir le jeton d'autorisation FCM.";
+                            }
+                        }).catch((err) => {
+                            statusMsg.innerText = "Erreur jeton : " + err;
+                        });
                     }).catch((err) => {
-                        statusMsg.innerText = "Erreur lors de la récupération du jeton : " + err;
+                        statusMsg.innerText = "Service Worker non prêt : " + err;
                     });
+                } else if (permission === 'denied') {
+                    statusMsg.innerText = "Autorisation refusée par l'utilisateur.";
                 } else {
-                    statusMsg.innerText = "Autorisation refusée.";
+                    statusMsg.innerText = "Demande d'autorisation fermée.";
                 }
             });
         }
