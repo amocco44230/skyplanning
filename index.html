@@ -2229,7 +2229,7 @@ function changesLogHtml(changes){
    ============================================================ */
 function printMonthlyPlanning(service, year, month){
   const employees = state.users
-    .filter(u=>!isSuperAdmin(u) && isEmployeeValidForMonth(u,year,month) && u.team===service)
+    .filter(u=>!isSuperAdmin(u) && isEmployeeValidForMonth(u,year,month) && (u.team===service || (u.extraTeams||[]).includes(service)))
     .sort((a,b)=> (a.fonction||'').localeCompare(b.fonction||'') || a.name.localeCompare(b.name));
   const nDays = daysInMonth(year,month);
   const holidays = frenchHolidays(year);
@@ -3090,10 +3090,13 @@ function renderCalendrierAdmin(){
     state.calendarServiceFilter = scope ? (availableServices.includes('CCO') ? 'CCO' : (availableServices[0] || 'ALL')) : 'ALL';
   }
   const svcFilter=state.calendarServiceFilter;
+  // Un salarié rattaché en service supplémentaire (extraTeams, "Gestion des salariés")
+  // doit aussi apparaître ici quand on filtre sur ce service supplémentaire.
+  const belongsToService=(u,svc)=> u.team===svc || (u.extraTeams||[]).includes(svc);
   const employees=state.users.filter(u=>
     !isSuperAdmin(u) &&
     isEmployeeValidForMonth(u,y,m) &&
-    (svcFilter==='ALL' ? availableServices.includes(u.team) : u.team===svcFilter)
+    (svcFilter==='ALL' ? availableServices.some(s=>belongsToService(u,s)) : belongsToService(u,svcFilter))
   );
   const svcOptions = `<option value="ALL" ${svcFilter==='ALL'?'selected':''}>${scope?'Tous mes services':'Tous les services'}</option>`
     + availableServices.map(s=>`<option value="${escapeHtml(s)}" ${svcFilter===s?'selected':''}>${escapeHtml(s)}</option>`).join('');
@@ -3857,7 +3860,7 @@ function renderModal(){
     document.getElementById('valModalConfirm').addEventListener('click', async()=>{
       await setMonthValidated(service,year,month,!nowValidated);
       if(!nowValidated){
-        const svcEmployees=state.users.filter(u=>!isSuperAdmin(u) && u.team===service);
+        const svcEmployees=state.users.filter(u=>!isSuperAdmin(u) && (u.team===service || (u.extraTeams||[]).includes(service)));
         for(const emp of svcEmployees){
           await pushNotification(emp.username, 'Votre planning de '+MOIS[month]+' '+year+' a été validé et est maintenant disponible.');
         }
