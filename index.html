@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SKYPLANNING - Coming Soon</title>
+    <style>
+        :root {
+            --af-blue: #002157;
+            --af-red: #ED2939;
+            --af-white: #FFFFFF;
+            --af-light-bg: #F4F6F9;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--af-blue);
+            color: var(--af-white);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            text-align: center;
+            padding: 2rem 1rem;
+            background-image: radial-gradient(circle at top right, #003380 0%, var(--af-blue) 70%);
+        }
+
+        header {
+            margin-top: 1rem;
+        }
+
+        .logo-container {
+            background-color: var(--af-white);
+            padding: 1rem 2rem;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            display: inline-block;
+        }
+
+        /* Reproduction vectorielle du logo HOP! en rouge Air France */
+        .logo-hop {
+            font-size: 3rem;
+            font-weight: 900;
+            color: var(--af-red);
+            letter-spacing: -1px;
+            line-height: 1;
+            font-family: Arial Black, sans-serif;
+        }
+
+        .logo-hop span {
+            color: var(--af-red);
+        }
+
+        main {
+            max-width: 600px;
+            margin: 2rem 0;
+        }
+
+        .badge {
+            display: inline-block;
+            background-color: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: var(--af-white);
+            padding: 0.5rem 1.2rem;
+            border-radius: 50px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 1.5rem;
+        }
+
+        h1 {
+            font-size: 3rem;
+            font-weight: 800;
+            letter-spacing: 3px;
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            color: #A0B2D6;
+            font-weight: 300;
+            margin-bottom: 2rem;
+        }
+
+        .divider {
+            width: 60px;
+            height: 4px;
+            background-color: var(--af-red);
+            margin: 0 auto;
+            border-radius: 2px;
+        }
+
+        footer {
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.7);
+            letter-spacing: 1px;
+        }
+
+        footer strong {
+            color: var(--af-white);
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo-container">
+            <div class="logo-hop">HOP<span>!</span></div>
+        </div>
+    </header>
+
+    <main>
+        <div class="badge">Coming Soon</div>
+        <h1>SKYPLANNING</h1>
+        <p class="subtitle">Votre nouvelle plateforme de planification</p>
+        <div class="divider"></div>
+    </main>
+
+    <footer>
+        <p>powered by <strong>amocco</strong></p>
+    </footer>
+
+</body>
+</html>
