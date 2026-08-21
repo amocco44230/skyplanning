@@ -4,19 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SKYPLANNING - Coming Soon</title>
+    
+    <!-- Scripts Firebase version web compat -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js"></script>
+
     <style>
         :root {
             --af-blue: #002157;
             --af-red: #ED2939;
             --af-white: #FFFFFF;
-            --af-light-bg: #F4F6F9;
         }
 
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         }
 
         body {
@@ -32,9 +36,7 @@
             background-image: radial-gradient(circle at top right, #003380 0%, var(--af-blue) 70%);
         }
 
-        header {
-            margin-top: 1rem;
-        }
+        header { margin-top: 1rem; }
 
         .logo-container {
             background-color: var(--af-white);
@@ -44,18 +46,12 @@
             display: inline-block;
         }
 
-        /* Reproduction vectorielle du logo HOP! en rouge Air France */
         .logo-hop {
             font-size: 3rem;
             font-weight: 900;
             color: var(--af-red);
-            letter-spacing: -1px;
             line-height: 1;
             font-family: Arial Black, sans-serif;
-        }
-
-        .logo-hop span {
-            color: var(--af-red);
         }
 
         main {
@@ -92,24 +88,40 @@
             margin-bottom: 2rem;
         }
 
-        .divider {
-            width: 60px;
-            height: 4px;
+        /* Bouton de test notification */
+        .btn-notif {
             background-color: var(--af-red);
-            margin: 0 auto;
-            border-radius: 2px;
+            color: var(--af-white);
+            border: none;
+            padding: 0.8rem 1.8rem;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+            box-shadow: 0 4px 12px rgba(237, 41, 57, 0.4);
+            margin-top: 1rem;
+        }
+
+        .btn-notif:hover {
+            background-color: #c81e2b;
+        }
+
+        .btn-notif:active {
+            transform: scale(0.98);
+        }
+
+        #status-msg {
+            margin-top: 1rem;
+            font-size: 0.85rem;
+            color: #A0B2D6;
+            word-break: break-all;
         }
 
         footer {
             margin-bottom: 1rem;
             font-size: 0.9rem;
             color: rgba(255, 255, 255, 0.7);
-            letter-spacing: 1px;
-        }
-
-        footer strong {
-            color: var(--af-white);
-            font-weight: 600;
         }
     </style>
 </head>
@@ -117,7 +129,7 @@
 
     <header>
         <div class="logo-container">
-            <div class="logo-hop">HOP<span>!</span></div>
+            <div class="logo-hop">HOP!</div>
         </div>
     </header>
 
@@ -125,12 +137,61 @@
         <div class="badge">Coming Soon</div>
         <h1>SKYPLANNING</h1>
         <p class="subtitle">Votre nouvelle plateforme de planification</p>
-        <div class="divider"></div>
+        
+        <button class="btn-notif" onclick="demanderNotification()">Activer les notifications</button>
+        <p id="status-msg"></p>
     </main>
 
     <footer>
         <p>powered by <strong>amocco</strong></p>
     </footer>
+
+    <script>
+        // Ta configuration Firebase
+        const firebaseConfig = {
+            apiKey: "VOTRE_API_KEY",
+            authDomain: "VOTRE_PROJECT_ID.firebaseapp.com",
+            projectId: "VOTRE_PROJECT_ID",
+            storageBucket: "VOTRE_PROJECT_ID.appspot.com",
+            messagingSenderId: "VOTRE_SENDER_ID",
+            appId: "VOTRE_APP_ID"
+        };
+
+        // Initialisation
+        firebase.initializeApp(firebaseConfig);
+        const messaging = firebase.messaging();
+
+        function demanderNotification() {
+            const statusMsg = document.getElementById('status-msg');
+            statusMsg.innerText = "Demande d'autorisation en cours...";
+
+            Notification.requestPermission().then((permission) => {
+                if (permission === 'granted') {
+                    statusMsg.innerText = "Autorisation accordée ! Récupération du jeton...";
+                    
+                    // Récupérer le token FCM (Clé VAPID Firebase requise)
+                    messaging.getToken({ vapidKey: "VOTRE_CLE_VAPID_PUBLIC" }).then((currentToken) => {
+                        if (currentToken) {
+                            console.log("Token FCM :", currentToken);
+                            statusMsg.innerText = "Notifications activées avec succès !";
+                            
+                            // Déclenche une notification locale de confirmation immédiate
+                            new Notification("SKYPLANNING", {
+                                body: "Les notifications sont bien configurées sur votre appareil !",
+                                icon: "https://skyplanninghop.netlify.app/logo.png"
+                            });
+                        } else {
+                            statusMsg.innerText = "Impossible de récupérer le jeton.";
+                        }
+                    }).catch((err) => {
+                        statusMsg.innerText = "Erreur lors de la récupération du jeton : " + err;
+                    });
+                } else {
+                    statusMsg.innerText = "Autorisation refusée.";
+                }
+            });
+        }
+    </script>
 
 </body>
 </html>
