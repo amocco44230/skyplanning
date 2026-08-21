@@ -164,7 +164,7 @@
   table.grid thead th.weekend{background:#F3F0FA;}
   table.grid thead th.holiday{background:#FCEAE9;color:var(--danger);}
   table.grid thead th.week-head{position:static;background:#EAF0F6;color:var(--primary-dark);font-size:10.5px;letter-spacing:.04em;border-top:1px solid var(--border);}
-  table.grid td.day-cell{text-align:center;padding:0;height:38px;min-width:34px;cursor:pointer;position:relative;overflow:hidden;touch-action:manipulation;}
+  table.grid td.day-cell{text-align:center;padding:0;height:38px;min-width:34px;cursor:pointer;position:relative;overflow:hidden;touch-action:manipulation;user-select:none;-webkit-user-select:none;}
   table.grid td.day-cell .day-cell-inner{display:flex;flex-direction:column;height:100%;width:100%;}
   table.grid td.day-cell .code-badge{flex:1;}
   table.grid td.day-cell.weekend{background:#FAF9FD;}
@@ -187,7 +187,8 @@
   .emp-list{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
   .emp-row{display:flex;align-items:center;gap:14px;padding:13px 18px;border-bottom:1px solid var(--border);}
   .emp-row:last-child{border-bottom:none;}
-  .emp-avatar{width:36px;height:36px;border-radius:9px;background:var(--primary-light);color:var(--primary);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0;}
+  .emp-avatar{width:36px;height:36px;border-radius:9px;background:var(--primary-light);color:var(--primary);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0;overflow:hidden;}
+  .emp-avatar img{width:100%;height:100%;object-fit:cover;display:block;}
   .emp-info{flex:1;min-width:0;}
   .emp-info .name{font-weight:700;font-size:14px;}
   .emp-info .meta{font-size:12px;color:var(--ink-soft);margin-top:2px;}
@@ -581,7 +582,7 @@ const FIRESTORE_KEY_MAP = {
   users:'users', codes:'codes', schedules:'schedules', notifications:'notifications',
   comments:'comments', fonctions:'fonctions', services:'services', desideratas:'desideratas',
   alertRules:'alertRules', monthValidations:'monthValidations', postValidationChanges:'postValidationChanges',
-  cpAllowances:'cpAllowances', employeeDrafts:'employeeDrafts'
+  cpAllowances:'cpAllowances', employeeDrafts:'employeeDrafts', exchanges:'exchanges'
 };
 // Enregistrement précoce et silencieux du service worker FCM (permet de recevoir
 // des notifications en arrière-plan même avant que l'utilisateur active les alertes).
@@ -698,6 +699,7 @@ let state={
   notifications:{},
   comments:{},
   desideratas:[],
+  exchanges:[],
   alertRules:[],
   monthValidations:{},
   postValidationChanges:[],
@@ -716,6 +718,9 @@ let state={
   desidAdminFilterYear:'all',
   desidAdminFilterService:'',
   desidAdminShowArchived:false,
+  exchFilterStatus:'all',
+  exchAdminFilterStatus:'pending',
+  exchAdminFilterService:'',
   tab:'planning',
   viewDate:new Date(),
   selectedCode:null,
@@ -797,6 +802,10 @@ async function loadAll(){
     const ds=await storageGet('desideratas', true);
     state.desideratas = ds ? JSON.parse(ds.value) : [];
   }catch(e){ state.desideratas=[]; }
+  try{
+    const ex=await storageGet('exchanges', true);
+    state.exchanges = ex ? JSON.parse(ex.value) : [];
+  }catch(e){ state.exchanges=[]; }
   try{
     const ar=await storageGet('alertRules', true);
     state.alertRules = ar ? JSON.parse(ar.value) : null;
@@ -932,6 +941,7 @@ async function persistComments(){ await storageSet('comments', JSON.stringify(st
 async function persistFonctions(){ await storageSet('fonctions', JSON.stringify(state.fonctions), true); }
 async function persistServices(){ await storageSet('services', JSON.stringify(state.services), true); }
 async function persistDesideratas(){ await storageSet('desideratas', JSON.stringify(state.desideratas), true); }
+async function persistExchanges(){ await storageSet('exchanges', JSON.stringify(state.exchanges), true); }
 async function persistAlertRules(){ await storageSet('alertRules', JSON.stringify(state.alertRules), true); }
 async function persistMonthValidations(){ await storageSet('monthValidations', JSON.stringify(state.monthValidations), true); }
 async function persistPostValidationChanges(){ await storageSet('postValidationChanges', JSON.stringify(state.postValidationChanges), true); }
@@ -1153,6 +1163,70 @@ function desiderataForCell(username,dateKey){
 }
 function desidStatusLabel(s){ return s==='pending'?'En attente':s==='validated'?'Validé':'Refusé'; }
 function desidStatusColor(s){ return s==='pending'?{bg:'#FEF3E2',fg:'#B5690A'}:s==='validated'?{bg:'#E7F6EC',fg:'#1E7B3C'}:{bg:'#FBEAE9',fg:'#C0392B'}; }
+
+/* ============================================================
+   ÉCHANGES DE SERVICE ENTRE SALARIÉS
+   ============================================================ */
+function getDayCodeByKey(username,dateKey){
+  const sc=state.schedules[username];
+  return sc ? sc[dateKey] : undefined;
+}
+async function logExchangeChangeIfNeeded(username,dateKey,oldCode,newCode,message){
+  const emp=state.users.find(u=>u.username===username);
+  if(!emp || !emp.team || oldCode===newCode) return;
+  const [y,m,d]=dateKey.split('-').map(Number);
+  if(!isMonthValidated(emp.team,y,m-1)) return;
+  state.postValidationChanges.push({
+    id:genId(), service:emp.team, year:y, month:m-1, day:d, username, name:emp.name,
+    oldCode:oldCode||null, newCode:newCode||null, message, changedAt:new Date().toISOString(),
+    changedBy:state.currentUser.username, acknowledged:false
+  });
+  await persistPostValidationChanges();
+}
+async function createExchange(requesterUsername,requesterName,targetUsername,targetName,dateA,dateB,comment){
+  const codeA=getDayCodeByKey(requesterUsername,dateA)||null;
+  const codeB=getDayCodeByKey(targetUsername,dateB)||null;
+  state.exchanges.push({
+    id:genId(), requesterUsername, requesterName, targetUsername, targetName,
+    dateA, dateB, codeA, codeB, comment:comment||'',
+    status:'pending', adminComment:'', createdAt:new Date().toISOString(), processedAt:null
+  });
+  await persistExchanges();
+  await pushNotification(targetUsername, requesterName+' vous propose un échange de journée : '+fmtDateKeyFr(dateA)+' ↔ '+fmtDateKeyFr(dateB)+'. En attente de validation par l\u2019administrateur.');
+}
+async function cancelExchange(id){
+  state.exchanges=state.exchanges.filter(x=>x.id!==id);
+  await persistExchanges();
+}
+async function validateExchange(id,adminComment){
+  const ex=state.exchanges.find(x=>x.id===id);
+  if(!ex) return;
+  ex.status='validated'; ex.adminComment=adminComment||''; ex.processedAt=new Date().toISOString();
+  if(!state.schedules[ex.requesterUsername]) state.schedules[ex.requesterUsername]={};
+  if(!state.schedules[ex.targetUsername]) state.schedules[ex.targetUsername]={};
+  const oldA=state.schedules[ex.requesterUsername][ex.dateA]||null;
+  const oldB=state.schedules[ex.targetUsername][ex.dateB]||null;
+  if(ex.codeB) state.schedules[ex.requesterUsername][ex.dateA]=ex.codeB; else delete state.schedules[ex.requesterUsername][ex.dateA];
+  if(ex.codeA) state.schedules[ex.targetUsername][ex.dateB]=ex.codeA; else delete state.schedules[ex.targetUsername][ex.dateB];
+  await persistSchedules();
+  const msgA='Échange validé avec '+ex.targetName+' : '+fmtDateKeyFr(ex.dateA)+' → '+(ex.codeB||'Vide')+'.';
+  const msgB='Échange validé avec '+ex.requesterName+' : '+fmtDateKeyFr(ex.dateB)+' → '+(ex.codeA||'Vide')+'.';
+  await logExchangeChangeIfNeeded(ex.requesterUsername, ex.dateA, oldA, ex.codeB||null, msgA);
+  await logExchangeChangeIfNeeded(ex.targetUsername, ex.dateB, oldB, ex.codeA||null, msgB);
+  await persistExchanges();
+  await pushNotification(ex.requesterUsername, 'Votre échange avec '+ex.targetName+' a été validé par l\u2019administrateur.');
+  await pushNotification(ex.targetUsername, 'L\u2019échange avec '+ex.requesterName+' a été validé par l\u2019administrateur.');
+}
+async function refuseExchange(id,adminComment){
+  const ex=state.exchanges.find(x=>x.id===id);
+  if(!ex) return;
+  ex.status='refused'; ex.adminComment=adminComment||''; ex.processedAt=new Date().toISOString();
+  await persistExchanges();
+  await pushNotification(ex.requesterUsername, 'Votre demande d\u2019échange avec '+ex.targetName+' a été refusée.'+(adminComment?' Motif : '+adminComment:''));
+  await pushNotification(ex.targetUsername, 'La demande d\u2019échange proposée par '+ex.requesterName+' a été refusée.');
+}
+function exchangeStatusLabel(s){ return s==='pending'?'En attente':s==='validated'?'Validé':'Refusé'; }
+function exchangeStatusColor(s){ return desidStatusColor(s); }
 
 /* ============================================================
    ALERTES — moteur de calcul (toujours recalculé à la volée,
@@ -1495,6 +1569,7 @@ function navItems(){
       {id:'salaries', label:'Gestion des salariés', icon:'☺'},
       {id:'codes', label:'Gestion des codes', icon:'▤'},
       {id:'desideratas', label:'Désidératas', icon:'🖐️'},
+      {id:'echanges', label:'Échanges', icon:'🔄'},
       {id:'alertes', label:'Alertes', icon:'⚠️'},
     ];
   }
@@ -1503,6 +1578,7 @@ function navItems(){
     {id:'annuel', label:'Mon planning annuel', icon:'📅'},
     {id:'equipe', label:'Planning équipe', icon:'👥'},
     {id:'mesdesid', label:'Mes désidératas', icon:'🖐️'},
+    {id:'echanges', label:'Échanges', icon:'🔄'},
   ];
 }
 function initials(name){
@@ -1593,7 +1669,18 @@ function renderShell(innerHtml,title){
             ? state.desideratas.filter(d=>d.status==='pending'&&!d.archived).length
             : it.id==='alertes'
               ? currentMonthAlertCount()
-              : 0;
+              : it.id==='echanges'
+                ? (state.currentUser.role==='admin'
+                    ? state.exchanges.filter(ex=>{
+                        if(ex.status!=='pending') return false;
+                        const scope=getAdminScope(state.currentUser);
+                        if(!scope) return true;
+                        const ru=state.users.find(u=>u.username===ex.requesterUsername);
+                        const tu=state.users.find(u=>u.username===ex.targetUsername);
+                        return (ru&&scope.includes(ru.team)) || (tu&&scope.includes(tu.team));
+                      }).length
+                    : state.exchanges.filter(ex=>ex.targetUsername===state.currentUser.username && ex.status==='pending').length)
+                : 0;
           return `<button data-tab="${it.id}" class="${state.tab===it.id?'active':''}">${it.icon} <span class="label">${it.label}</span>${badge?`<span class="nav-badge">${badge>9?'9+':badge}</span>`:''}</button>`;
         }).join('')}
       </div>
@@ -1857,6 +1944,82 @@ function bindGrid(readonly){
 }
 
 /* ============================================================
+   PEINTURE AU GLISSER — sélectionner un code puis passer la souris
+   (ou le doigt) sur plusieurs jours pour les remplir d'un coup.
+   Écouteurs posés une seule fois sur `document` (et non sur les
+   cases) car la grille est reconstruite à chaque case peinte —
+   des écouteurs posés sur les <td> seraient perdus en cours de
+   glissé. Le clic simple existant (avec son délai anti-dblclick)
+   n'est pas touché : le glissé n'est activé qu'après un vrai
+   déplacement de quelques pixels, pour ne jamais interférer avec
+   un simple clic ou un double-clic (commentaire).
+   ============================================================ */
+let paintDragActive=false;
+let paintDragMoved=false;
+let paintDragStart=null;
+let paintDragLastKey=null;
+function paintableCellAt(clientX,clientY){
+  const el=document.elementFromPoint(clientX,clientY);
+  const td=el && el.closest ? el.closest('td.day-cell') : null;
+  if(!td) return null;
+  if(td.dataset.invalid==='true') return null;
+  const table=td.closest('table.grid');
+  if(!table || table.classList.contains('readonly')) return null;
+  return td;
+}
+function paintDragToCell(td){
+  const key=td.dataset.user+'::'+td.dataset.day;
+  if(key===paintDragLastKey) return;
+  paintDragLastKey=key;
+  td.classList.add('painted');
+  paintCell(td.dataset.user, state.viewDate.getFullYear(), state.viewDate.getMonth(), parseInt(td.dataset.day,10));
+}
+function startPaintDrag(clientX,clientY){
+  if(state.genMode || !state.selectedCode) return;
+  const td=paintableCellAt(clientX,clientY);
+  if(!td) return;
+  paintDragActive=true;
+  paintDragMoved=false;
+  paintDragStart={x:clientX,y:clientY};
+  paintDragLastKey=null;
+}
+function movePaintDrag(clientX,clientY){
+  if(!paintDragActive) return;
+  if(!paintDragMoved){
+    if(Math.abs(clientX-paintDragStart.x)<5 && Math.abs(clientY-paintDragStart.y)<5) return;
+    paintDragMoved=true;
+    if(gridClickTimer){ clearTimeout(gridClickTimer); gridClickTimer=null; }
+  }
+  const td=paintableCellAt(clientX,clientY);
+  if(td) paintDragToCell(td);
+}
+function endPaintDrag(){
+  paintDragActive=false; paintDragMoved=false; paintDragLastKey=null; paintDragStart=null;
+}
+document.addEventListener('mousedown',(e)=>{
+  if(e.button!==0) return;
+  if(!e.target.closest || !e.target.closest('td.day-cell')) return;
+  startPaintDrag(e.clientX,e.clientY);
+});
+document.addEventListener('mousemove',(e)=>{ if(paintDragActive) movePaintDrag(e.clientX,e.clientY); });
+document.addEventListener('mouseup',endPaintDrag);
+document.addEventListener('mouseleave',endPaintDrag);
+document.addEventListener('touchstart',(e)=>{
+  const t=e.touches[0];
+  if(!t || !e.target.closest || !e.target.closest('td.day-cell')) return;
+  startPaintDrag(t.clientX,t.clientY);
+},{passive:true});
+document.addEventListener('touchmove',(e)=>{
+  if(!paintDragActive) return;
+  const t=e.touches[0];
+  if(!t) return;
+  movePaintDrag(t.clientX,t.clientY);
+  if(paintDragMoved) e.preventDefault();
+},{passive:false});
+document.addEventListener('touchend',endPaintDrag);
+document.addEventListener('touchcancel',endPaintDrag);
+
+/* ============================================================
    ÉCRAN — PLANNING (salarié, lecture seule)
    ============================================================ */
 function renderPlanningEmploye(){
@@ -1992,11 +2155,16 @@ function renderPlanningEquipe(){
   const y=state.viewDate.getFullYear(), m=state.viewDate.getMonth();
   const me=state.users.find(u=>u.username===state.currentUser.username);
   const myTeam=(me&&me.team)?me.team:'';
+  // Un salarié peut être rattaché à un service supplémentaire (extraTeams, géré par
+  // l'admin dans « Gestion des salariés ») : il apparaît alors aussi sur le planning
+  // équipe de ce service (ex : un responsable qui supervise plusieurs services).
+  const belongsToTeam=u=>u.team===myTeam || (u.extraTeams||[]).includes(myTeam);
   const teamEmployees = myTeam
-    ? state.users.filter(u=>!isSuperAdmin(u) && u.team===myTeam && isEmployeeValidForMonth(u,y,m))
+    ? state.users.filter(u=>!isSuperAdmin(u) && belongsToTeam(u) && isEmployeeValidForMonth(u,y,m))
     : state.users.filter(u=>!isSuperAdmin(u) && u.username===state.currentUser.username && isEmployeeValidForMonth(u,y,m));
-  const teamUsernames = (myTeam ? state.users.filter(u=>u.team===myTeam) : [me]).filter(Boolean).map(u=>u.username);
-  const teamAlerts = myTeam ? computeAllAlerts(y,m).filter(a=>a.rule.service===myTeam) : [];
+  const teamUsernames = (myTeam ? state.users.filter(belongsToTeam) : [me]).filter(Boolean).map(u=>u.username);
+  // Les alertes (effectifs / charge hebdo) sont réservées à l'espace admin :
+  // les salariés ne les voient jamais sur leur planning équipe.
   const monthOk = isMonthValidated(myTeam,y,m);
 
   const inner=`
@@ -2004,7 +2172,7 @@ function renderPlanningEquipe(){
     ${myTeam?`<div class="legend-hint">Planning en lecture seule de l'équipe <b>${escapeHtml(myTeam)}</b>.</div>`:`<div class="legend-hint">Aucune équipe ne vous a été assignée pour le moment — seul votre planning est affiché ici.</div>`}
     ${monthOk ? `
     ${legendHtml(false)}
-    ${gridHtml({employees:teamEmployees, readonly:true, alerts:teamAlerts})}
+    ${gridHtml({employees:teamEmployees, readonly:true, alerts:[]})}
     ${commentsRecapHtml(y,m,teamUsernames,false)}
     ` : `
     <div class="not-validated-card">
@@ -2056,6 +2224,111 @@ function changesLogHtml(changes){
     <div class="change-log-list">${rows}</div>
   </div>`;
 }
+/* ============================================================
+   IMPRESSION — PLANNING MENSUEL D'UN SERVICE (A4 paysage, 1 page)
+   ============================================================ */
+function printMonthlyPlanning(service, year, month){
+  const employees = state.users
+    .filter(u=>!isSuperAdmin(u) && isEmployeeValidForMonth(u,year,month) && u.team===service)
+    .sort((a,b)=> (a.fonction||'').localeCompare(b.fonction||'') || a.name.localeCompare(b.name));
+  const nDays = daysInMonth(year,month);
+  const holidays = frenchHolidays(year);
+
+  let daysHead='';
+  for(let d=1; d<=nDays; d++){
+    const date=new Date(year,month,d);
+    const dow=date.getDay();
+    const isWeekend = dow===0||dow===6;
+    const isHoliday = !!holidays[dkey(date)];
+    daysHead += `<th class="${isWeekend?'we':''}${isHoliday?' ho':''}">${d}<br><span class="dow">${DOW[(dow+6)%7]}</span></th>`;
+  }
+
+  let rows='';
+  employees.forEach(emp=>{
+    let cells='';
+    for(let d=1; d<=nDays; d++){
+      const code=getDayCode(emp.username,year,month,d);
+      const info=code?codeInfo(code):null;
+      const dateKey=year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+      const cm=state.comments[commentKey(emp.username,year,month,d)];
+      const hasComment = !!(cm && cm.public);
+      const style = info ? `background:${info.color};color:${info.text};` : '';
+      cells += `<td style="${style}">${code?escapeHtml(code):''}${hasComment?'<span class="pcmt">•</span>':''}</td>`;
+    }
+    rows += `<tr><td class="emp">${escapeHtml(emp.name)}${emp.fonction?`<span class="fx">${escapeHtml(emp.fonction)}</span>`:''}</td>${cells}</tr>`;
+  });
+
+  const commentPrefix='::'+year+'-'+String(month+1).padStart(2,'0')+'-';
+  const empUsernames=employees.map(e=>e.username);
+  const commentItems=[];
+  Object.keys(state.comments).forEach(key=>{
+    if(!key.includes(commentPrefix) || !state.comments[key].public) return;
+    const idx=key.indexOf('::');
+    const username=key.slice(0,idx), dateKey=key.slice(idx+2);
+    if(!empUsernames.includes(username)) return;
+    const user=state.users.find(u=>u.username===username);
+    commentItems.push({name:user?user.name:username, dateKey, text:state.comments[key].public});
+  });
+  commentItems.sort((a,b)=>a.dateKey.localeCompare(b.dateKey));
+  const commentsHtml = commentItems.length ? `
+    <div class="pcmts">
+      <b>Commentaires :</b>
+      ${commentItems.map(it=>{ const [,, dd]=it.dateKey.split('-'); return `<span class="pcmt-item"><b>${dd}/${String(month+1).padStart(2,'0')} ${escapeHtml(it.name)}</b> — ${escapeHtml(it.text)}</span>`; }).join('')}
+    </div>` : '';
+
+  const legendHtml_ = state.codes.filter(c=>c.code!=='VIDE').map(c=>
+    `<span class="pleg-item"><span class="pleg-swatch" style="background:${c.color};color:${c.text};">${escapeHtml(c.code)}</span>${escapeHtml(c.label)}</span>`
+  ).join('');
+
+  const win = window.open('', '_blank');
+  if(!win){ toast("Le navigateur a bloqué l'ouverture de la fenêtre d'impression — autorisez les pop-ups pour ce site.", true); return; }
+  win.document.write(`<!DOCTYPE html>
+<html lang="fr"><head><meta charset="UTF-8">
+<title>Planning ${escapeHtml(service)} — ${MOIS[month]} ${year}</title>
+<style>
+  :root{
+    --c-M:#7FB3F5; --t-M:#12233D; --c-S:#F5A65B; --t-S:#3D2606; --c-N:#544A87; --t-N:#FFFFFF;
+    --c-ADM:#9AA5B1; --t-ADM:#1E2433; --c-FOR:#4FADA3; --t-FOR:#FFFFFF; --c-CP:#6FCF7C; --t-CP:#173A1D;
+    --c-CPA:#BBE7A9; --t-CPA:#1E3A22; --c-FER:#E8615A; --t-FER:#FFFFFF; --c-O:#EDEFF2; --t-O:#7A8393;
+  }
+  @page{ size: A4 landscape; margin: 8mm; }
+  *{box-sizing:border-box;}
+  body{font-family:Arial,Helvetica,sans-serif;margin:0;color:#1E2433;}
+  h1{font-size:14px;margin:0 0 2px;}
+  .sub{font-size:10px;color:#626B7A;margin:0 0 8px;}
+  table{width:100%;border-collapse:collapse;table-layout:fixed;}
+  th,td{border:1px solid #D8DCE4;text-align:center;padding:1px;font-size:7.5px;overflow:hidden;white-space:nowrap;}
+  th{background:#F3F5F8;font-weight:700;font-size:7px;padding:2px 1px;}
+  th .dow{display:block;font-weight:400;font-size:6px;color:#626B7A;}
+  th.we{background:#E9EDF7;}
+  th.ho{color:#D8544A;}
+  td.emp{text-align:left;font-weight:700;font-size:7.5px;padding:2px 4px;white-space:nowrap;max-width:0;width:90px;}
+  td.emp .fx{display:block;font-weight:400;font-size:6px;color:#626B7A;}
+  td{position:relative;height:14px;}
+  .pcmt{position:absolute;top:0;right:1px;color:#D8544A;font-weight:900;font-size:9px;}
+  .pcmts{margin-top:8px;font-size:7.5px;line-height:1.6;}
+  .pcmt-item{display:inline-block;margin-right:14px;}
+  .pleg{margin-top:6px;display:flex;flex-wrap:wrap;gap:6px 12px;}
+  .pleg-item{font-size:7px;display:inline-flex;align-items:center;gap:3px;}
+  .pleg-swatch{display:inline-flex;align-items:center;justify-content:center;width:14px;height:11px;border-radius:2px;font-size:6px;font-weight:800;}
+  @media print{ .no-print{display:none;} }
+  .no-print{position:fixed;top:10px;right:10px;}
+  .no-print button{padding:8px 14px;font-size:13px;border-radius:8px;border:none;background:#2C3A63;color:#fff;cursor:pointer;}
+</style></head>
+<body>
+  <div class="no-print"><button onclick="window.print()">🖨️ Imprimer / Enregistrer en PDF</button></div>
+  <h1>Planning — ${escapeHtml(service)} — ${MOIS[month]} ${year}</h1>
+  <div class="sub">${employees.length} salarié${employees.length>1?'s':''} · Édité le ${new Date().toLocaleDateString('fr-FR')}</div>
+  <table>
+    <thead><tr><th></th>${daysHead}</tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div class="pleg">${legendHtml_}</div>
+  ${commentsHtml}
+</body></html>`);
+  win.document.close();
+}
+
 function commentsRecapHtml(y,m,filterUsernames,clickable){
   if(clickable===undefined) clickable=true;
   const prefix='::'+y+'-'+String(m+1).padStart(2,'0')+'-';
@@ -2191,6 +2464,92 @@ function renderAdminDesiderata(){
 }
 
 /* ============================================================
+   ÉCRAN — ÉCHANGES DE SERVICE (admin, vue d'ensemble)
+   ============================================================ */
+function renderAdminEchanges(){
+  const scope=getAdminScope(state.currentUser);
+  const statusF=state.exchAdminFilterStatus, svcF=state.exchAdminFilterService;
+  let list=state.exchanges.filter(ex=>{
+    if(statusF!=='all' && ex.status!==statusF) return false;
+    const ru=state.users.find(u=>u.username===ex.requesterUsername);
+    const tu=state.users.find(u=>u.username===ex.targetUsername);
+    if(scope && !((ru&&scope.includes(ru.team)) || (tu&&scope.includes(tu.team)))) return false;
+    if(svcF && !((ru&&ru.team===svcF) || (tu&&tu.team===svcF))) return false;
+    return true;
+  }).sort((a,b)=> a.status==='pending'&&b.status!=='pending' ? -1 : (b.status==='pending'&&a.status!=='pending'?1:b.createdAt.localeCompare(a.createdAt)));
+
+  const rowHtml=(ex)=>{
+    const sc=exchangeStatusColor(ex.status);
+    const infoA=ex.codeA?codeInfo(ex.codeA):null;
+    const infoB=ex.codeB?codeInfo(ex.codeB):null;
+    return `
+    <div class="desid-row">
+      <div class="desid-row-main">
+        <div class="desid-row-name">${escapeHtml(ex.requesterName)} ↔ ${escapeHtml(ex.targetName)}</div>
+        <div class="desid-row-period">
+          <b>${escapeHtml(ex.requesterName)}</b> le ${fmtDateKeyFr(ex.dateA)}
+          <span class="chip" style="background:${infoA?infoA.color:'#EDEFF2'};color:${infoA?infoA.text:'#333'};margin:0 6px;">${ex.codeA||'Vide'}</span>
+          → devient <span class="chip" style="background:${infoB?infoB.color:'#EDEFF2'};color:${infoB?infoB.text:'#333'};">${ex.codeB||'Vide'}</span>
+        </div>
+        <div class="desid-row-period">
+          <b>${escapeHtml(ex.targetName)}</b> le ${fmtDateKeyFr(ex.dateB)}
+          <span class="chip" style="background:${infoB?infoB.color:'#EDEFF2'};color:${infoB?infoB.text:'#333'};margin:0 6px;">${ex.codeB||'Vide'}</span>
+          → devient <span class="chip" style="background:${infoA?infoA.color:'#EDEFF2'};color:${infoA?infoA.text:'#333'};">${ex.codeA||'Vide'}</span>
+        </div>
+        ${ex.comment?`<div class="desid-row-comment">« ${escapeHtml(ex.comment)} »</div>`:''}
+        ${ex.adminComment?`<div class="desid-row-comment" style="color:var(--primary);">Réponse : ${escapeHtml(ex.adminComment)}</div>`:''}
+      </div>
+      <div class="desid-row-side">
+        <span class="status-badge" style="background:${sc.bg};color:${sc.fg};">${exchangeStatusLabel(ex.status)}</span>
+        ${ex.status==='pending' ? `
+          <button class="icon-btn" style="color:var(--ok);border-color:var(--ok);" data-exch-validate="${ex.id}">Valider</button>
+          <button class="icon-btn" style="color:var(--danger);border-color:var(--danger);" data-exch-refuse="${ex.id}">Refuser</button>
+        ` : ''}
+      </div>
+    </div>`;
+  };
+
+  const inner=`
+    <div class="legend-hint">Un salarié propose l'échange d'une journée avec un collègue. Validez en un clic pour appliquer l'échange aux deux plannings.</div>
+    <div class="toolbar" style="flex-wrap:wrap;gap:10px;">
+      <div style="font-size:13px;color:var(--ink-soft);">${list.length} échange${list.length>1?'s':''}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <select id="exStatus" class="filter-select">
+          <option value="pending" ${statusF==='pending'?'selected':''}>En attente</option>
+          <option value="all" ${statusF==='all'?'selected':''}>Tous les statuts</option>
+          <option value="validated" ${statusF==='validated'?'selected':''}>Validés</option>
+          <option value="refused" ${statusF==='refused'?'selected':''}>Refusés</option>
+        </select>
+        <select id="exService" class="filter-select">
+          <option value="">${scope?'Tous mes services':'Tous les services'}</option>
+          ${(scope||state.services).map(s=>`<option value="${escapeHtml(s)}" ${svcF===s?'selected':''}>${escapeHtml(s)}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="desid-list">
+      ${list.length? list.map(rowHtml).join('') : `<div class="empty-state">Aucune demande d'échange pour ces filtres.</div>`}
+    </div>
+  `;
+  renderShell(inner,'Échanges de service');
+  document.getElementById('exStatus').addEventListener('change',e=>{ state.exchAdminFilterStatus=e.target.value; render(); });
+  document.getElementById('exService').addEventListener('change',e=>{ state.exchAdminFilterService=e.target.value; render(); });
+  document.querySelectorAll('[data-exch-validate]').forEach(btn=>{
+    btn.addEventListener('click',async()=>{
+      await validateExchange(btn.dataset.exchValidate,'');
+      toast('Échange validé — plannings mis à jour.');
+      render();
+    });
+  });
+  document.querySelectorAll('[data-exch-refuse]').forEach(btn=>{
+    btn.addEventListener('click',async()=>{
+      await refuseExchange(btn.dataset.exchRefuse,'');
+      toast('Échange refusé.');
+      render();
+    });
+  });
+}
+
+/* ============================================================
    ÉCRAN — MES DÉSIDÉRATAS (salarié)
    ============================================================ */
 function renderMesDesiderata(){
@@ -2268,6 +2627,84 @@ function renderMesDesiderata(){
     btn.addEventListener('click',async()=>{
       const dd=state.desideratas.find(x=>x.id===btn.dataset.archive);
       await setDesiderataArchived(dd.id, !dd.archived);
+      render();
+    });
+  });
+}
+
+/* ============================================================
+   ÉCRAN — ÉCHANGES DE SERVICE (salarié)
+   ============================================================ */
+function renderMesEchanges(){
+  const username=state.currentUser.username;
+  const sent=state.exchanges.filter(ex=>ex.requesterUsername===username);
+  const received=state.exchanges.filter(ex=>ex.targetUsername===username);
+  const statusF=state.exchFilterStatus;
+  const filt=(list)=>list.filter(ex=>statusF==='all'||ex.status===statusF).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+
+  const rowHtml=(ex, mine)=>{
+    const sc=exchangeStatusColor(ex.status);
+    const infoA=ex.codeA?codeInfo(ex.codeA):null;
+    const infoB=ex.codeB?codeInfo(ex.codeB):null;
+    const other = mine ? ex.targetName : ex.requesterName;
+    return `
+    <div class="desid-row">
+      <div class="desid-row-main">
+        <div class="desid-row-name">${mine?'Vers':'De'} ${escapeHtml(other)}</div>
+        <div class="desid-row-period">Votre journée du ${fmtDateKeyFr(mine?ex.dateA:ex.dateB)}
+          <span class="chip" style="background:${(mine?infoA:infoB)?(mine?infoA.color:infoB.color):'#EDEFF2'};color:${(mine?infoA:infoB)?(mine?infoA.text:infoB.text):'#333'};margin:0 6px;">${(mine?ex.codeA:ex.codeB)||'Vide'}</span>
+          ↔ journée de ${escapeHtml(other)} du ${fmtDateKeyFr(mine?ex.dateB:ex.dateA)}
+          <span class="chip" style="background:${(mine?infoB:infoA)?(mine?infoB.color:infoA.color):'#EDEFF2'};color:${(mine?infoB:infoA)?(mine?infoB.text:infoA.text):'#333'};margin:0 6px;">${(mine?ex.codeB:ex.codeA)||'Vide'}</span>
+        </div>
+        ${ex.comment?`<div class="desid-row-comment">« ${escapeHtml(ex.comment)} »</div>`:''}
+        ${ex.adminComment?`<div class="desid-row-comment" style="color:var(--primary);">Réponse admin : ${escapeHtml(ex.adminComment)}</div>`:''}
+      </div>
+      <div class="desid-row-side">
+        <span class="status-badge" style="background:${sc.bg};color:${sc.fg};">${exchangeStatusLabel(ex.status)}</span>
+        ${(mine && ex.status==='pending') ? `<button class="icon-btn" style="color:var(--danger);" data-exch-cancel="${ex.id}">Annuler</button>` : ''}
+      </div>
+    </div>`;
+  };
+
+  const sentList=filt(sent), receivedList=filt(received);
+  const inner=`
+    <div class="toolbar" style="flex-wrap:wrap;gap:10px;">
+      <div style="font-size:13px;color:var(--ink-soft);">Proposez l'échange d'une journée de planning avec un·e collègue. L'échange est appliqué après validation de l'administrateur.</div>
+      <button class="btn btn-primary" id="newExchBtn" style="width:auto;margin:0;">+ Proposer un échange</button>
+    </div>
+    <div class="toolbar" style="flex-wrap:wrap;gap:10px;margin-top:4px;">
+      <div></div>
+      <select id="exMyStatus" class="filter-select">
+        <option value="all" ${statusF==='all'?'selected':''}>Tous les statuts</option>
+        <option value="pending" ${statusF==='pending'?'selected':''}>En attente</option>
+        <option value="validated" ${statusF==='validated'?'selected':''}>Validés</option>
+        <option value="refused" ${statusF==='refused'?'selected':''}>Refusés</option>
+      </select>
+    </div>
+    <h3 style="margin:18px 0 10px;font-size:14px;">Mes demandes envoyées</h3>
+    <div class="desid-list">
+      ${sentList.length? sentList.map(ex=>rowHtml(ex,true)).join('') : `<div class="empty-state">Aucune demande envoyée.</div>`}
+    </div>
+    <h3 style="margin:18px 0 10px;font-size:14px;">Demandes reçues d'un·e collègue</h3>
+    <div class="desid-list">
+      ${receivedList.length? receivedList.map(ex=>rowHtml(ex,false)).join('') : `<div class="empty-state">Aucune demande reçue.</div>`}
+    </div>
+  `;
+  renderShell(inner,'Échanges de service');
+  document.getElementById('exMyStatus').addEventListener('change',e=>{ state.exchFilterStatus=e.target.value; render(); });
+  document.getElementById('newExchBtn').addEventListener('click',()=>{
+    const me=state.users.find(u=>u.username===username);
+    const myTeam=(me&&me.team)?me.team:'';
+    const colleagues=state.users.filter(u=>u.role==='employee' && u.username!==username && u.team===myTeam);
+    if(!colleagues.length){ toast('Aucun collègue disponible dans votre service pour un échange.', true); return; }
+    state.modal={type:'new-exchange', data:{targetUsername:colleagues[0].username, dateA:'', dateB:'', comment:''}, colleagues};
+    render();
+  });
+  document.querySelectorAll('[data-exch-cancel]').forEach(btn=>{
+    btn.addEventListener('click',async()=>{
+      if(!confirm('Annuler cette demande d\u2019échange ?')) return;
+      await cancelExchange(btn.dataset.exchCancel);
+      toast('Demande annulée.');
       render();
     });
   });
@@ -2512,7 +2949,16 @@ function ruleThresholdLabel(rule){
 function renderAlertes(){
   const y=state.viewDate.getFullYear(), m=state.viewDate.getMonth();
   const scope=getAdminScope(state.currentUser);
-  const alerts=computeAllAlerts(y,m).filter(a=>!scope || scope.includes(a.rule.service));
+  const availableServices = scope || state.services;
+  if(state.alertesServiceFilter===undefined || (scope && !scope.includes(state.alertesServiceFilter) && state.alertesServiceFilter!=='ALL')){
+    // Le grand admin (scope complet, non restreint à des services précis) doit voir
+    // toutes les règles de tous les services par défaut, sans avoir à changer le filtre.
+    state.alertesServiceFilter = scope ? (availableServices.includes('CCO') ? 'CCO' : (availableServices[0] || 'ALL')) : 'ALL';
+  }
+  const svcFilter=state.alertesServiceFilter;
+  const svcOptions = `<option value="ALL" ${svcFilter==='ALL'?'selected':''}>${scope?'Tous mes services':'Tous les services'}</option>`
+    + availableServices.map(s=>`<option value="${escapeHtml(s)}" ${svcFilter===s?'selected':''}>${escapeHtml(s)}</option>`).join('');
+  const alerts=computeAllAlerts(y,m).filter(a=>(!scope || scope.includes(a.rule.service)) && (svcFilter==='ALL' || a.rule.service===svcFilter));
   const dailyAlerts=alerts.filter(a=>a.rule.type==='daily_group').sort((a,b)=>a.date.localeCompare(b.date));
   const weeklyAlerts=alerts.filter(a=>a.rule.type==='weekly_person').sort((a,b)=>a.weekStart.localeCompare(b.weekStart));
 
@@ -2560,31 +3006,37 @@ function renderAlertes(){
 
   const inner=`
     ${monthNavHtml()}
+    <div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px;margin-bottom:6px;">
+      <span style="font-size:13.5px;font-weight:700;color:var(--ink-soft);">Service :</span>
+      <select id="alertServiceSelect" class="filter-select">${svcOptions}</select>
+    </div>
     <div class="alert-summary-row">
       <div class="alert-summary-card daily"><b>${dailyAlerts.length}</b><span>Alertes d'effectif (jour)</span></div>
       <div class="alert-summary-card weekly"><b>${weeklyAlerts.length}</b><span>Alertes de charge (semaine)</span></div>
-      <div class="alert-summary-card rules"><b>${state.alertRules.filter(r=>r.active && (!scope||scope.includes(r.service))).length}</b><span>Règles actives</span></div>
+      <div class="alert-summary-card rules"><b>${state.alertRules.filter(r=>r.active && (!scope||scope.includes(r.service)) && (svcFilter==='ALL'||r.service===svcFilter)).length}</b><span>Règles actives</span></div>
     </div>
 
     <div class="toolbar" style="margin-top:6px;flex-wrap:wrap;gap:10px;">
-      <h3 style="margin:0;font-size:14px;font-weight:800;">Alertes détectées — ${MOIS[m]} ${y}</h3>
+      <h3 style="margin:0;font-size:14px;font-weight:800;">Alertes détectées — ${MOIS[m]} ${y}${svcFilter==='ALL'?'':' — '+escapeHtml(svcFilter)}</h3>
       <input type="text" id="alertNameFilter" placeholder="🔎 Filtrer par nom…" class="filter-select" style="min-width:200px;">
     </div>
     <div class="desid-list" style="margin-bottom:32px;" id="alertCardsList">
-      ${alerts.length ? [...dailyAlerts,...weeklyAlerts].map(alertCardHtml).join('') : `<div class="empty-state">✅ Aucune alerte ce mois-ci — les effectifs respectent toutes les règles actives.</div>`}
+      ${alerts.length ? [...dailyAlerts,...weeklyAlerts].map(alertCardHtml).join('') : `<div class="empty-state">✅ Aucune alerte ce mois-ci${svcFilter==='ALL'?'':' pour '+escapeHtml(svcFilter)} — les effectifs respectent toutes les règles actives.</div>`}
     </div>
     <div class="empty-state" id="alertNoMatch" style="display:none;">Aucune alerte pour ce nom.</div>
 
     <div class="toolbar">
-      <h3 style="margin:0;font-size:14px;font-weight:800;">Règles configurées</h3>
+      <h3 style="margin:0;font-size:14px;font-weight:800;">Règles configurées${svcFilter==='ALL'?'':' — '+escapeHtml(svcFilter)}</h3>
       <button class="btn btn-primary" id="addRuleBtn" style="width:auto;margin:0;">+ Nouvelle règle</button>
     </div>
     <div class="rule-list">
-      ${(()=>{ const visibleRules=state.alertRules.filter(r=>!scope||scope.includes(r.service)); return visibleRules.length? visibleRules.map(ruleCardHtml).join('') : `<div class="empty-state">Aucune règle configurée.</div>`; })()}
+      ${(()=>{ const visibleRules=state.alertRules.filter(r=>(!scope||scope.includes(r.service)) && (svcFilter==='ALL'||r.service===svcFilter)); return visibleRules.length? visibleRules.map(ruleCardHtml).join('') : `<div class="empty-state">Aucune règle configurée${svcFilter==='ALL'?'':' pour ce service'}.</div>`; })()}
     </div>
   `;
   renderShell(inner,'Alertes');
   bindMonthNav(render);
+  const alertServiceSelect=document.getElementById('alertServiceSelect');
+  if(alertServiceSelect) alertServiceSelect.addEventListener('change',(e)=>{ state.alertesServiceFilter=e.target.value; render(); });
   const nameFilterInput=document.getElementById('alertNameFilter');
   if(nameFilterInput){
     nameFilterInput.addEventListener('input',(e)=>{
@@ -2634,7 +3086,8 @@ function renderCalendrierAdmin(){
   const scope=getAdminScope(state.currentUser);
   const availableServices = scope || state.services;
   if(state.calendarServiceFilter===undefined || (scope && !scope.includes(state.calendarServiceFilter) && state.calendarServiceFilter!=='ALL')){
-    state.calendarServiceFilter = availableServices.includes('CCO') ? 'CCO' : (availableServices[0] || 'ALL');
+    // Le grand admin doit voir tous les services par défaut sur son calendrier.
+    state.calendarServiceFilter = scope ? (availableServices.includes('CCO') ? 'CCO' : (availableServices[0] || 'ALL')) : 'ALL';
   }
   const svcFilter=state.calendarServiceFilter;
   const employees=state.users.filter(u=>
@@ -2669,13 +3122,14 @@ function renderCalendrierAdmin(){
       <div class="month-nav-reset">${monthNavHtml()}</div>
       <span style="font-size:13.5px;font-weight:700;color:var(--ink-soft);">Service :</span>
       <select id="calServiceSelect" class="filter-select">${svcOptions}</select>
+      ${canValidate ? `<button class="icon-btn" id="printMonthBtn">🖨️ Imprimer le planning (A4 paysage)</button>` : ''}
     </div>
     <div style="margin:14px 0 18px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">${validateBtnHtml}${genBtnHtml}</div>
     ${genSelectionBarHtml}
     ${canValidate && !validated ? `<div class="legend-hint lock-hint">🔒 Ce mois n'est <b>pas encore validé</b> pour ${escapeHtml(svcFilter)} — les salariés de ce service ne voient rien sur leur planning pour ${MOIS[m]} ${y} (leurs désidératas restent accessibles). Cliquez sur « Valider le mois » quand vous êtes prêt.</div>` : ''}
     ${alerts.length?`<div class="legend-hint alert-hint">⚠ <b>${alerts.length} alerte${alerts.length>1?'s':''}</b> détectée${alerts.length>1?'s':''} ce mois-ci — cases entourées de violet, détail dans l'onglet <b>Alertes</b>.</div>`:''}
     ${pendingChanges.length?`<div class="legend-hint change-hint">✎ <b>${pendingChanges.length} modification${pendingChanges.length>1?'s':''}</b> apportée${pendingChanges.length>1?'s':''} depuis la validation du mois — cases encadrées en orange, détail tout en bas de page.</div>`:''}
-    <div class="legend-hint">Cliquez d'abord sur un <b>code</b> ci-dessous, puis sur les cases du planning pour l'appliquer. Un second clic efface la case. Double-cliquez sur une case pour ajouter un commentaire. Avant validation du mois, chaque modification notifie aussitôt le salarié ; une fois le mois validé, la notification ne part que lorsque vous validez la modification ci-dessous.</div>
+    <div class="legend-hint">Cliquez d'abord sur un <b>code</b> ci-dessous, puis sur les cases du planning pour l'appliquer — ou cliquez-glissez (maintenez et passez sur plusieurs jours) pour remplir plusieurs cases d'un coup. Un second clic sur une case déjà remplie l'efface. Double-cliquez sur une case pour ajouter un commentaire. Avant validation du mois, chaque modification notifie aussitôt le salarié ; une fois le mois validé, la notification ne part que lorsque vous validez la modification ci-dessous.</div>
     ${legendHtml(true)}
     ${gridHtml({employees, readonly:false, alerts, changes:allChangesThisMonth})}
     ${commentsRecapHtml(y,m, (svcFilter==='ALL' && !scope)?null:employees.map(e=>e.username))}
@@ -2684,6 +3138,8 @@ function renderCalendrierAdmin(){
   renderShell(inner,'Calendrier annuel'+(svcFilter==='ALL'?'':' — '+svcFilter));
   bindMonthNav(render);
   document.getElementById('calServiceSelect').addEventListener('change',(e)=>{ state.calendarServiceFilter=e.target.value; render(); });
+  const printMonthBtn=document.getElementById('printMonthBtn');
+  if(printMonthBtn) printMonthBtn.addEventListener('click', ()=>{ printMonthlyPlanning(svcFilter, y, m); });
   document.getElementById('genToggleBtn').addEventListener('click',()=>{ toggleGenMode(); render(); });
   const genGoBtn=document.getElementById('genGoBtn');
   if(genGoBtn) genGoBtn.addEventListener('click',()=>{ state.modal={type:'auto-generate'}; render(); });
@@ -2787,10 +3243,10 @@ function renderGestionSalaries(){
     return `
     <div class="emp-row" draggable="true" data-drag-user="${emp.username}">
       <span class="drag-handle" title="Glisser pour changer de service/fonction">⠿</span>
-      <div class="emp-avatar">${initials(emp.name)}</div>
+      <div class="emp-avatar">${emp.photoUrl?`<img src="${emp.photoUrl}" alt="">`:initials(emp.name)}</div>
       <div class="emp-info">
         <div class="name">${escapeHtml(emp.name)} ${emp.role==='admin'?'<span class="badge-admin">'+(isSuperAdmin(emp)?'Grand admin':'Admin — '+escapeHtml((emp.adminServices||[]).join(', ')))+'</span>':''} ${inactive?'<span class="badge-inactive">Hors période</span>':''}</div>
-        <div class="meta">Identifiant : ${emp.username} ${emp.email?'· '+escapeHtml(emp.email)+' ':''}${emp.team?'· Service : '+escapeHtml(emp.team)+' ':''}· Validité : ${fmtDate(emp.startDate)} → ${emp.endDate?fmtDate(emp.endDate):'toujours'}</div>
+        <div class="meta">Identifiant : ${emp.username} ${emp.email?'· '+escapeHtml(emp.email)+' ':''}${emp.phone?'· 📞 '+escapeHtml(emp.phone)+' ':''}${emp.team?'· Service : '+escapeHtml(emp.team)+' ':''}${(emp.extraTeams&&emp.extraTeams.length)?'· Aussi visible sur : '+escapeHtml(emp.extraTeams.join(', '))+' ':''}· Validité : ${fmtDate(emp.startDate)} → ${emp.endDate?fmtDate(emp.endDate):'toujours'}</div>
       </div>
       <div class="emp-actions">
         <button class="icon-btn" data-move="${emp.username}" title="Alternative tactile au glisser-déposer">↔ Déplacer</button>
@@ -3035,6 +3491,28 @@ function generateEmail(fullName){
   const local=stripAccents(prenom.charAt(0)+nom).toLowerCase().replace(/[^a-z0-9]/g,'');
   return local ? local+'@hop.fr' : '';
 }
+function resizeImageToDataUrl(file,maxDim,quality){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onerror=()=>reject(new Error('Lecture du fichier impossible'));
+    reader.onload=()=>{
+      const img=new Image();
+      img.onerror=()=>reject(new Error('Image invalide'));
+      img.onload=()=>{
+        let width=img.width, height=img.height;
+        if(width>height){ if(width>maxDim){ height=Math.round(height*maxDim/width); width=maxDim; } }
+        else { if(height>maxDim){ width=Math.round(width*maxDim/height); height=maxDim; } }
+        const canvas=document.createElement('canvas');
+        canvas.width=width; canvas.height=height;
+        const ctx=canvas.getContext('2d');
+        ctx.drawImage(img,0,0,width,height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src=reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 /* ============================================================
    MODALES
@@ -3051,15 +3529,17 @@ function renderModal(){
     overlay.innerHTML=`
     <div class="modal">
       <h3>${state.modal.isNew?'Ajouter un salarié':'Modifier le salarié'}</h3>
+      ${(!state.modal.isNew && d.photoUrl) ? `<div style="display:flex;justify-content:center;margin-bottom:16px;"><div class="emp-avatar" style="width:64px;height:64px;border-radius:50%;font-size:22px;"><img src="${d.photoUrl}" alt=""></div></div>` : ''}
       <div class="field"><label>Nom complet</label><input id="mName" value="${d.name||''}" placeholder="Ex : Camille Durand"></div>
       <div class="field"><label>Identifiant de connexion</label><input id="mUser" value="${d.username||''}" placeholder="ex : cdurand" ${!state.modal.isNew?'disabled':''}></div>
       <div class="field"><label>E-mail</label>
         <div class="pw-row">
-          <input id="mEmail" value="${d.email||(d.name?generateEmail(d.name):'')}" placeholder="prenom.nom@hop.fr">
-          <button type="button" class="icon-btn" id="mEmailRegen">Régénérer</button>
+          <input id="mEmail" value="${d.email||(d.name?generateEmail(d.name):'')}" placeholder="prenom.nom@hop.fr" ${!state.modal.isNew?'disabled':''}>
+          ${state.modal.isNew ? '<button type="button" class="icon-btn" id="mEmailRegen">Régénérer</button>' : ''}
         </div>
-        <div class="helper">Par défaut : première lettre du prénom + nom + @hop.fr — modifiable.</div>
+        <div class="helper">${state.modal.isNew ? 'Par défaut : première lettre du prénom + nom + @hop.fr — modifiable.' : 'Ensuite modifiable uniquement par le salarié lui-même, depuis « Mon compte ».'}</div>
       </div>
+      ${!state.modal.isNew ? `<div class="field"><label>Téléphone</label><input value="${escapeHtml(d.phone||'')}" placeholder="Non renseigné" disabled></div>` : ''}
       <div class="row2">
         <div class="field"><label>Service</label>
           <select id="mTeam" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14.5px;background:#FBFCFE;">
@@ -3075,6 +3555,13 @@ function renderModal(){
         </div>
       </div>
       <div class="helper" style="margin:-10px 0 14px;">Le service détermine qui voit qui sur « Planning équipe ». La liste des fonctions dépend du service choisi (gérée dans « Gestion des salariés »).</div>
+      <div class="field admin-rights-field">
+        <label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:6px;">Visible aussi sur le planning équipe d'autres services</label>
+        <div class="check-list" id="mExtraTeams">
+          ${(getAdminScope(state.currentUser)||state.services).filter(s=>s!==d.team).map(s=>`<label class="check-item"><input type="checkbox" value="${escapeHtml(s)}" ${(d.extraTeams||[]).includes(s)?'checked':''}> ${escapeHtml(s)}</label>`).join('') || '<div class="helper">Aucun autre service disponible.</div>'}
+        </div>
+        <div class="helper">Cochez un service pour que ce salarié apparaisse aussi sur le « Planning équipe » consulté par ce service (ex : un responsable qui supervise plusieurs services). Décochez pour masquer son planning à ce service.</div>
+      </div>
       ${isSuperAdmin(state.currentUser) ? `
       <div class="field admin-rights-field">
         <label class="admin-rights-toggle"><input type="checkbox" id="mIsAdmin" ${d.role==='admin'?'checked':''}> <b>Droits administrateur</b></label>
@@ -3106,7 +3593,8 @@ function renderModal(){
     </div>`;
     document.body.appendChild(overlay);
     document.getElementById('mRegen').addEventListener('click',()=>{ document.getElementById('mPass').value=generatePassword(); });
-    document.getElementById('mEmailRegen').addEventListener('click',()=>{
+    const mEmailRegenBtn=document.getElementById('mEmailRegen');
+    if(mEmailRegenBtn) mEmailRegenBtn.addEventListener('click',()=>{
       const name=document.getElementById('mName').value.trim();
       if(!name){ toast('Renseignez le nom du salarié avant de générer son email.', true); return; }
       document.getElementById('mEmail').value=generateEmail(name);
@@ -3139,6 +3627,7 @@ function renderModal(){
       if(endDate && startDate && endDate<startDate){
         err.textContent='La date de fin doit être postérieure à la date de début.'; err.style.display='block'; return;
       }
+      const extraTeams=[...document.querySelectorAll('#mExtraTeams input:checked')].map(i=>i.value).filter(s=>s!==team);
       let role='employee', adminServices=[];
       const mIsAdminChk=document.getElementById('mIsAdmin');
       if(mIsAdminChk){
@@ -3151,11 +3640,11 @@ function renderModal(){
         role=d.role; adminServices=d.adminServices||[];
       }
       if(state.modal.isNew){
-        state.users.push({username,password,name,role,startDate,endDate,team,fonction,email,adminServices});
+        state.users.push({username,password,name,role,startDate,endDate,team,fonction,email,adminServices,extraTeams});
       } else {
         const emp=state.users.find(u=>u.username===d.username);
         emp.name=name; emp.password=password; emp.startDate=startDate; emp.endDate=endDate; emp.team=team; emp.fonction=fonction; emp.email=email;
-        emp.role=role; emp.adminServices=adminServices;
+        emp.role=role; emp.adminServices=adminServices; emp.extraTeams=extraTeams;
       }
       await persistUsers();
       toast('Salarié enregistré.');
@@ -3224,14 +3713,29 @@ function renderModal(){
   }
 
   if(state.modal.type==='account'){
+    const me=state.users.find(u=>u.username===state.currentUser.username) || {};
+    let pendingPhotoUrl=me.photoUrl||null, photoRemoved=false;
     overlay.innerHTML=`
     <div class="modal">
       <h3>Mon compte</h3>
-      <div class="field"><label>Nom</label><input value="${state.currentUser.name}" disabled></div>
+      <div style="display:flex;justify-content:center;margin-bottom:12px;">
+        <div class="emp-avatar" id="aAvatarPreview" style="width:76px;height:76px;border-radius:50%;font-size:26px;">${me.photoUrl?`<img src="${me.photoUrl}" alt="">`:initials(state.currentUser.name)}</div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:center;margin-bottom:20px;flex-wrap:wrap;">
+        <input type="file" id="aPhotoInput" accept="image/*" style="display:none;">
+        <button type="button" class="icon-btn" id="aPhotoBtn">${me.photoUrl?'Changer la photo':'Ajouter une photo'}</button>
+        ${me.photoUrl?'<button type="button" class="icon-btn" id="aPhotoRemove" style="color:var(--danger);">Supprimer la photo</button>':''}
+      </div>
+      <div class="field"><label>Nom</label><input value="${escapeHtml(state.currentUser.name)}" disabled></div>
+      <div class="row2">
+        <div class="field"><label>Téléphone</label><input id="aPhone" type="tel" value="${escapeHtml(me.phone||'')}" placeholder="Ex : 06 12 34 56 78"></div>
+        <div class="field"><label>E-mail</label><input id="aEmail" type="email" value="${escapeHtml(me.email||'')}" placeholder="prenom.nom@hop.fr"></div>
+      </div>
       <div class="field"><label>Nouveau mot de passe</label><input id="aPass" type="password" placeholder="Laisser vide pour ne pas changer"></div>
       ${state.currentUser.role==='employee' ? `<div class="field"><label>Notifications navigateur</label>
         <button type="button" class="icon-btn" id="aNotifBtn" style="width:100%;padding:10px;">${state.notifPermission==='granted'?'✓ Activées':'Activer les notifications'}</button>
       </div>`:''}
+      <div class="helper" style="margin:-6px 0 12px;">Téléphone, e-mail et photo sont visibles par l'administrateur dans « Gestion des salariés », mais vous êtes seul·e à pouvoir les modifier.</div>
       <div id="aError" style="color:var(--danger);font-size:12.5px;font-weight:600;display:none;margin-bottom:6px;"></div>
       <div class="modal-actions">
         <button class="btn btn-ghost" id="aCancel">Fermer</button>
@@ -3242,13 +3746,37 @@ function renderModal(){
     document.getElementById('aCancel').addEventListener('click',closeModal);
     const notifBtn=document.getElementById('aNotifBtn');
     if(notifBtn) notifBtn.addEventListener('click', requestNotifPermission);
+    document.getElementById('aPhotoBtn').addEventListener('click',()=>{ document.getElementById('aPhotoInput').click(); });
+    document.getElementById('aPhotoInput').addEventListener('change', async (e)=>{
+      const file=e.target.files[0];
+      if(!file) return;
+      if(!file.type.startsWith('image/')){ toast('Merci de choisir un fichier image.', true); return; }
+      try{
+        const dataUrl = await resizeImageToDataUrl(file, 160, 0.72);
+        pendingPhotoUrl=dataUrl; photoRemoved=false;
+        document.getElementById('aAvatarPreview').innerHTML = `<img src="${dataUrl}" alt="">`;
+      }catch(err){ toast("Impossible de charger cette image.", true); }
+    });
+    const removeBtn=document.getElementById('aPhotoRemove');
+    if(removeBtn) removeBtn.addEventListener('click',()=>{
+      pendingPhotoUrl=null; photoRemoved=true;
+      document.getElementById('aAvatarPreview').innerHTML = initials(state.currentUser.name);
+    });
     document.getElementById('aSave').addEventListener('click',async()=>{
+      const u=state.users.find(u=>u.username===state.currentUser.username);
+      if(!u){ closeModal(); return; }
       const pass=document.getElementById('aPass').value.trim();
-      if(pass){
-        const u=state.users.find(u=>u.username===state.currentUser.username);
-        u.password=pass;
+      const phone=document.getElementById('aPhone').value.trim();
+      const email=document.getElementById('aEmail').value.trim();
+      let changed=false;
+      if(pass){ u.password=pass; changed=true; }
+      if(phone!==(u.phone||'')){ u.phone=phone; changed=true; }
+      if(email!==(u.email||'')){ u.email=email; changed=true; }
+      if(photoRemoved && u.photoUrl){ delete u.photoUrl; changed=true; }
+      else if(pendingPhotoUrl && pendingPhotoUrl!==u.photoUrl){ u.photoUrl=pendingPhotoUrl; changed=true; }
+      if(changed){
         await persistUsers();
-        toast('Mot de passe mis à jour.');
+        toast('Compte mis à jour.');
       }
       closeModal();
     });
@@ -3733,6 +4261,59 @@ function renderModal(){
     });
   }
 
+  if(state.modal.type==='new-exchange'){
+    const nx=state.modal.data;
+    const colleagues=state.modal.colleagues||[];
+    const username=state.currentUser.username;
+    const myCodeA=nx.dateA?getDayCodeByKey(username,nx.dateA):null;
+    const theirCodeB=nx.dateB?getDayCodeByKey(nx.targetUsername,nx.dateB):null;
+    const colleagueOptions=colleagues.map(c=>`<option value="${c.username}" ${nx.targetUsername===c.username?'selected':''}>${escapeHtml(c.name)}</option>`).join('');
+    overlay.innerHTML=`
+    <div class="modal" style="max-width:460px;">
+      <h3>Proposer un échange de journée</h3>
+      <div class="field"><label>Collègue</label>
+        <select id="nxTarget" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14.5px;background:#FBFCFE;">${colleagueOptions}</select>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Ma journée</label><input type="date" id="nxDateA" value="${nx.dateA}"></div>
+        <div class="field"><label>Sa journée</label><input type="date" id="nxDateB" value="${nx.dateB}"></div>
+      </div>
+      <div id="nxPreview" style="font-size:12.5px;color:var(--ink-soft);margin:-8px 0 12px;">
+        ${nx.dateA?('Votre code actuel le '+fmtDateKeyFr(nx.dateA)+' : <b>'+(myCodeA||'Vide')+'</b>'):''}
+        ${nx.dateA&&nx.dateB?' · ':''}
+        ${nx.dateB?('Son code actuel le '+fmtDateKeyFr(nx.dateB)+' : <b>'+(theirCodeB||'Vide')+'</b>'):''}
+      </div>
+      <div class="field"><label>Message (optionnel)</label>
+        <textarea id="nxComment" rows="3" placeholder="Ex : besoin d'échanger pour un rendez-vous" style="width:100%;border:1.5px solid var(--border);border-radius:9px;padding:10px 12px;font-family:inherit;font-size:13.5px;resize:vertical;">${escapeHtml(nx.comment)}</textarea>
+      </div>
+      <div class="helper" style="margin:-8px 0 14px;">Une fois validé par l'administrateur, votre journée et celle de votre collègue seront échangées.</div>
+      <div id="nxError" style="color:var(--danger);font-size:12.5px;font-weight:600;display:none;margin-bottom:6px;"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="nxCancel">Annuler</button>
+        <button class="btn btn-primary" id="nxSubmit">Envoyer la demande</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('nxTarget').addEventListener('change',e=>{ nx.targetUsername=e.target.value; render(); });
+    document.getElementById('nxDateA').addEventListener('change',e=>{ nx.dateA=e.target.value; render(); });
+    document.getElementById('nxDateB').addEventListener('change',e=>{ nx.dateB=e.target.value; render(); });
+    document.getElementById('nxComment').addEventListener('input',e=>{ nx.comment=e.target.value; });
+    document.getElementById('nxCancel').addEventListener('click',closeModal);
+    document.getElementById('nxSubmit').addEventListener('click',async()=>{
+      const err=document.getElementById('nxError');
+      const target=document.getElementById('nxTarget').value;
+      const dateA=document.getElementById('nxDateA').value;
+      const dateB=document.getElementById('nxDateB').value;
+      if(!target){ err.textContent='Merci de choisir un·e collègue.'; err.style.display='block'; return; }
+      if(!dateA || !dateB){ err.textContent='Merci de renseigner les deux dates.'; err.style.display='block'; return; }
+      const targetUser=state.users.find(u=>u.username===target);
+      await createExchange(state.currentUser.username, state.currentUser.name, target, targetUser?targetUser.name:target, dateA, dateB, document.getElementById('nxComment').value.trim());
+      toast('Demande d\u2019échange envoyée à l\u2019administrateur.');
+      state.exchFilterStatus='all';
+      closeModal();
+    });
+  }
+
   overlay.addEventListener('click',(e)=>{ if(e.target===overlay) closeModal(); });
 }
 function closeModal(){ state.modal=null; render(); }
@@ -3757,11 +4338,13 @@ function render(){
     if(state.tab==='salaries') renderGestionSalaries();
     else if(state.tab==='codes') renderGestionCodes();
     else if(state.tab==='desideratas') renderAdminDesiderata();
+    else if(state.tab==='echanges') renderAdminEchanges();
     else if(state.tab==='alertes') renderAlertes();
     else renderCalendrierAdmin();
   } else {
     if(state.tab==='equipe') renderPlanningEquipe();
     else if(state.tab==='mesdesid') renderMesDesiderata();
+    else if(state.tab==='echanges') renderMesEchanges();
     else if(state.tab==='annuel') renderMonPlanningAnnuel();
     else renderPlanningEmploye();
   }
