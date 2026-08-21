@@ -1295,7 +1295,11 @@ function computeAllAlerts(year,month){
 }
 function currentMonthAlertCount(){
   const t=new Date();
-  return computeAllAlerts(t.getFullYear(), t.getMonth()).length;
+  // Un admin restreint à certains services (ex : un responsable comme Stéphanie,
+  // limité à LOG + REGULPN) ne doit voir dans son badge que SES alertes, pas
+  // celles de tous les autres services de l'application.
+  const scope=getAdminScope(state.currentUser);
+  return computeAllAlerts(t.getFullYear(), t.getMonth()).filter(a=>!scope || scope.includes(a.rule.service)).length;
 }
 function formatGroupAlertTooltip(dailyAlerts){
   // Regroupe par règle, une ligne par jour
