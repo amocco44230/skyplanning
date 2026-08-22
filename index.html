@@ -120,6 +120,16 @@
 
   /* ---------- Legend / palette ---------- */
   .legend{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px;}
+  /* ---------- Calendrier Mensuel (admin) : panneau latéral gauche ---------- */
+  .admin-cal-layout{display:flex;gap:20px;align-items:flex-start;}
+  .admin-cal-side{width:198px;flex-shrink:0;display:flex;flex-direction:column;gap:16px;position:sticky;top:0;}
+  .admin-cal-side-section{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;}
+  .admin-cal-side-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;color:var(--ink-soft);margin-bottom:10px;}
+  .admin-cal-side .legend{flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:6px;margin-bottom:0;}
+  .admin-cal-side .legend .chip{width:100%;justify-content:flex-start;}
+  .admin-cal-side .btn-validate, .admin-cal-side .btn-gen, .admin-cal-side .icon-btn{width:100%;text-align:center;margin-bottom:8px;}
+  .admin-cal-side .btn-validate:last-child, .admin-cal-side .btn-gen:last-child, .admin-cal-side .icon-btn:last-child{margin-bottom:0;}
+  .admin-cal-main{flex:1;min-width:0;}
   .chip{display:flex;align-items:center;gap:7px;border-radius:20px;padding:6px 12px 6px 8px;border:2px solid transparent;font-size:12.5px;font-weight:700;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.06);}
   .chip .dot{width:16px;height:16px;border-radius:5px;flex-shrink:0;}
   .chip .dot.dot-outline{border:1.5px dashed #C7CBD1;}
@@ -503,6 +513,24 @@
     .cal-week-days{gap:6px;}
     .cal-day{padding:7px 8px;min-height:70px;}
     .btn-validate, .btn-gen{width:100%;text-align:center;}
+    .admin-cal-layout{flex-direction:column;}
+    .admin-cal-side{width:100%;position:static;}
+    .admin-cal-side .legend{flex-direction:row;flex-wrap:wrap;}
+    .admin-cal-side .legend .chip{width:auto;}
+    /* Planning individuel : calendrier du mois qui occupe tout l'écran visible,
+       sans défilement — le nombre de semaines varie (4 à 6) donc chaque
+       semaine se partage équitablement la hauteur restante. */
+    .indiv-mobile-wrap{display:flex;flex-direction:column;height:calc(100vh - 54px - 12px - 70px);min-height:340px;}
+    .indiv-hint{font-size:10px;margin:4px 0 6px;line-height:1.3;flex-shrink:0;}
+    .indiv-legend{flex-shrink:0;gap:4px;}
+    .indiv-legend .chip{font-size:9.5px;padding:3px 7px 3px 5px;}
+    .indiv-dow-row{flex-shrink:0;}
+    .indiv-weeks{flex:1;min-height:0;display:flex;flex-direction:column;gap:3px;}
+    .indiv-week-row{flex:1;min-height:0;gap:3px;}
+    .indiv-week-row .cal-day-compact{height:100%;min-height:0;display:flex;flex-direction:column;justify-content:center;padding:3px 4px;}
+    .indiv-week-row .cal-day-compact .d-head{margin-bottom:2px;}
+    .indiv-week-row .cal-day-compact .d-code{padding:2px 2px;}
+    .indiv-week-row .cal-day-compact .indiv-draft{margin-top:1px;padding:1px 2px;}
   }
 
   /* ---------- Responsive : mobile paysage (maximiser l'espace vertical) ---------- */
@@ -1742,12 +1770,12 @@ function isMobileDevice(){
 function navItems(){
   if(isMobileDevice()){
     return state.currentUser.role==='admin'
-      ? [{id:'calendrier', label:'Calendrier annuel', icon:'▦'}]
+      ? [{id:'calendrier', label:'Calendrier Mensuel', icon:'▦'}]
       : [{id:'individuel', label:'Planning individuel', icon:'🗓️'}, {id:'equipe', label:'Planning équipe', icon:'👥'}];
   }
   if(state.currentUser.role==='admin'){
     return [
-      {id:'calendrier', label:'Calendrier annuel', icon:'▦'},
+      {id:'calendrier', label:'Calendrier Mensuel', icon:'▦'},
       {id:'salaries', label:'Gestion des salariés', icon:'☺'},
       {id:'codes', label:'Gestion des codes', icon:'▤'},
       {id:'desideratas', label:'Désidératas', icon:'🖐️'},
@@ -2260,7 +2288,7 @@ function renderPlanningIndividuel(){
       const dnum=dayCounter+i;
       weekDays.push(dnum>=1 && dnum<=nDays ? dayCellHtml(dnum) : '<div class="cal-day blank"></div>');
     }
-    weekRows+=`<div class="cal-week-days">${weekDays.join('')}</div>`;
+    weekRows+=`<div class="cal-week-days indiv-week-row">${weekDays.join('')}</div>`;
     dayCounter+=7;
   }
 
@@ -2270,17 +2298,19 @@ function renderPlanningIndividuel(){
     </div>`).join('');
 
   const inner=`
-    ${monthNavHtml()}
-    <div style="display:flex;justify-content:flex-end;margin:-4px 0 4px;">
-      ${monthOk ? `<button class="icon-btn" id="indivPrintBtn">🖨️ Imprimer</button>` : ''}
+    <div class="indiv-mobile-wrap">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div style="flex:1;">${monthNavHtml()}</div>
+      ${monthOk ? `<button class="icon-btn" id="indivPrintBtn" style="flex-shrink:0;">🖨️</button>` : ''}
     </div>
-    <div class="legend-hint" style="margin:8px 0 10px;">Le grand code est votre planning <b>officiel</b> validé par l'administration. Sélectionnez un code ci-dessous puis touchez un jour pour poser votre <b>brouillon personnel</b> (identique à « Mon planning annuel », mois par mois) — un second appui l'efface.</div>
-    <div class="legend" style="margin-bottom:10px;">${legendChipsHtml}</div>
-    <div style="display:flex;gap:8px;margin-bottom:6px;">
+    <div class="legend-hint indiv-hint" style="margin:6px 0 8px;">Touchez un <b>code</b> puis un <b>jour</b> pour poser votre brouillon (comme « Mon planning annuel », mois par mois).</div>
+    <div class="legend indiv-legend" style="margin-bottom:8px;">${legendChipsHtml}</div>
+    <div class="indiv-dow-row" style="display:flex;gap:4px;margin-bottom:4px;">
       ${DOW_SHORT.map(d=>`<div style="flex:1;text-align:center;font-size:9px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;">${d}</div>`).join('')}
     </div>
-    ${weekRows}
-    ${!monthOk ? `<div class="helper" style="margin-top:10px;text-align:center;">🔒 Le planning officiel de ${MOIS[m]} ${y} n'est pas encore validé — vous pouvez déjà préparer votre brouillon.</div>` : ''}
+    <div class="indiv-weeks">${weekRows}</div>
+    ${!monthOk ? `<div class="helper" style="margin-top:8px;text-align:center;">🔒 Planning officiel de ${MOIS[m]} ${y} pas encore validé — vous pouvez déjà préparer votre brouillon.</div>` : ''}
+    </div>
   `;
   renderShell(inner,'Planning individuel');
   bindMonthNav(render);
@@ -3458,24 +3488,37 @@ function renderCalendrierAdmin(){
       ${genCount>0?`<button class="icon-btn" id="genGoBtn" style="margin-left:10px;background:var(--primary);color:#fff;border-color:var(--primary);">Générer →</button><button class="icon-btn" id="genClearBtn" style="margin-left:6px;">Tout désélectionner</button>`:''}
     </div>` : '';
   const inner=`
-    <div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px;">
-      <div class="month-nav-reset">${monthNavHtml()}</div>
-      <span style="font-size:13.5px;font-weight:700;color:var(--ink-soft);">Service :</span>
-      <select id="calServiceSelect" class="filter-select">${svcOptions}</select>
-      ${canValidate ? `<button class="icon-btn" id="printMonthBtn">🖨️ Imprimer le planning (A4 paysage)</button>` : ''}
+    <div class="admin-cal-layout">
+      <div class="admin-cal-side">
+        <div class="admin-cal-side-section">
+          <div class="admin-cal-side-title">Codes</div>
+          ${legendHtml(true)}
+        </div>
+        <div class="admin-cal-side-section">
+          <div class="admin-cal-side-title">Actions</div>
+          ${validateBtnHtml}
+          ${genBtnHtml}
+          ${canValidate ? `<button class="icon-btn" id="printMonthBtn">🖨️ Imprimer le planning (A4 paysage)</button>` : ''}
+        </div>
+      </div>
+      <div class="admin-cal-main">
+        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px;">
+          <div class="month-nav-reset">${monthNavHtml()}</div>
+          <span style="font-size:13.5px;font-weight:700;color:var(--ink-soft);">Service :</span>
+          <select id="calServiceSelect" class="filter-select">${svcOptions}</select>
+        </div>
+        ${genSelectionBarHtml}
+        ${canValidate && !validated ? `<div class="legend-hint lock-hint">🔒 Ce mois n'est <b>pas encore validé</b> pour ${escapeHtml(svcFilter)} — les salariés de ce service ne voient rien sur leur planning pour ${MOIS[m]} ${y} (leurs désidératas restent accessibles). Cliquez sur « Valider le mois » quand vous êtes prêt.</div>` : ''}
+        ${alerts.length?`<div class="legend-hint alert-hint">⚠ <b>${alerts.length} alerte${alerts.length>1?'s':''}</b> détectée${alerts.length>1?'s':''} ce mois-ci — cases entourées de violet, détail dans l'onglet <b>Alertes</b>.</div>`:''}
+        ${pendingChanges.length?`<div class="legend-hint change-hint">✎ <b>${pendingChanges.length} modification${pendingChanges.length>1?'s':''}</b> apportée${pendingChanges.length>1?'s':''} depuis la validation du mois — cases encadrées en orange, détail tout en bas de page.</div>`:''}
+        <div class="legend-hint">Cliquez d'abord sur un <b>code</b> dans le panneau de gauche, puis sur les cases du planning pour l'appliquer — ou cliquez-glissez (maintenez et passez sur plusieurs jours) pour remplir plusieurs cases d'un coup. Un second clic sur une case déjà remplie l'efface. Double-cliquez sur une case pour ajouter un commentaire. Avant validation du mois, chaque modification notifie aussitôt le salarié ; une fois le mois validé, la notification ne part que lorsque vous validez la modification ci-dessous.</div>
+        ${gridHtml({employees, readonly:false, alerts, changes:allChangesThisMonth, serviceContext: svcFilter!=='ALL'?svcFilter:null})}
+        ${commentsRecapHtml(y,m, (svcFilter==='ALL' && !scope)?null:employees.map(e=>e.username))}
+        ${changesLogHtml(changes)}
+      </div>
     </div>
-    <div style="margin:14px 0 18px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">${validateBtnHtml}${genBtnHtml}</div>
-    ${genSelectionBarHtml}
-    ${canValidate && !validated ? `<div class="legend-hint lock-hint">🔒 Ce mois n'est <b>pas encore validé</b> pour ${escapeHtml(svcFilter)} — les salariés de ce service ne voient rien sur leur planning pour ${MOIS[m]} ${y} (leurs désidératas restent accessibles). Cliquez sur « Valider le mois » quand vous êtes prêt.</div>` : ''}
-    ${alerts.length?`<div class="legend-hint alert-hint">⚠ <b>${alerts.length} alerte${alerts.length>1?'s':''}</b> détectée${alerts.length>1?'s':''} ce mois-ci — cases entourées de violet, détail dans l'onglet <b>Alertes</b>.</div>`:''}
-    ${pendingChanges.length?`<div class="legend-hint change-hint">✎ <b>${pendingChanges.length} modification${pendingChanges.length>1?'s':''}</b> apportée${pendingChanges.length>1?'s':''} depuis la validation du mois — cases encadrées en orange, détail tout en bas de page.</div>`:''}
-    <div class="legend-hint">Cliquez d'abord sur un <b>code</b> ci-dessous, puis sur les cases du planning pour l'appliquer — ou cliquez-glissez (maintenez et passez sur plusieurs jours) pour remplir plusieurs cases d'un coup. Un second clic sur une case déjà remplie l'efface. Double-cliquez sur une case pour ajouter un commentaire. Avant validation du mois, chaque modification notifie aussitôt le salarié ; une fois le mois validé, la notification ne part que lorsque vous validez la modification ci-dessous.</div>
-    ${legendHtml(true)}
-    ${gridHtml({employees, readonly:false, alerts, changes:allChangesThisMonth, serviceContext: svcFilter!=='ALL'?svcFilter:null})}
-    ${commentsRecapHtml(y,m, (svcFilter==='ALL' && !scope)?null:employees.map(e=>e.username))}
-    ${changesLogHtml(changes)}
   `;
-  renderShell(inner,'Calendrier annuel'+(svcFilter==='ALL'?'':' — '+svcFilter));
+  renderShell(inner,'Calendrier Mensuel'+(svcFilter==='ALL'?'':' — '+svcFilter));
   bindMonthNav(render);
   document.getElementById('calServiceSelect').addEventListener('change',(e)=>{ state.calendarServiceFilter=e.target.value; render(); });
   const printMonthBtn=document.getElementById('printMonthBtn');
