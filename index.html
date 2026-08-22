@@ -221,6 +221,20 @@
   .icon-btn{border:1.5px solid var(--border);background:#fff;border-radius:8px;padding:6px 11px;font-size:12.5px;font-weight:600;color:var(--ink-soft);}
   .icon-btn:hover{border-color:var(--primary);color:var(--primary);}
   .empty-state{text-align:center;padding:50px 20px;color:var(--ink-soft);}
+  /* ---------- Fonctionnalités (grand admin) ---------- */
+  .feat-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:18px;}
+  .feat-card h3{margin:0 0 14px;font-size:15px;}
+  .feat-toggle-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:11px 0;border-bottom:1px solid var(--border);cursor:pointer;}
+  .feat-toggle-row:last-child{border-bottom:none;}
+  .feat-toggle-label{font-weight:700;font-size:13.5px;}
+  .feat-toggle-desc{font-size:12px;color:var(--ink-soft);margin-top:2px;}
+  .feat-toggle-row input[type="checkbox"]{width:20px;height:20px;flex-shrink:0;accent-color:var(--primary);cursor:pointer;}
+  .feat-service-table{width:100%;border-collapse:collapse;}
+  .feat-service-table th{text-align:left;font-size:11.5px;color:var(--ink-soft);font-weight:700;padding:8px 10px;border-bottom:1.5px solid var(--border);}
+  .feat-service-table th:not(:first-child){text-align:center;}
+  .feat-service-table td{padding:9px 10px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600;}
+  .feat-service-table input[type="checkbox"]{width:18px;height:18px;accent-color:var(--primary);cursor:pointer;}
+  .feat-service-table tr:last-child td{border-bottom:none;}
 
   /* ---------- Modal ---------- */
   .overlay{position:fixed;inset:0;background:rgba(20,25,40,.45);display:flex;align-items:center;justify-content:center;z-index:40;padding:20px;}
@@ -632,7 +646,8 @@ const FIRESTORE_KEY_MAP = {
   users:'users', codes:'codes', schedules:'schedules', notifications:'notifications',
   comments:'comments', fonctions:'fonctions', services:'services', desideratas:'desideratas',
   alertRules:'alertRules', monthValidations:'monthValidations', postValidationChanges:'postValidationChanges',
-  cpAllowances:'cpAllowances', employeeDrafts:'employeeDrafts', exchanges:'exchanges'
+  cpAllowances:'cpAllowances', employeeDrafts:'employeeDrafts', exchanges:'exchanges',
+  featureFlags:'featureFlags'
 };
 // Enregistrement précoce et silencieux du service worker FCM (permet de recevoir
 // des notifications en arrière-plan même avant que l'utilisateur active les alertes).
@@ -750,6 +765,7 @@ let state={
   comments:{},
   desideratas:[],
   exchanges:[],
+  featureFlags:{desideratas:true, echanges:true, alertes:true, genAuto:true, impression:true, photos:true, perService:{}},
   alertRules:[],
   monthValidations:{},
   postValidationChanges:[],
@@ -862,6 +878,18 @@ async function loadAll(){
     const ex=await storageGet('exchanges', true);
     state.exchanges = ex ? JSON.parse(ex.value) : [];
   }catch(e){ state.exchanges=[]; }
+  try{
+    const ff=await storageGet('featureFlags', true);
+    const parsed = ff ? JSON.parse(ff.value) : null;
+    // Fusion avec les valeurs par défaut : une fonctionnalité ajoutée plus tard
+    // par une mise à jour de l'appli reste activée par défaut si l'admin n'a
+    // encore rien configuré explicitement.
+    state.featureFlags = Object.assign(
+      {desideratas:true, echanges:true, alertes:true, genAuto:true, impression:true, photos:true, perService:{}},
+      parsed||{}
+    );
+    if(!state.featureFlags.perService) state.featureFlags.perService={};
+  }catch(e){ /* garde les valeurs par défaut de state */ }
   try{
     const ar=await storageGet('alertRules', true);
     state.alertRules = ar ? JSON.parse(ar.value) : null;
@@ -998,6 +1026,19 @@ async function persistFonctions(){ await storageSet('fonctions', JSON.stringify(
 async function persistServices(){ await storageSet('services', JSON.stringify(state.services), true); }
 async function persistDesideratas(){ await storageSet('desideratas', JSON.stringify(state.desideratas), true); }
 async function persistExchanges(){ await storageSet('exchanges', JSON.stringify(state.exchanges), true); }
+async function persistFeatureFlags(){ await storageSet('featureFlags', JSON.stringify(state.featureFlags), true); }
+/**
+ * Une fonctionnalité est active si : (1) elle n'est pas désactivée
+ * globalement par le grand admin dans « Fonctionnalités », ET (2) — pour les
+ * fonctionnalités qui le permettent (désidératas, échanges) — elle n'est pas
+ * désactivée spécifiquement pour le service demandé.
+ */
+function isFeatureEnabled(flag, service){
+  const ff=state.featureFlags||{};
+  if(ff[flag]===false) return false;
+  if(service && ff.perService && ff.perService[service] && ff.perService[service][flag]===false) return false;
+  return true;
+}
 async function persistAlertRules(){ await storageSet('alertRules', JSON.stringify(state.alertRules), true); }
 async function persistMonthValidations(){ await storageSet('monthValidations', JSON.stringify(state.monthValidations), true); }
 async function persistPostValidationChanges(){ await storageSet('postValidationChanges', JSON.stringify(state.postValidationChanges), true); }
@@ -1243,11 +1284,15 @@ function getDayCodeByKey(username,dateKey){
 }
 async function logExchangeChangeIfNeeded(username,dateKey,oldCode,newCode,message){
   const emp=state.users.find(u=>u.username===username);
-  if(!emp || !emp.team || oldCode===newCode) return;
+  if(!emp || oldCode===newCode) return;
+  // Service applicable CE JOUR-LÀ (historique d'affectation), pas le service
+  // "actuel" de l'employé — cohérent avec paintCell.
+  const cellTeam=affectationAt(emp,dateKey).team;
+  if(!cellTeam) return;
   const [y,m,d]=dateKey.split('-').map(Number);
-  if(!isMonthValidated(emp.team,y,m-1)) return;
+  if(!isMonthValidated(cellTeam,y,m-1)) return;
   state.postValidationChanges.push({
-    id:genId(), service:emp.team, year:y, month:m-1, day:d, username, name:emp.name,
+    id:genId(), service:cellTeam, year:y, month:m-1, day:d, username, name:emp.name,
     oldCode:oldCode||null, newCode:newCode||null, message, changedAt:new Date().toISOString(),
     changedBy:state.currentUser.username, acknowledged:false
   });
@@ -1713,13 +1758,19 @@ async function paintCell(username,year,month,day){
   try{
     await persistSchedules();
     const emp=state.users.find(u=>u.username===username);
-    const monthValidated = !!(emp && emp.team && isMonthValidated(emp.team,year,month));
-    if(emp && emp.team && oldCode!==newCode && monthValidated){
+    // Important : on utilise le service applicable CE JOUR-LÀ (historique
+    // d'affectation), pas le service "actuel" de l'employé — un salarié
+    // transféré en cours de mois (ex : Patrick Napel arrivé au CCO en août)
+    // doit voir ses modifications correctement rattachées à CCO sur les
+    // jours où il y est réellement affecté, jamais à son ancien service.
+    const cellTeam = emp ? affectationAt(emp, key).team : '';
+    const monthValidated = !!(emp && cellTeam && isMonthValidated(cellTeam,year,month));
+    if(emp && cellTeam && oldCode!==newCode && monthValidated){
       // Mois déjà validé : on NE notifie PAS tout de suite. On journalise juste
       // le changement ; la notification ne part que lorsque l'admin valide
       // (acquitte) cette modification — voir data-ack-change / ackAllChanges.
       state.postValidationChanges.push({
-        id:genId(), service:emp.team, year, month, day, username, name:emp.name,
+        id:genId(), service:cellTeam, year, month, day, username, name:emp.name,
         oldCode, newCode, message, changedAt:new Date().toISOString(), changedBy:state.currentUser.username, acknowledged:false
       });
       await persistPostValidationChanges();
@@ -1732,7 +1783,77 @@ async function paintCell(username,year,month,day){
 }
 
 /* ============================================================
-   RENDU — LOGIN
+   ÉCRAN — FONCTIONNALITÉS (grand admin uniquement)
+   Active/désactive des fonctionnalités du site, globalement ou par service.
+   ============================================================ */
+function renderFonctionnalites(){
+  if(!isSuperAdmin(state.currentUser)){ state.tab='calendrier'; render(); return; }
+  const ff=state.featureFlags;
+
+  const globalToggle=(key,label,desc)=>`
+    <label class="feat-toggle-row">
+      <div class="feat-toggle-text">
+        <div class="feat-toggle-label">${label}</div>
+        <div class="feat-toggle-desc">${desc}</div>
+      </div>
+      <input type="checkbox" data-feat-global="${key}" ${ff[key]!==false?'checked':''}>
+    </label>`;
+
+  const perServiceRows = state.services.map(svc=>{
+    const ov=(ff.perService && ff.perService[svc]) || {};
+    return `
+    <tr>
+      <td>${escapeHtml(svc)}</td>
+      <td style="text-align:center;"><input type="checkbox" data-feat-svc="${escapeHtml(svc)}" data-feat-key="desideratas" ${ov.desideratas!==false?'checked':''} ${ff.desideratas===false?'disabled':''}></td>
+      <td style="text-align:center;"><input type="checkbox" data-feat-svc="${escapeHtml(svc)}" data-feat-key="echanges" ${ov.echanges!==false?'checked':''} ${ff.echanges===false?'disabled':''}></td>
+    </tr>`;
+  }).join('');
+
+  const inner=`
+    <div class="legend-hint">Activez ou désactivez des fonctionnalités pour l'ensemble du site. Une fonctionnalité désactivée disparaît des menus de tous les comptes concernés (admin comme salariés).</div>
+    <div class="feat-card">
+      <h3>Fonctionnalités générales</h3>
+      ${globalToggle('desideratas','Désidératas','Les salariés peuvent demander des jours spécifiques, l\u2019admin valide ou refuse.')}
+      ${globalToggle('echanges','Échanges de service','Un salarié peut proposer un échange de journée avec un collègue, validé en un clic par l\u2019admin.')}
+      ${globalToggle('alertes','Alertes d\u2019effectif','Détection automatique des sous/sur-effectifs et dépassements de charge hebdo.')}
+      ${globalToggle('genAuto','Génération automatique du planning','Le bouton « 🪄 Générer automatiquement » sur le Calendrier Mensuel.')}
+      ${globalToggle('impression','Impression PDF','Les boutons « Imprimer le planning » (admin, planning équipe, planning individuel).')}
+      ${globalToggle('photos','Photo de profil','Permet aux salariés d\u2019ajouter une photo depuis « Mon compte ».')}
+    </div>
+    <div class="feat-card">
+      <h3>Droits par service</h3>
+      <div class="helper" style="margin:-4px 0 12px;">Affine désidératas et échanges service par service (ex : un service peut ne pas vouloir des échanges entre salariés). Sans effet si la case est déjà décochée ci-dessus au niveau général.</div>
+      ${state.services.length ? `
+      <table class="feat-service-table">
+        <thead><tr><th>Service</th><th>Désidératas</th><th>Échanges</th></tr></thead>
+        <tbody>${perServiceRows}</tbody>
+      </table>` : `<div class="empty-state">Aucun service créé pour l'instant.</div>`}
+    </div>
+  `;
+  renderShell(inner,'Fonctionnalités');
+  document.querySelectorAll('[data-feat-global]').forEach(chk=>{
+    chk.addEventListener('change', async()=>{
+      state.featureFlags[chk.dataset.featGlobal]=chk.checked;
+      await persistFeatureFlags();
+      toast(chk.checked?'Fonctionnalité activée.':'Fonctionnalité désactivée.');
+      render();
+    });
+  });
+  document.querySelectorAll('[data-feat-svc]').forEach(chk=>{
+    chk.addEventListener('change', async()=>{
+      const svc=chk.dataset.featSvc, key=chk.dataset.featKey;
+      if(!state.featureFlags.perService) state.featureFlags.perService={};
+      if(!state.featureFlags.perService[svc]) state.featureFlags.perService[svc]={};
+      state.featureFlags.perService[svc][key]=chk.checked;
+      await persistFeatureFlags();
+      toast('Réglage mis à jour pour '+svc+'.');
+      render();
+    });
+  });
+}
+
+/* ============================================================
+   ÉCRAN — LOGIN
    ============================================================ */
 function renderLogin(){
   const app=document.getElementById('app');
@@ -1776,22 +1897,27 @@ function navItems(){
       : [{id:'individuel', label:'Planning individuel', icon:'🗓️'}, {id:'equipe', label:'Planning équipe', icon:'👥'}];
   }
   if(state.currentUser.role==='admin'){
-    return [
+    const items=[
       {id:'calendrier', label:'Calendrier Mensuel', icon:'▦'},
       {id:'salaries', label:'Gestion des salariés', icon:'☺'},
       {id:'codes', label:'Gestion des codes', icon:'▤'},
-      {id:'desideratas', label:'Désidératas', icon:'🖐️'},
-      {id:'echanges', label:'Échanges', icon:'🔄'},
-      {id:'alertes', label:'Alertes', icon:'⚠️'},
     ];
+    if(isFeatureEnabled('desideratas')) items.push({id:'desideratas', label:'Désidératas', icon:'🖐️'});
+    if(isFeatureEnabled('echanges')) items.push({id:'echanges', label:'Échanges', icon:'🔄'});
+    if(isFeatureEnabled('alertes')) items.push({id:'alertes', label:'Alertes', icon:'⚠️'});
+    if(isSuperAdmin(state.currentUser)) items.push({id:'fonctionnalites', label:'Fonctionnalités', icon:'🧩'});
+    return items;
   }
-  return [
+  const me=state.users.find(u=>u.username===state.currentUser.username);
+  const myTeam=(me&&me.team)?me.team:'';
+  const items=[
     {id:'planning', label:'Planning', icon:'▦'},
     {id:'annuel', label:'Mon planning annuel', icon:'📅'},
     {id:'equipe', label:'Planning équipe', icon:'👥'},
-    {id:'mesdesid', label:'Mes désidératas', icon:'🖐️'},
-    {id:'echanges', label:'Échanges', icon:'🔄'},
   ];
+  if(isFeatureEnabled('desideratas', myTeam)) items.push({id:'mesdesid', label:'Mes désidératas', icon:'🖐️'});
+  if(isFeatureEnabled('echanges', myTeam)) items.push({id:'echanges', label:'Échanges', icon:'🔄'});
+  return items;
 }
 function initials(name){
   return name.split(' ').map(p=>p[0]).join('').slice(0,2).toUpperCase();
@@ -2310,7 +2436,7 @@ function renderPlanningIndividuel(){
     <div class="indiv-mobile-wrap">
     <div style="display:flex;align-items:center;gap:8px;">
       <div style="flex:1;">${monthNavHtml()}</div>
-      ${monthOk ? `<button class="icon-btn" id="indivPrintBtn" style="flex-shrink:0;">🖨️</button>` : ''}
+      ${(monthOk && isFeatureEnabled('impression')) ? `<button class="icon-btn" id="indivPrintBtn" style="flex-shrink:0;">🖨️</button>` : ''}
     </div>
     <div class="legend-hint indiv-hint" style="margin:6px 0 8px;">Touchez un <b>code</b> puis un <b>jour</b> pour poser votre brouillon (comme « Mon planning annuel », mois par mois).</div>
     <div class="legend indiv-legend" style="margin-bottom:8px;">${legendChipsHtml}</div>
@@ -2495,9 +2621,9 @@ function renderPlanningEquipe(){
     <div class="toolbar" style="flex-wrap:wrap;gap:10px;margin-bottom:2px;">
       <div>${myTeam?`<div class="legend-hint" style="margin:0;">Planning en lecture seule de l'équipe <b>${escapeHtml(myTeam)}</b>.</div>`:`<div class="legend-hint" style="margin:0;">Aucune équipe ne vous a été assignée pour le moment — seul votre planning est affiché ici.</div>`}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        ${(monthOk && myTeam) ? `<button class="icon-btn" id="peqPrintBtn">🖨️ Imprimer le planning</button>` : ''}
-        <button class="btn btn-primary" id="peqNewDesidBtn" style="width:auto;margin:0;">🖐️ Demande de désidérata</button>
-        <button class="btn btn-primary" id="peqNewExchBtn" style="width:auto;margin:0;">🔄 Proposer un échange</button>
+        ${(monthOk && myTeam && isFeatureEnabled('impression')) ? `<button class="icon-btn" id="peqPrintBtn">🖨️ Imprimer le planning</button>` : ''}
+        ${isFeatureEnabled('desideratas', myTeam) ? `<button class="btn btn-primary" id="peqNewDesidBtn" style="width:auto;margin:0;">🖐️ Demande de désidérata</button>` : ''}
+        ${isFeatureEnabled('echanges', myTeam) ? `<button class="btn btn-primary" id="peqNewExchBtn" style="width:auto;margin:0;">🔄 Proposer un échange</button>` : ''}
       </div>
     </div>
     ${monthOk ? `
@@ -2519,11 +2645,13 @@ function renderPlanningEquipe(){
   bindMonthNav(render);
   const peqPrintBtn=document.getElementById('peqPrintBtn');
   if(peqPrintBtn) peqPrintBtn.addEventListener('click', ()=>{ printMonthlyPlanning(myTeam, y, m); });
-  document.getElementById('peqNewDesidBtn').addEventListener('click',()=>{
+  const peqNewDesidBtn=document.getElementById('peqNewDesidBtn');
+  if(peqNewDesidBtn) peqNewDesidBtn.addEventListener('click',()=>{
     state.modal={type:'new-desiderata', data:{dateStart:'',dateEnd:'',code:state.codes[0]?state.codes[0].code:'',comment:''}};
     render();
   });
-  document.getElementById('peqNewExchBtn').addEventListener('click',()=>{
+  const peqNewExchBtn=document.getElementById('peqNewExchBtn');
+  if(peqNewExchBtn) peqNewExchBtn.addEventListener('click',()=>{
     const username=state.currentUser.username;
     const colleagues=state.users.filter(u=>u.role==='employee' && u.username!==username && belongsToTeam(u));
     if(!colleagues.length){ toast('Aucun collègue disponible dans votre service pour un échange.', true); return; }
@@ -2727,6 +2855,7 @@ function bindCommentsRecap(){
    ÉCRAN — DÉSIDÉRATAS (admin, vue d'ensemble)
    ============================================================ */
 function renderAdminDesiderata(){
+  if(!isFeatureEnabled('desideratas')){ state.tab='calendrier'; render(); return; }
   const scope=getAdminScope(state.currentUser);
   const statusF=state.desidAdminFilterStatus, yearF=state.desidAdminFilterYear, svcF=state.desidAdminFilterService, showArch=state.desidAdminShowArchived;
   const years=[...new Set(state.desideratas.map(d=>d.dateStart.slice(0,4)))].sort().reverse();
@@ -2820,6 +2949,7 @@ function renderAdminDesiderata(){
    ÉCRAN — ÉCHANGES DE SERVICE (admin, vue d'ensemble)
    ============================================================ */
 function renderAdminEchanges(){
+  if(!isFeatureEnabled('echanges')){ state.tab='calendrier'; render(); return; }
   const scope=getAdminScope(state.currentUser);
   const statusF=state.exchAdminFilterStatus, svcF=state.exchAdminFilterService;
   let list=state.exchanges.filter(ex=>{
@@ -2928,6 +3058,8 @@ function renderAdminEchanges(){
    ============================================================ */
 function renderMesDesiderata(){
   const username=state.currentUser.username;
+  const meG=state.users.find(u=>u.username===username);
+  if(!isFeatureEnabled('desideratas', meG?meG.team:'')){ state.tab='planning'; render(); return; }
   const mine=state.desideratas.filter(d=>d.username===username);
   const statusF=state.desidFilterStatus, yearF=state.desidFilterYear, showArch=state.desidShowArchived;
   const years=[...new Set(mine.map(d=>d.dateStart.slice(0,4)))].sort().reverse();
@@ -3011,6 +3143,8 @@ function renderMesDesiderata(){
    ============================================================ */
 function renderMesEchanges(){
   const username=state.currentUser.username;
+  const meG=state.users.find(u=>u.username===username);
+  if(!isFeatureEnabled('echanges', meG?meG.team:'')){ state.tab='planning'; render(); return; }
   const sent=state.exchanges.filter(ex=>ex.requesterUsername===username);
   const received=state.exchanges.filter(ex=>ex.targetUsername===username);
   const statusF=state.exchFilterStatus;
@@ -3321,6 +3455,7 @@ function ruleThresholdLabel(rule){
   return parts.join(' · ') || '—';
 }
 function renderAlertes(){
+  if(!isFeatureEnabled('alertes')){ state.tab='calendrier'; render(); return; }
   const y=state.viewDate.getFullYear(), m=state.viewDate.getMonth();
   const scope=getAdminScope(state.currentUser);
   const availableServices = scope || state.services;
@@ -3488,10 +3623,12 @@ function renderCalendrierAdmin(){
         : `<button class="btn-validate" id="validateBtn">🔒 Valider le mois — le rendre visible aux salariés</button>`)
     : `<span class="helper" style="margin:0;">Sélectionnez un service précis pour valider son mois.</span>`;
   const genCount=Object.keys(state.genSelections).length;
-  const genBtnHtml = state.genMode
+  const genAutoOn=isFeatureEnabled('genAuto');
+  const printOn=isFeatureEnabled('impression');
+  const genBtnHtml = !genAutoOn ? '' : (state.genMode
     ? `<button class="btn-gen active" id="genToggleBtn">🪄 Mode génération activé — cliquer pour quitter</button>`
-    : `<button class="btn-gen" id="genToggleBtn">🪄 Générer automatiquement le planning</button>`;
-  const genSelectionBarHtml = state.genMode ? `
+    : `<button class="btn-gen" id="genToggleBtn">🪄 Générer automatiquement le planning</button>`);
+  const genSelectionBarHtml = (genAutoOn && state.genMode) ? `
     <div class="legend-hint gen-hint">
       🪄 Cliquez sur le <b>dernier jour travaillé (M ou S)</b> de chaque salarié à régénérer. ${genCount} sélectionné${genCount>1?'s':''}.
       ${genCount>0?`<button class="icon-btn" id="genGoBtn" style="margin-left:10px;background:var(--primary);color:#fff;border-color:var(--primary);">Générer →</button><button class="icon-btn" id="genClearBtn" style="margin-left:6px;">Tout désélectionner</button>`:''}
@@ -3504,7 +3641,7 @@ function renderCalendrierAdmin(){
     <div class="sidebar-extra-title" style="margin-top:16px;">Actions</div>
     ${validateBtnHtml}
     ${genBtnHtml}
-    ${canValidate ? `<button class="icon-btn" id="printMonthBtn">🖨️ Imprimer le planning</button>` : ''}
+    ${(canValidate && printOn) ? `<button class="icon-btn" id="printMonthBtn">🖨️ Imprimer le planning</button>` : ''}
   `;
   const mobile=isMobileDevice();
   const inner=`
@@ -3516,7 +3653,7 @@ function renderCalendrierAdmin(){
     ${mobile ? `
     <div class="legend-hint" style="margin:12px 0 6px;"><b>Codes</b> — touchez-en un puis touchez une case du planning.</div>
     ${legendHtml(true)}
-    <div style="margin:10px 0 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">${validateBtnHtml}${genBtnHtml}${canValidate ? `<button class="icon-btn" id="printMonthBtn">🖨️ Imprimer</button>` : ''}</div>
+    <div style="margin:10px 0 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">${validateBtnHtml}${genBtnHtml}${(canValidate && printOn) ? `<button class="icon-btn" id="printMonthBtn">🖨️ Imprimer</button>` : ''}</div>
     ` : ''}
     ${genSelectionBarHtml}
     ${canValidate && !validated ? `<div class="legend-hint lock-hint">🔒 Ce mois n'est <b>pas encore validé</b> pour ${escapeHtml(svcFilter)} — les salariés de ce service ne voient rien sur leur planning pour ${MOIS[m]} ${y} (leurs désidératas restent accessibles). Cliquez sur « Valider le mois » ${mobile?'ci-dessus':'dans le bandeau de gauche'} quand vous êtes prêt.</div>` : ''}
@@ -3530,7 +3667,8 @@ function renderCalendrierAdmin(){
   document.getElementById('calServiceSelect').addEventListener('change',(e)=>{ state.calendarServiceFilter=e.target.value; render(); });
   const printMonthBtn=document.getElementById('printMonthBtn');
   if(printMonthBtn) printMonthBtn.addEventListener('click', ()=>{ printMonthlyPlanning(svcFilter, y, m); });
-  document.getElementById('genToggleBtn').addEventListener('click',()=>{ toggleGenMode(); render(); });
+  const genToggleBtn=document.getElementById('genToggleBtn');
+  if(genToggleBtn) genToggleBtn.addEventListener('click',()=>{ toggleGenMode(); render(); });
   const genGoBtn=document.getElementById('genGoBtn');
   if(genGoBtn) genGoBtn.addEventListener('click',()=>{ state.modal={type:'auto-generate'}; render(); });
   const genClearBtn=document.getElementById('genClearBtn');
@@ -4202,11 +4340,12 @@ function renderModal(){
       <div style="display:flex;justify-content:center;margin-bottom:12px;">
         <div class="emp-avatar" id="aAvatarPreview" style="width:76px;height:76px;border-radius:50%;font-size:26px;">${me.photoUrl?`<img src="${me.photoUrl}" alt="">`:initials(state.currentUser.name)}</div>
       </div>
+      ${isFeatureEnabled('photos') ? `
       <div style="display:flex;gap:8px;justify-content:center;margin-bottom:20px;flex-wrap:wrap;">
         <input type="file" id="aPhotoInput" accept="image/*" style="display:none;">
         <button type="button" class="icon-btn" id="aPhotoBtn">${me.photoUrl?'Changer la photo':'Ajouter une photo'}</button>
         ${me.photoUrl?'<button type="button" class="icon-btn" id="aPhotoRemove" style="color:var(--danger);">Supprimer la photo</button>':''}
-      </div>
+      </div>` : ''}
       <div class="field"><label>Nom</label><input value="${escapeHtml(state.currentUser.name)}" disabled></div>
       <div class="row2">
         <div class="field"><label>Téléphone</label><input id="aPhone" type="tel" value="${escapeHtml(me.phone||'')}" placeholder="Ex : 06 12 34 56 78"></div>
@@ -4227,17 +4366,21 @@ function renderModal(){
     document.getElementById('aCancel').addEventListener('click',closeModal);
     const notifBtn=document.getElementById('aNotifBtn');
     if(notifBtn) notifBtn.addEventListener('click', requestNotifPermission);
-    document.getElementById('aPhotoBtn').addEventListener('click',()=>{ document.getElementById('aPhotoInput').click(); });
-    document.getElementById('aPhotoInput').addEventListener('change', async (e)=>{
-      const file=e.target.files[0];
-      if(!file) return;
-      if(!file.type.startsWith('image/')){ toast('Merci de choisir un fichier image.', true); return; }
-      try{
-        const dataUrl = await resizeImageToDataUrl(file, 160, 0.72);
-        pendingPhotoUrl=dataUrl; photoRemoved=false;
-        document.getElementById('aAvatarPreview').innerHTML = `<img src="${dataUrl}" alt="">`;
-      }catch(err){ toast("Impossible de charger cette image.", true); }
-    });
+    const aPhotoBtn=document.getElementById('aPhotoBtn');
+    const aPhotoInput=document.getElementById('aPhotoInput');
+    if(aPhotoBtn && aPhotoInput){
+      aPhotoBtn.addEventListener('click',()=>{ aPhotoInput.click(); });
+      aPhotoInput.addEventListener('change', async (e)=>{
+        const file=e.target.files[0];
+        if(!file) return;
+        if(!file.type.startsWith('image/')){ toast('Merci de choisir un fichier image.', true); return; }
+        try{
+          const dataUrl = await resizeImageToDataUrl(file, 160, 0.72);
+          pendingPhotoUrl=dataUrl; photoRemoved=false;
+          document.getElementById('aAvatarPreview').innerHTML = `<img src="${dataUrl}" alt="">`;
+        }catch(err){ toast("Impossible de charger cette image.", true); }
+      });
+    }
     const removeBtn=document.getElementById('aPhotoRemove');
     if(removeBtn) removeBtn.addEventListener('click',()=>{
       pendingPhotoUrl=null; photoRemoved=true;
@@ -4831,6 +4974,7 @@ function render(){
     else if(state.tab==='desideratas') renderAdminDesiderata();
     else if(state.tab==='echanges') renderAdminEchanges();
     else if(state.tab==='alertes') renderAlertes();
+    else if(state.tab==='fonctionnalites') renderFonctionnalites();
     else renderCalendrierAdmin();
   } else {
     if(state.tab==='equipe') renderPlanningEquipe();
