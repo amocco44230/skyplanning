@@ -1,48 +1,5046 @@
-/* SKYPLANNING — Service Worker Firebase Cloud Messaging
-   =======================================================
-   Ce fichier DOIT être déployé à la racine du site, au même niveau que
-   index.html (ex: https://votre-domaine/firebase-messaging-sw.js). Il est
-   référencé par index.html via navigator.serviceWorker.register(...).
-   Sans lui, l'enregistrement au push échoue silencieusement et aucune
-   notification ne peut jamais arriver, même appli fermée.
-*/
-importScripts("https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js");
-importScripts("https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging-compat.js");
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SKYPLANNING</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F3F5F8;
+    --surface:#FFFFFF;
+    --ink:#1E2433;
+    --ink-soft:#626B7A;
+    --primary:#2C3A63;
+    --primary-dark:#202B49;
+    --primary-light:#E9EDF7;
+    --border:#E1E5EC;
+    --danger:#D8544A;
+    --ok:#3E9A64;
 
-// Doit être IDENTIQUE au firebaseConfig utilisé dans index.html.
-firebase.initializeApp({
+    --c-M:#7FB3F5;      --t-M:#12233D;
+    --c-S:#F5A65B;      --t-S:#3D2606;
+    --c-N:#544A87;      --t-N:#FFFFFF;
+    --c-ADM:#9AA5B1;    --t-ADM:#1E2433;
+    --c-FOR:#4FADA3;    --t-FOR:#FFFFFF;
+    --c-CP:#6FCF7C;     --t-CP:#173A1D;
+    --c-CPA:#BBE7A9;    --t-CPA:#1E3A22;
+    --c-FER:#E8615A;    --t-FER:#FFFFFF;
+    --c-O:#EDEFF2;      --t-O:#7A8393;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}
+  h1,h2,h3,.brand{font-family:'Manrope',sans-serif;}
+  button{font-family:inherit;cursor:pointer;}
+  input,select{font-family:inherit;}
+
+  /* ---------- Login ---------- */
+  .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;
+    background:
+      radial-gradient(circle at 15% 20%, rgba(255,255,255,0.06), transparent 40%),
+      linear-gradient(135deg,var(--primary-dark),var(--primary) 60%,#3B4E82);}
+  .login-card{background:var(--surface);border-radius:16px;padding:40px 36px;width:100%;max-width:380px;box-shadow:0 24px 60px rgba(10,15,30,.35);}
+  .login-mark{width:44px;height:44px;border-radius:10px;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-family:'Manrope';font-weight:800;font-size:18px;margin-bottom:18px;}
+  .login-mark.skyplanning-logo{width:auto;height:auto;background:none;border-radius:0;padding:0;margin-bottom:22px;color:#E8342A;font-family:'Manrope';font-weight:800;font-size:28px;letter-spacing:.01em;justify-content:flex-start;}
+  .login-card h1{font-size:21px;margin:0 0 4px;font-weight:800;color:var(--ink);}
+  .login-card p.sub{margin:0 0 26px;color:var(--ink-soft);font-size:14px;}
+  .login-version{margin-top:22px;text-align:center;font-size:11px;color:var(--ink-soft);opacity:.6;letter-spacing:.02em;}
+  .field{margin-bottom:16px;}
+  .field label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margin-bottom:6px;letter-spacing:.02em;}
+  .field input{width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14.5px;color:var(--ink);background:#FBFCFE;outline:none;transition:border-color .15s;}
+  .field input:focus{border-color:var(--primary);background:#fff;}
+  .btn{border:none;border-radius:9px;padding:11px 18px;font-weight:700;font-size:14px;transition:transform .08s ease, opacity .15s;}
+  .btn:active{transform:scale(.98);}
+  .btn-primary{background:var(--primary);color:#fff;width:100%;margin-top:6px;}
+  .btn-primary:hover{background:var(--primary-dark);}
+  .btn-ghost{background:transparent;color:var(--primary);border:1.5px solid var(--border);}
+  .btn-ghost:hover{border-color:var(--primary);}
+  .btn-danger{background:#FBEAE9;color:var(--danger);}
+  .btn-danger:hover{background:#F6D9D7;}
+  .login-error{background:#FBEAE9;color:var(--danger);font-size:13px;font-weight:600;padding:9px 12px;border-radius:8px;margin-bottom:16px;}
+  .login-hint{margin-top:20px;font-size:12px;color:var(--ink-soft);background:var(--primary-light);padding:12px 14px;border-radius:10px;line-height:1.7;}
+  .login-hint code{background:#fff;padding:1px 5px;border-radius:4px;font-size:11.5px;}
+  .login-hint .row{display:flex;justify-content:space-between;align-items:center;}
+  .login-hint b{display:block;color:var(--primary);font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;}
+  .login-hint hr{border:none;border-top:1px solid #dbe1ee;margin:10px 0;}
+
+  /* ---------- Shell ---------- */
+  .shell{display:flex;min-height:100vh;}
+  .sidebar{width:222px;background:var(--primary-dark);color:#fff;display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;}
+  .sidebar-brand{padding:22px 20px 18px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,.08);}
+  .sidebar-brand .mark{width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;}
+  .sidebar-brand span{font-weight:800;font-size:15px;}
+  .sidebar-skyplanning{font-family:'Manrope',sans-serif;font-weight:800;font-size:17px;letter-spacing:.01em;color:#E8342A;}
+  .sidebar-nav{padding:14px 10px;flex:1;}
+  .sidebar-nav button{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:transparent;border:none;color:rgba(255,255,255,.72);padding:10px 12px;border-radius:8px;font-size:13.5px;font-weight:600;margin-bottom:3px;}
+  .sidebar-nav button:hover{background:rgba(255,255,255,.06);color:#fff;}
+  .sidebar-nav button.active{background:rgba(255,255,255,.14);color:#fff;}
+  .nav-badge{margin-left:auto;background:var(--danger);color:#fff;font-size:10.5px;font-weight:800;min-width:18px;height:18px;border-radius:20px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px;}
+  .sidebar-foot{padding:14px;border-top:1px solid rgba(255,255,255,.08);}
+  .sidebar-user{font-size:12.5px;color:rgba(255,255,255,.55);padding:0 6px 10px;}
+  .sidebar-user b{color:#fff;display:block;font-size:13.5px;}
+  .sidebar-foot button{width:100%;background:rgba(255,255,255,.08);color:#fff;border:none;padding:9px;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:8px;}
+  .sidebar-foot button:hover{background:rgba(255,255,255,.16);}
+
+  .main{flex:1;min-width:0;display:flex;flex-direction:column;}
+  .topbar{height:60px;flex-shrink:0;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 26px;position:relative;}
+  .topbar h2{font-size:16.5px;margin:0;font-weight:800;}
+  .content{flex:1;padding:24px 28px 40px;overflow:auto;}
+  .toast{position:fixed;bottom:22px;right:22px;background:var(--ink);color:#fff;padding:10px 16px;border-radius:9px;font-size:13px;font-weight:600;opacity:0;transform:translateY(8px);transition:all .2s;pointer-events:none;z-index:50;max-width:320px;}
+  .toast.show{opacity:1;transform:translateY(0);}
+  .toast.err{background:var(--danger);}
+
+  /* ---------- Notification bell ---------- */
+  .bell-btn{position:relative;width:38px;height:38px;border-radius:10px;border:1.5px solid var(--border);background:#fff;font-size:16px;display:flex;align-items:center;justify-content:center;}
+  .bell-btn:hover{border-color:var(--primary);}
+  .bell-dot{position:absolute;top:-3px;right:-3px;background:var(--danger);color:#fff;font-size:10px;font-weight:800;min-width:16px;height:16px;border-radius:20px;display:flex;align-items:center;justify-content:center;padding:0 3px;border:2px solid #fff;}
+  .bell-panel{position:absolute;top:52px;right:26px;width:320px;max-height:420px;overflow:auto;background:#fff;border:1px solid var(--border);border-radius:14px;box-shadow:0 16px 40px rgba(15,23,42,.16);z-index:30;}
+  .bell-panel-head{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
+  .bell-panel-head h4{margin:0;font-size:13.5px;font-weight:800;}
+  .bell-panel-head button{background:none;border:none;color:var(--primary);font-size:12px;font-weight:700;}
+  .notif-item{padding:12px 16px;border-bottom:1px solid #F0F2F6;font-size:12.5px;}
+  .notif-item:last-child{border-bottom:none;}
+  .notif-item.unread{background:var(--primary-light);}
+  .notif-item .msg{font-weight:600;color:var(--ink);line-height:1.45;}
+  .notif-item .date{color:var(--ink-soft);font-size:11px;margin-top:4px;}
+  .notif-empty{padding:28px 16px;text-align:center;color:var(--ink-soft);font-size:12.5px;}
+  .notif-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--primary-light);border:1px solid #cdd6ec;border-radius:12px;padding:11px 16px;margin-bottom:18px;font-size:12.5px;color:var(--primary-dark);}
+  .notif-banner button{background:var(--primary);color:#fff;border:none;padding:7px 13px;border-radius:8px;font-size:12px;font-weight:700;white-space:nowrap;}
+  .notif-banner .close{background:transparent;color:var(--ink-soft);padding:4px;font-size:16px;font-weight:400;}
+
+  /* ---------- Month nav ---------- */
+  .month-nav{display:flex;align-items:center;gap:10px;margin-bottom:18px;}
+  .month-nav-reset{display:flex;align-items:center;}
+  .month-nav-reset .month-nav{margin-bottom:0;}
+  .month-nav button.nav-arrow{width:32px;height:32px;border-radius:8px;border:1.5px solid var(--border);background:#fff;font-size:15px;font-weight:700;color:var(--primary);}
+  .month-nav button.nav-arrow:hover{background:var(--primary-light);}
+  .month-nav .month-label{font-family:'Manrope';font-weight:800;font-size:17px;min-width:190px;text-transform:capitalize;}
+  .month-nav .today-btn{margin-left:4px;font-size:12.5px;font-weight:700;color:var(--primary);background:var(--primary-light);border:none;padding:7px 12px;border-radius:7px;}
+
+  /* ---------- Legend / palette ---------- */
+  .legend{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px;}
+  /* ---------- Calendrier Mensuel (admin) : codes + actions dans le bandeau bleu ---------- */
+  .sidebar-extra{padding:4px 14px 14px;overflow-y:auto;}
+  .sidebar-extra-title{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:rgba(255,255,255,.5);margin:0 0 8px;}
+  .sidebar-extra .legend{flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:5px;margin-bottom:0;}
+  .sidebar-extra .legend .chip{width:100%;justify-content:flex-start;background:rgba(255,255,255,.08);color:#fff;border:2px solid transparent;font-size:11px;padding:6px 8px;box-shadow:none;}
+  .sidebar-extra .legend .chip:hover{background:rgba(255,255,255,.14);}
+  .sidebar-extra .legend .chip.active{border-color:#fff;background:rgba(255,255,255,.18);}
+  .sidebar-extra .legend .chip .dot.dot-outline{border-color:rgba(255,255,255,.5);}
+  .sidebar-extra .legend .chip.add-code{background:transparent;border:1.5px dashed rgba(255,255,255,.3);color:rgba(255,255,255,.7);justify-content:center;}
+  .sidebar-extra .btn-validate, .sidebar-extra .btn-gen, .sidebar-extra .icon-btn, .sidebar-extra .btn-primary{width:100%;text-align:center;margin-bottom:8px;font-size:11.5px;padding:9px 8px;white-space:normal;line-height:1.3;}
+  .sidebar-extra .btn-validate:last-child, .sidebar-extra .btn-gen:last-child, .sidebar-extra .icon-btn:last-child, .sidebar-extra .btn-primary:last-child{margin-bottom:0;}
+  .sidebar-extra .btn-primary{background:#fff;color:var(--primary-dark);margin-top:0;}
+  .sidebar-extra .btn-primary:hover{background:rgba(255,255,255,.85);}
+  .sidebar-extra .btn-gen{background:rgba(255,255,255,.08);color:#fff;border-color:rgba(255,255,255,.2);}
+  .sidebar-extra .btn-gen.active{background:#fff;color:var(--primary-dark);}
+  .sidebar-extra .icon-btn{background:rgba(255,255,255,.08);color:#fff;border-color:rgba(255,255,255,.2);}
+  .sidebar-extra .icon-btn:hover{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.35);color:#fff;}
+  .sidebar-extra .helper{color:rgba(255,255,255,.55);}
+  .chip{display:flex;align-items:center;gap:7px;border-radius:20px;padding:6px 12px 6px 8px;border:2px solid transparent;font-size:12.5px;font-weight:700;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.06);}
+  .chip .dot{width:16px;height:16px;border-radius:5px;flex-shrink:0;}
+  .chip .dot.dot-outline{border:1.5px dashed #C7CBD1;}
+  .chip.selectable{cursor:pointer;}
+  .chip.selectable:hover{border-color:var(--border);}
+  .chip.active{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-light);}
+  .chip.add-code{background:transparent;border:1.5px dashed var(--border);color:var(--ink-soft);}
+  .legend-hint{font-size:12.5px;color:var(--ink-soft);margin:-8px 0 16px;}
+  .legend-hint b{color:var(--primary);}
+  .legend-hint.alert-hint{background:#F5F0FE;border:1px solid #D8C8FA;color:#5B3EA6;padding:9px 14px;border-radius:10px;margin:0 0 12px;}
+  .legend-hint.alert-hint b{color:#5B3EA6;}
+  .legend-hint.lock-hint{background:#FDF2E3;border:1px solid #F5D9A8;color:#8A5A0A;padding:9px 14px;border-radius:10px;margin:0 0 12px;}
+  .legend-hint.lock-hint b{color:#8A5A0A;}
+  .legend-hint.change-hint{background:#FDF2E3;border:1px solid #F0C888;color:#8A5A0A;padding:9px 14px;border-radius:10px;margin:0 0 12px;}
+  .legend-hint.change-hint b{color:#C8830A;}
+  .btn-validate{border:none;border-radius:10px;padding:11px 20px;font-weight:800;font-size:13.5px;background:#F5A623;color:#fff;cursor:pointer;}
+  .btn-validate:hover{background:#DE9214;}
+  .btn-validate.validated{background:var(--ok);}
+  .btn-validate.validated:hover{background:#2F7A4D;}
+  .btn-gen{border:1.5px solid var(--border);border-radius:10px;padding:10px 18px;font-weight:800;font-size:13px;background:#fff;color:var(--primary);cursor:pointer;}
+  .btn-gen:hover{border-color:var(--primary);}
+  .btn-gen.active{background:#5B3EA6;border-color:#5B3EA6;color:#fff;}
+  .btn-gen.active:hover{background:#4A3186;}
+  .legend-hint.gen-hint{background:#F5F0FE;border:1px solid #D8C8FA;color:#5B3EA6;padding:9px 14px;border-radius:10px;margin:0 0 12px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;}
+  .legend-hint.mobile-restricted-hint{background:#EAF0F6;border:1px solid #C7D6E8;color:var(--primary-dark);padding:9px 14px;border-radius:10px;margin:0 0 14px;}
+  .legend-hint.gen-hint b{color:#5B3EA6;}
+  td.day-cell.gen-selected{box-shadow:inset 0 0 0 2px #5B3EA6;background:#F5F0FE;}
+  .not-validated-card{background:var(--surface);border:1.5px dashed var(--border);border-radius:16px;padding:48px 30px;text-align:center;max-width:460px;margin:20px auto;}
+  .not-validated-icon{font-size:34px;margin-bottom:12px;}
+  .not-validated-card h3{margin:0 0 10px;font-size:16px;font-weight:800;}
+  .not-validated-card p{margin:0 0 8px;font-size:13.5px;color:var(--ink-soft);line-height:1.5;}
+  .not-validated-card p.helper{font-size:12px;margin-top:14px;}
+
+  /* ---------- Grid ---------- */
+  .grid-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:auto;box-shadow:0 1px 3px rgba(15,23,42,.05);}
+  table.grid{border-collapse:separate;border-spacing:0;width:100%;table-layout:fixed;}
+  table.grid th, table.grid td{border-bottom:1px solid var(--border);border-right:1px solid var(--border);}
+  table.grid th.emp-col, table.grid td.emp-col{position:sticky;left:0;background:#fff;z-index:2;text-align:left;padding:8px 13px;font-size:11.5px;font-weight:700;box-shadow:2px 0 4px rgba(15,23,42,.04);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  table.grid thead th{position:sticky;top:0;background:#fbfcfe;z-index:1;font-size:10.5px;color:var(--ink-soft);font-weight:700;padding:7px 2px;text-align:center;}
+  table.grid thead th.emp-col{z-index:3;background:#fbfcfe;}
+  table.grid thead th .dow{display:block;font-size:9px;font-weight:600;color:#A7AFBC;text-transform:uppercase;}
+  table.grid thead th.weekend{background:#F3F0FA;}
+  table.grid thead th.holiday{background:#FCEAE9;color:var(--danger);}
+  table.grid thead th.week-head{position:static;background:#EAF0F6;color:var(--primary-dark);font-size:10px;letter-spacing:.04em;border-top:1px solid var(--border);}
+  table.grid td.day-cell{text-align:center;padding:0;height:36px;cursor:pointer;position:relative;overflow:hidden;touch-action:manipulation;user-select:none;-webkit-user-select:none;}
+  table.grid td.day-cell .day-cell-inner{display:flex;flex-direction:column;height:100%;width:100%;}
+  table.grid td.day-cell .code-badge{flex:1;}
+  table.grid td.day-cell.weekend{background:#FAF9FD;}
+  table.grid td.day-cell .code-badge{display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:10.5px;font-weight:800;}
+  table.grid td.day-cell:hover .code-badge{outline:2px solid var(--primary);outline-offset:-2px;}
+  table.grid td.day-cell.painted{animation:flash .28s ease;}
+  table.grid td.day-cell.invalid-day{background:repeating-linear-gradient(45deg,#EDEFF2,#EDEFF2 6px,#E2E5EB 6px,#E2E5EB 12px);cursor:not-allowed;}
+  table.grid td.day-cell.invalid-day:hover .code-badge{outline:none;}
+  table.grid td.fonction-head{background:var(--primary-dark);color:#fff;font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:6.5px 13px;}
+  table.grid td.service-head{background:#8A96AE;color:#fff;font-weight:800;font-size:12px;text-transform:uppercase;letter-spacing:.06em;padding:8.5px 13px;}
+  .alert-badge{display:inline-flex;align-items:center;gap:3px;background:#E8615A;color:#fff;font-size:10px;font-weight:800;padding:2px 8px;border-radius:20px;margin-left:10px;text-transform:none;letter-spacing:0;vertical-align:middle;}
+  .alert-badge-dot{display:inline-block;color:var(--danger);font-size:11px;margin-left:5px;cursor:help;}
+  .alert-day-mark{position:absolute;top:2px;left:2px;width:6px;height:6px;border-radius:50%;background:#8B5CF6;z-index:2;}
+  @keyframes flash{0%{filter:brightness(1.5);}100%{filter:brightness(1);}}
+  .readonly td.day-cell{cursor:default;}
+  .readonly td.day-cell:hover .code-badge{outline:none;}
+
+  /* ---------- Employee mgmt ---------- */
+  .toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
+  .emp-list{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+  .emp-row{display:flex;align-items:center;gap:14px;padding:13px 18px;border-bottom:1px solid var(--border);}
+  .emp-row:last-child{border-bottom:none;}
+  .emp-avatar{width:36px;height:36px;border-radius:9px;background:var(--primary-light);color:var(--primary);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0;overflow:hidden;}
+  .emp-avatar img{width:100%;height:100%;object-fit:cover;display:block;}
+  .grid-emp-avatar{display:inline-flex;width:18px;height:18px;border-radius:50%;overflow:hidden;vertical-align:middle;margin-right:6px;background:var(--primary-light);color:var(--primary);align-items:center;justify-content:center;font-size:8px;font-weight:800;flex-shrink:0;}
+  .grid-emp-avatar img{width:100%;height:100%;object-fit:cover;display:block;}
+  .emp-info{flex:1;min-width:0;}
+  .emp-info .name{font-weight:700;font-size:13px;}
+  .emp-info .meta{font-size:12px;color:var(--ink-soft);margin-top:2px;}
+  .badge-inactive{background:#FBEAE9;color:var(--danger);font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;margin-left:8px;}
+  .badge-admin{background:var(--danger);color:#fff;font-size:11px;font-weight:800;padding:2px 9px;border-radius:20px;margin-left:8px;}
+  .validate-modal-icon{width:52px;height:52px;border-radius:50%;background:var(--primary-light);display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 14px;}
+  .validate-modal-icon.unlock{background:#FDF2E3;}
+  .other-validations-box{background:var(--bg);border-radius:10px;padding:12px 14px;margin:14px 0;max-height:140px;overflow:auto;}
+  .other-validations-title{font-size:11.5px;font-weight:700;color:var(--ink-soft);margin-bottom:8px;}
+  .other-validations-row{font-size:12.5px;padding:4px 0;color:var(--ink);}
+  .emp-actions{display:flex;gap:8px;}
+  .icon-btn{border:1.5px solid var(--border);background:#fff;border-radius:8px;padding:6px 11px;font-size:12.5px;font-weight:600;color:var(--ink-soft);}
+  .icon-btn:hover{border-color:var(--primary);color:var(--primary);}
+  .empty-state{text-align:center;padding:50px 20px;color:var(--ink-soft);}
+  /* ---------- Fonctionnalités (grand admin) ---------- */
+  .feat-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:18px;}
+  .feat-card h3{margin:0 0 14px;font-size:15px;}
+  .feat-toggle-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:11px 0;border-bottom:1px solid var(--border);cursor:pointer;}
+  .feat-toggle-row:last-child{border-bottom:none;}
+  .feat-toggle-label{font-weight:700;font-size:13.5px;}
+  .feat-toggle-desc{font-size:12px;color:var(--ink-soft);margin-top:2px;}
+  .feat-toggle-row input[type="checkbox"]{width:20px;height:20px;flex-shrink:0;accent-color:var(--primary);cursor:pointer;}
+  .feat-service-table{width:100%;border-collapse:collapse;}
+  .feat-service-table th{text-align:left;font-size:11.5px;color:var(--ink-soft);font-weight:700;padding:8px 10px;border-bottom:1.5px solid var(--border);}
+  .feat-service-table th:not(:first-child){text-align:center;}
+  .feat-service-table td{padding:9px 10px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600;}
+  .feat-service-table input[type="checkbox"]{width:18px;height:18px;accent-color:var(--primary);cursor:pointer;}
+  .feat-service-table tr:last-child td{border-bottom:none;}
+
+  /* ---------- Modal ---------- */
+  .overlay{position:fixed;inset:0;background:rgba(20,25,40,.45);display:flex;align-items:center;justify-content:center;z-index:40;padding:20px;}
+  .modal{background:#fff;border-radius:16px;padding:28px;width:100%;max-width:420px;max-height:90vh;overflow:auto;position:relative;}
+  .modal h3{margin:0 0 18px;font-size:17px;font-weight:800;}
+  .modal .row2{display:flex;gap:12px;}
+  .modal .row2 .field{flex:1;}
+  .modal-actions{display:flex;gap:10px;margin-top:22px;}
+  .modal-actions .btn{flex:1;}
+  .pw-row{display:flex;gap:8px;}
+  .pw-row input{flex:1;}
+  .pw-row button{white-space:nowrap;}
+
+  /* ---------- Calendrier salarié (vue cartes) ---------- */
+  .emp-cal-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:22px;font-size:13px;font-weight:700;color:var(--ink-soft);}
+  .emp-cal-toolbar select{padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-weight:700;color:var(--ink);background:#fff;font-size:13px;}
+  .emp-cal-toolbar .arrow{width:30px;height:30px;border-radius:8px;border:1.5px solid var(--border);background:#fff;font-weight:700;color:var(--primary);font-size:13px;}
+  .emp-cal-toolbar .arrow:hover{background:var(--primary-light);}
+  .emp-cal-toolbar .btn-afficher{background:var(--primary);color:#fff;border:none;border-radius:8px;padding:9px 16px;font-weight:700;font-size:13px;}
+  .emp-cal-toolbar .btn-afficher:hover{background:var(--primary-dark);}
+  .emp-cal-toolbar .btn-today{background:#fff;border:1.5px solid var(--border);border-radius:8px;padding:9px 14px;font-weight:700;font-size:13px;color:var(--ink);display:flex;align-items:center;gap:6px;}
+  .emp-cal-toolbar .btn-today:hover{border-color:var(--primary);}
+
+  .cal-dow-row{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-bottom:8px;}
+  .cal-dow-row div{text-align:center;font-size:11px;font-weight:800;color:var(--ink-soft);letter-spacing:.05em;}
+  .cal-week-num{width:34px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:800;color:var(--primary-dark);background:#EAF0F6;border-radius:9px;}
+  .cal-week-row{display:flex;gap:10px;margin-bottom:10px;align-items:stretch;}
+  .cal-week-days{flex:1;min-width:0;display:grid;grid-template-columns:repeat(7,1fr);gap:10px;}
+  .cal-day{border-radius:12px;border:1.5px solid var(--border);background:#fff;padding:10px 11px;min-height:82px;box-shadow:0 1px 2px rgba(15,23,42,.04);}
+  .cal-day.blank{background:transparent;border:none;box-shadow:none;}
+  .cal-day.today{border-color:var(--danger);border-width:2px;}
+  .cal-day .d-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;flex-wrap:wrap;gap:4px;}
+  .cal-day .d-num{font-weight:800;font-size:14px;}
+  .cal-day .d-dow{font-size:10px;color:var(--ink-soft);text-transform:uppercase;font-weight:700;margin-left:4px;}
+  .cal-day .d-fer{font-size:9px;font-weight:800;color:var(--danger);background:#FBEAE9;padding:2px 6px;border-radius:6px;}
+  .cal-day .d-code{border-radius:8px;padding:8px 9px;font-weight:800;font-size:12.5px;text-align:center;}
+  .cal-day .d-comment{margin-top:6px;font-size:10px;color:var(--ink-soft);background:var(--bg);border-radius:6px;padding:4px 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .cal-day .d-desid{margin-top:6px;font-size:9.5px;font-weight:700;border-radius:6px;padding:4px 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .cal-day.desid-pending-card{animation:desidPulse 1.8s ease-in-out infinite;}
+  .cal-day.selectable-day{cursor:pointer;}
+  .cal-day.selectable-day:active{border-color:var(--primary);}
+  .cal-day-compact{min-height:0;padding:6px 5px;}
+  .cal-day-compact .d-head{margin-bottom:4px;}
+  .cal-day-compact .d-num{font-size:11px;}
+  .cal-day-compact .d-dow{font-size:8px;}
+  .cal-day-compact .d-fer{font-size:7px;padding:1px 4px;}
+  .cal-day-compact .d-code{font-size:9.5px;padding:4px 3px;border-radius:6px;}
+  .cal-day-compact .indiv-draft{margin-top:3px;font-size:8px;font-weight:800;text-align:center;border-radius:5px;padding:2px 3px;}
+
+  .cal-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(108px,1fr));gap:10px;}
+  .cal-stat{background:#EAF0EC;border-radius:10px;padding:15px 10px;text-align:center;}
+  .cal-stat b{display:block;font-size:21px;font-weight:800;color:var(--ink);font-family:'Manrope';}
+  .cal-stat span{font-size:10px;color:var(--ink-soft);font-weight:700;text-transform:uppercase;letter-spacing:.03em;}
+  @media(max-width:760px){
+    .cal-grid, .cal-dow-row{grid-template-columns:repeat(7,1fr);gap:4px;}
+    .cal-day{padding:6px;min-height:64px;}
+    .cal-day .d-code{font-size:10.5px;padding:5px 4px;}
+  }
+
+  /* ---------- Gestion des codes ---------- */
+  .codes-section{margin-bottom:32px;}
+  .codes-section h3{font-size:14px;font-weight:800;margin:0 0 12px;}
+  .codes-table{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+  .code-row{display:flex;align-items:center;gap:10px;padding:13px 18px;border-bottom:1px solid var(--border);}
+  .code-row:last-child{border-bottom:none;}
+  .code-row.head{background:#FBFCFE;padding:10px 18px;}
+  .code-row.head > div{font-size:10.5px;font-weight:800;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;}
+  .col-code{width:60px;flex-shrink:0;font-weight:800;font-size:13px;}
+  .col-libelle{width:170px;flex-shrink:0;font-size:13px;font-weight:600;}
+  .col-couleur{width:50px;flex-shrink:0;}
+  .col-couleur .swatch{width:20px;height:20px;border-radius:5px;border:1px solid rgba(0,0,0,.08);}
+  .col-duree{width:55px;flex-shrink:0;font-size:12.5px;color:var(--ink-soft);}
+  .col-horaires{width:140px;flex-shrink:0;font-size:12.5px;color:var(--ink-soft);}
+  .col-desc{flex:1;min-width:0;font-size:12.5px;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .col-actions{display:flex;gap:8px;flex-shrink:0;}
+  .code-act-btn{width:32px;height:32px;border-radius:8px;border:1.5px solid var(--border);background:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;}
+  .code-act-btn:hover{border-color:var(--primary);}
+  .code-act-btn.del{background:#FBEAE9;border-color:#FBEAE9;color:var(--danger);}
+  .code-act-btn.del:hover{background:#F6D9D7;}
+  @media(max-width:900px){
+    .col-desc{display:none;}
+  }
+  @media(max-width:700px){
+    .col-horaires,.col-duree{display:none;}
+  }
+
+  /* ---------- Désidératas : indicateurs sur la grille ---------- */
+  .desid-strip{flex-shrink:0;height:13px;display:flex;align-items:center;justify-content:center;gap:2px;font-size:8px;font-weight:800;letter-spacing:.01em;line-height:1;position:relative;}
+  .desid-strip-icon{font-size:7px;}
+  .desid-strip.pending{animation:desidStripPulse 1.8s ease-in-out infinite;}
+  @keyframes desidStripPulse{0%,100%{opacity:1;}50%{opacity:.55;}}
+  td.day-cell.desid-pending{box-shadow:inset 0 0 0 1.5px #F5A623;}
+  td.day-cell.desid-refused{box-shadow:inset 0 0 0 1.5px #E8615A;}
+  td.day-cell.has-change-pending{box-shadow:inset 0 0 0 1.5px #C8830A;}
+  .change-pastille{position:absolute;bottom:2px;left:2px;width:7px;height:7px;border-radius:50%;z-index:3;cursor:help;}
+  .change-pastille.pending{background:#F5A623;box-shadow:0 0 0 2px rgba(245,166,35,.3);}
+  .change-pastille.acked{background:#8A94A6;}
+  .grid-holiday-mark{position:absolute;top:1px;left:2px;font-size:11px;font-weight:900;color:var(--danger);line-height:1;z-index:3;pointer-events:none;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 2px #fff,0 0 2px #fff;}
+  .cmt-dot{position:absolute;top:3px;width:7px;height:7px;border-radius:50%;z-index:2;}
+  .cmt-dot.pub{right:3px;background:var(--danger);}
+  .cmt-dot.priv{right:13px;background:var(--primary);}
+  .tab-switch{display:flex;background:var(--bg);border-radius:9px;padding:3px;gap:3px;}
+  .tab-btn{flex:1;border:none;background:transparent;padding:8px 10px;border-radius:7px;font-size:12.5px;font-weight:700;color:var(--ink-soft);}
+  .tab-btn.active{background:#fff;color:var(--primary);box-shadow:0 1px 3px rgba(15,23,42,.1);}
+  .recap-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;margin-top:22px;overflow:hidden;}
+  .recap-card h3{font-size:14px;font-weight:800;margin:0;padding:16px 18px;border-bottom:1px solid var(--border);}
+  .recap-list{max-height:320px;overflow:auto;}
+  .recap-row{display:flex;gap:16px;align-items:baseline;padding:12px 18px;border-bottom:1px solid #F0F2F6;font-size:12.5px;cursor:pointer;}
+  .recap-row:last-child{border-bottom:none;}
+  .recap-row:hover{background:var(--primary-light);}
+  .recap-row .recap-date{color:var(--ink-soft);font-weight:700;flex-shrink:0;width:70px;}
+  .recap-row .recap-name{font-weight:700;flex-shrink:0;width:150px;}
+  .recap-row .recap-text{color:var(--ink-soft);flex:1;min-width:0;}
+
+  /* ---------- Gestion des salariés : fonctions, services, glisser-déposer ---------- */
+  .filter-select{padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font-weight:600;font-size:12.5px;color:var(--ink);background:#fff;}
+  .fonction-section{margin-bottom:20px;}
+  .fonction-section-head{background:var(--primary-dark);color:#fff;font-weight:800;font-size:12px;text-transform:uppercase;letter-spacing:.05em;padding:9px 16px;border-radius:10px 10px 0 0;}
+  .fonction-section .emp-list{border-radius:0 0 14px 14px;min-height:20px;transition:background .15s;}
+  .service-block{margin-bottom:28px;}
+  .service-block-head{background:#8A96AE;color:#fff;font-weight:800;font-size:13px;text-transform:uppercase;letter-spacing:.06em;padding:10px 16px;border-radius:12px;margin-bottom:10px;}
+  .drop-zone.drop-over{background:var(--primary-light);}
+  .emp-row{position:relative;}
+  .emp-row[draggable="true"]{cursor:grab;}
+  .emp-row.dragging{opacity:.4;}
+  .drag-handle{color:var(--ink-soft);font-size:15px;cursor:grab;padding:0 2px;user-select:none;}
+  .list-mgr{max-height:280px;overflow:auto;border:1px solid var(--border);border-radius:10px;}
+  .list-mgr-row{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600;}
+  .list-mgr-row:last-child{border-bottom:none;}
+
+  /* ---------- Désidératas : pages listing ---------- */
+  .desid-form-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px;max-width:560px;}
+  .archive-toggle{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--ink-soft);padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;background:#fff;}
+  .desid-list{display:flex;flex-direction:column;gap:10px;}
+  .desid-row{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap;}
+  .desid-row-main{flex:1;min-width:220px;}
+  .desid-row-name{font-weight:800;font-size:13.5px;margin-bottom:2px;}
+  .desid-row-period{font-size:12.5px;color:var(--ink-soft);font-weight:700;}
+  .desid-row-comment{font-size:12px;color:var(--ink-soft);margin-top:6px;background:var(--bg);padding:7px 10px;border-radius:8px;max-width:420px;}
+  .desid-row-side{display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0;}
+  .status-badge{font-size:11px;font-weight:800;padding:4px 11px;border-radius:20px;white-space:nowrap;}
+
+  /* ---------- Journal des modifications post-validation ---------- */
+  .change-log-list{display:flex;flex-direction:column;}
+  .change-row{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:13px 18px;border-bottom:1px solid #F0F2F6;flex-wrap:wrap;}
+  .change-row:last-child{border-bottom:none;}
+  .change-row.acked{opacity:.55;}
+  .change-row-main{flex:1;min-width:220px;}
+  .change-row-name{font-weight:800;font-size:13px;}
+  .change-row-date{font-weight:600;color:var(--ink-soft);}
+  .change-row-codes{display:flex;align-items:center;gap:8px;margin-top:6px;}
+  .change-row-codes .chip{font-size:11.5px;padding:4px 10px;}
+
+  /* ---------- Alertes ---------- */
+  .alert-summary-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px;}
+  .alert-summary-card{border-radius:14px;padding:18px 16px;text-align:center;}
+  .alert-summary-card b{display:block;font-family:'Manrope';font-weight:800;font-size:26px;}
+  .alert-summary-card span{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;}
+  .alert-summary-card.daily{background:#FBEAE9;color:#C0392B;}
+  .alert-summary-card.weekly{background:#FDF2E3;color:#B5690A;}
+  .alert-summary-card.rules{background:var(--primary-light);color:var(--primary-dark);}
+  .alert-card{display:flex;gap:14px;align-items:flex-start;background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--danger);border-radius:12px;padding:14px 16px;margin-bottom:10px;}
+  .alert-card-icon{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;}
+  .alert-card-body{flex:1;min-width:0;}
+  .alert-card-title{font-weight:800;font-size:13.5px;}
+  .alert-card-sub{font-size:12px;color:var(--ink-soft);margin-top:2px;}
+  .alert-card-names{font-size:11.5px;color:var(--ink-soft);margin-top:5px;font-style:italic;}
+
+  .rule-list{display:flex;flex-direction:column;gap:10px;}
+  .rule-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;}
+  .rule-card.rule-inactive{opacity:.55;}
+  .rule-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;}
+  .rule-card-title{font-weight:800;font-size:13.5px;}
+  .rule-card-sub{font-size:12px;color:var(--ink-soft);margin-top:4px;}
+  .rule-card-actions{display:flex;gap:8px;margin-top:12px;}
+
+  .switch{position:relative;display:inline-block;width:38px;height:22px;flex-shrink:0;}
+  .switch input{opacity:0;width:0;height:0;}
+  .switch-track{position:absolute;inset:0;background:#D5D9E0;border-radius:20px;transition:.15s;cursor:pointer;}
+  .switch-track::before{content:'';position:absolute;width:16px;height:16px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.15s;}
+  .switch input:checked + .switch-track{background:var(--ok);}
+  .switch input:checked + .switch-track::before{transform:translateX(16px);}
+
+  .check-list{max-height:150px;overflow:auto;border:1.5px solid var(--border);border-radius:9px;padding:8px 12px;background:#FBFCFE;}
+  .check-item{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;padding:5px 0;}
+  .check-item input{width:15px;height:15px;}
+  .type-toggle{display:flex;gap:8px;}
+  .type-toggle-opt{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 10px;border:1.5px solid var(--border);border-radius:9px;font-size:12.5px;font-weight:700;cursor:pointer;background:#FBFCFE;}
+  .type-toggle-opt input{position:absolute;opacity:0;width:0;height:0;}
+  .type-toggle-opt.active{border-color:var(--primary);background:var(--primary-light);color:var(--primary-dark);}
+  .admin-rights-field{background:#FDF7E8;border:1.5px solid #F0DFA8;border-radius:10px;padding:14px;margin-bottom:14px;}
+  .admin-rights-toggle{display:flex;align-items:center;gap:8px;font-size:13.5px;cursor:pointer;}
+  .admin-rights-toggle input{width:16px;height:16px;}
+
+  /* ---------- Mon planning annuel ---------- */
+  .annual-legend-hint{background:var(--primary-light);border:1px solid #cdd6ec;color:var(--primary-dark);padding:10px 14px;border-radius:10px;margin-bottom:16px;font-size:12px;line-height:1.5;}
+  .annual-legend-hint b{color:var(--primary-dark);}
+  .annual-grid-card{overflow:auto;margin-bottom:22px;}
+  table.annual-grid{border-collapse:separate;border-spacing:0;width:100%;}
+  table.annual-grid thead th{background:#fbfcfe;font-size:10px;color:var(--ink-soft);font-weight:700;padding:5px 1px;text-align:center;min-width:26px;border-bottom:1px solid var(--border);}
+  table.annual-grid thead th .dow{display:block;font-size:8px;font-weight:600;color:#A7AFBC;text-transform:uppercase;}
+  table.annual-grid thead th.weekend{background:#F3F0FA;}
+  table.annual-grid thead th.holiday{background:#FCEAE9;color:var(--danger);}
+  table.annual-grid thead th.annual-week-head{background:#EAF0F6;color:var(--primary-dark);font-size:10px;font-weight:800;letter-spacing:.04em;border-top:1px solid var(--border);}
+  .annual-month-block{margin-bottom:16px;}
+  .annual-month-block-title{font-size:13px;font-weight:800;margin-bottom:8px;display:flex;align-items:center;gap:6px;}
+  .annual-month-lock{font-size:11px;opacity:.6;}
+  table.annual-grid td.annual-cell{border-bottom:1px solid #F0F2F6;border-right:1px solid #F0F2F6;padding:0;height:34px;min-width:26px;text-align:center;cursor:pointer;overflow:hidden;touch-action:manipulation;}
+  table.annual-grid td.annual-cell.empty{background:repeating-linear-gradient(45deg,#F7F8FA,#F7F8FA 4px,#F0F1F4 4px,#F0F1F4 8px);cursor:default;}
+  table.annual-grid td.annual-cell.invalid{background:repeating-linear-gradient(45deg,#EDEFF2,#EDEFF2 4px,#E2E5EB 4px,#E2E5EB 8px);cursor:not-allowed;}
+  table.annual-grid td.annual-cell.selected{box-shadow:inset 0 0 0 2px #5B3EA6;}
+  table.annual-grid .annual-cell-inner{position:relative;width:100%;height:100%;}
+  table.annual-grid .annual-cell-official{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:8.5px;font-weight:800;}
+  table.annual-grid .annual-holiday-mark{position:absolute;top:1px;left:2px;font-size:9.5px;font-weight:900;color:var(--danger);line-height:1;z-index:3;pointer-events:none;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 2px #fff,0 0 2px #fff;}
+  table.annual-grid .annual-draft-bubble{position:absolute;bottom:-2px;right:-2px;width:14px;height:14px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:7.2px;font-weight:900;box-shadow:0 0 0 1.5px #fff,0 1px 2px rgba(0,0,0,.2);z-index:3;pointer-events:none;}
+  table.annual-grid td.annual-cell:hover .annual-cell-official{outline:2px solid var(--primary);outline-offset:-2px;}
+
+  .annual-quick-choices{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
+  .annual-quick-btn{flex:1;min-width:120px;border:1.5px solid var(--border);background:#FBFCFE;border-radius:12px;padding:16px 12px;font-size:13.5px;font-weight:800;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;}
+  .annual-quick-btn:hover{border-color:var(--primary);background:var(--primary-light);}
+  .annual-quick-btn .annual-quick-emoji{font-size:22px;}
+  .annual-quick-btn.small{flex:none;min-width:auto;padding:9px 14px;flex-direction:row;font-size:12px;}
+
+  .cp-form{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;margin-bottom:10px;max-width:560px;}
+  .cp-form-header{display:flex;gap:14px;align-items:flex-start;margin-bottom:20px;padding-bottom:18px;border-bottom:1px solid var(--border);}
+  .cp-form-icon{width:42px;height:42px;border-radius:11px;background:var(--primary-light);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;}
+  .cp-form-header h3{margin:0 0 4px;font-size:15px;font-weight:800;}
+  .cp-form-header p{margin:0;font-size:12px;color:var(--ink-soft);line-height:1.5;}
+  .cp-form-body{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:20px;}
+  .cp-form-field{flex:1;min-width:180px;}
+  .cp-form-field label{display:block;font-size:12.5px;font-weight:700;color:var(--ink-soft);margin-bottom:7px;}
+  .cp-input-group{display:flex;align-items:stretch;border:1.5px solid var(--border);border-radius:9px;overflow:hidden;background:#FBFCFE;}
+  .cp-input-group input{flex:1;border:none;background:transparent;padding:11px 12px;font-size:15px;font-weight:700;color:var(--ink);outline:none;width:0;}
+  .cp-input-group input:focus{background:#fff;}
+  .cp-input-group:focus-within{border-color:var(--primary);}
+  .cp-input-suffix{display:flex;align-items:center;padding:0 14px;background:var(--primary-light);color:var(--primary-dark);font-size:12.5px;font-weight:700;}
+  .cp-form-body .btn{width:auto;margin:0;padding:12px 20px;}
+  .cp-balance-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+  @media(max-width:760px){
+    table.annual-grid td.annual-cell{min-width:22px;height:30px;}
+    table.annual-grid th{min-width:22px;font-size:9px;}
+    .annual-month-block-title{font-size:12px;}
+    .annual-cell-official{font-size:7.5px;}
+    .annual-draft-bubble{width:14px;height:14px;font-size:6.1px;}
+    .annual-holiday-mark{font-size:7.5px;}
+    .cp-form-body{flex-direction:column;align-items:stretch;}
+  }
+
+  .helper{font-size:11.5px;color:var(--ink-soft);margin-top:4px;}
+
+  /* ---------- Bandeau d'invitation à la rotation (mobile portrait) ---------- */
+  .rotate-banner{display:none;position:fixed;left:0;right:0;bottom:0;z-index:60;background:var(--primary-dark);color:#fff;padding:14px 16px;align-items:center;gap:10px;flex-wrap:wrap;box-shadow:0 -6px 20px rgba(0,0,0,.25);}
+  .rotate-banner-icon{font-size:20px;animation:rotateWiggle 1.6s ease-in-out infinite;}
+  @keyframes rotateWiggle{0%,100%{transform:rotate(0deg);}50%{transform:rotate(-90deg);}}
+  .rotate-banner-text{flex:1;min-width:140px;font-size:12.5px;font-weight:600;}
+  .rotate-banner-btn{background:#fff;color:var(--primary-dark);border:none;border-radius:8px;padding:9px 14px;font-size:12px;font-weight:800;white-space:nowrap;}
+  .rotate-banner-dismiss{background:transparent;color:rgba(255,255,255,.75);border:none;font-size:11.5px;font-weight:600;padding:6px 4px;white-space:nowrap;}
+
+  /* ---------- Responsive : mobile portrait ---------- */
+  @media(max-width:760px) and (orientation:portrait){
+    .rotate-banner.show{display:flex;}
+  }
+
+  /* ---------- Responsive général (tous mobiles) ---------- */
+  @media(max-width:760px){
+    .sidebar{width:64px;}
+    .sidebar-nav button span.label, .sidebar-user, .sidebar-foot button span.label{display:none;}
+    .sidebar-skyplanning{font-size:11px;letter-spacing:0;}
+    .sidebar-nav button{justify-content:center;}
+    .content{padding:12px;padding-bottom:70px;}
+    .bell-panel{right:10px;width:88vw;}
+    .topbar{padding:0 14px;height:54px;}
+    .topbar h2{font-size:14px;}
+    .grid-card{-webkit-overflow-scrolling:touch;border-radius:10px;}
+    table.grid td.day-cell{min-width:40px;height:44px;}
+    table.grid th{min-width:40px;}
+    table.grid th.emp-col, table.grid td.emp-col{min-width:120px;font-size:11px;}
+    /* Planning équipe (lecture seule) : pas besoin de grandes zones tactiles
+       comme sur la grille éditable de l'admin — on réduit d'environ 15% pour
+       que davantage de jours tiennent à l'écran sans trop de défilement. */
+    table.grid.readonly td.day-cell{min-width:34px;height:37px;}
+    table.grid.readonly th{min-width:34px;font-size:8px;}
+    table.grid.readonly th .dow{font-size:8px;}
+    table.grid.readonly th.week-head{font-size:9px;}
+    table.grid.readonly th.emp-col, table.grid.readonly td.emp-col{min-width:102px;font-size:9.5px;padding:7px 11px;}
+    table.grid.readonly td.day-cell .code-badge{font-size:9.5px;}
+    .month-nav .month-label{font-size:15px;min-width:auto;}
+    .legend{gap:6px;}
+    .chip{font-size:11px;padding:5px 9px 5px 6px;}
+    .modal{padding:20px;max-width:94vw;}
+    .row2{flex-direction:column;gap:0;}
+    .toolbar{flex-direction:column;align-items:stretch;}
+    .desid-row{flex-direction:column;}
+    .desid-row-side{align-items:flex-start;flex-direction:row;flex-wrap:wrap;}
+    .alert-summary-row{grid-template-columns:repeat(2,1fr);}
+    .cal-week-days{gap:6px;}
+    .cal-day{padding:7px 8px;min-height:70px;}
+    .btn-validate, .btn-gen{width:100%;text-align:center;}
+    /* Planning individuel : calendrier du mois qui occupe tout l'écran visible,
+       sans défilement — le nombre de semaines varie (4 à 6) donc chaque
+       semaine se partage équitablement la hauteur restante. */
+    .indiv-mobile-wrap{display:flex;flex-direction:column;height:calc(100vh - 54px - 12px - 70px);min-height:340px;}
+    .indiv-hint{font-size:10px;margin:4px 0 6px;line-height:1.3;flex-shrink:0;}
+    .indiv-legend{flex-shrink:0;gap:4px;}
+    .indiv-legend .chip{font-size:9.5px;padding:3px 7px 3px 5px;}
+    .indiv-dow-row{flex-shrink:0;}
+    .indiv-weeks{flex:1;min-height:0;display:flex;flex-direction:column;gap:3px;}
+    .indiv-week-row{flex:1;min-height:0;gap:3px;}
+    .indiv-week-row .cal-day-compact{height:100%;min-height:0;display:flex;flex-direction:column;justify-content:center;padding:3px 4px;}
+    .indiv-week-row .cal-day-compact .d-head{margin-bottom:2px;}
+    .indiv-week-row .cal-day-compact .d-code{padding:2px 2px;}
+    .indiv-week-row .cal-day-compact .indiv-draft{margin-top:1px;padding:1px 2px;}
+  }
+
+  /* ---------- Responsive : mobile paysage (maximiser l'espace vertical) ---------- */
+  @media(max-width:900px) and (orientation:landscape) and (max-height:500px){
+    .sidebar{width:52px;padding-top:0;}
+    .sidebar-brand{padding:10px 8px;}
+    .sidebar-brand span, .sidebar-skyplanning{display:none;}
+    .sidebar-nav{padding:6px;}
+    .sidebar-nav button{padding:8px 4px;margin-bottom:2px;justify-content:center;}
+    .sidebar-nav button span.label{display:none;}
+    .sidebar-user{display:none;}
+    .sidebar-foot{padding:6px;}
+    .sidebar-foot button span.label{display:none;}
+    .sidebar-foot button{padding:7px 4px;}
+    .topbar{height:40px;padding:0 10px;}
+    .topbar h2{font-size:12px;}
+    .content{padding:6px 8px;}
+    .month-nav{margin-bottom:6px;}
+    .legend-hint{margin:0 0 6px;padding:5px 9px;font-size:10.5px;}
+    .legend{margin-bottom:6px;gap:5px;}
+    .chip{padding:4px 8px 4px 5px;font-size:10px;}
+    table.grid td.day-cell{height:32px;}
+    .cal-day{min-height:52px;padding:5px 6px;}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="rotateBanner" class="rotate-banner">
+  <div class="rotate-banner-icon">🔄</div>
+  <div class="rotate-banner-text">Tournez votre téléphone pour une meilleure vue du planning</div>
+  <button id="rotateBtn" class="rotate-banner-btn">Passer en paysage</button>
+  <button id="rotateDismiss" class="rotate-banner-dismiss">Continuer quand même ✕</button>
+</div>
+<div class="toast" id="toast"></div>
+
+<!-- Firebase SDK (compat v9/v10) -->
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging-compat.js"></script>
+
+<script>
+/* ============================================================
+   DONNÉES DE RÉFÉRENCE
+   ============================================================ */
+const DEFAULT_CODES = [
+  {code:'M',   label:'Matin',          color:'var(--c-M)',   text:'var(--t-M)',   startTime:'05:00', endTime:'14:30', description:'Service matin semaine', isWork:true},
+  {code:'S',   label:'Soir',           color:'var(--c-S)',   text:'var(--t-S)',   startTime:'14:00', endTime:'23:30', description:'Service soir', isWork:true},
+  {code:'N',   label:'Nuit',           color:'var(--c-N)',   text:'var(--t-N)',   startTime:'22:00', endTime:'06:00', description:'Service nuit', isWork:true},
+  {code:'ADM', label:'Administratif',  color:'var(--c-ADM)', text:'var(--t-ADM)', startTime:'09:00', endTime:'18:00', description:'Horaire administratif', isWork:true},
+  {code:'FOR', label:'Formation',      color:'var(--c-FOR)', text:'var(--t-FOR)', startTime:'09:00', endTime:'17:00', description:'Formation ou stage', isWork:true},
+  {code:'CP',  label:'Congé payé',     color:'var(--c-CP)',  text:'var(--t-CP)',  startTime:'', endTime:'', description:'Congé payé', isWork:false},
+  {code:'CPA', label:'CPA',            color:'var(--c-CPA)', text:'var(--t-CPA)', startTime:'', endTime:'', description:'Congé payé anticipé', isWork:false},
+  {code:'FER', label:'Férié',          color:'var(--c-FER)', text:'var(--t-FER)', startTime:'', endTime:'', description:'Jour férié', isWork:false},
+  {code:'O',   label:'Repos',          color:'var(--c-O)',   text:'var(--t-O)',   startTime:'', endTime:'', description:'Jour de repos', isWork:false},
+  {code:'VIDE',label:'Case vide',      color:'#FFFFFF',      text:'#B0B4BC',      startTime:'', endTime:'', description:'Efface toute activité — case complètement blanche', isWork:false},
+];
+const DOW = ['L','M','M','J','V','S','D'];
+const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
+const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+const APP_VERSION = 'v1.1';
+const APP_VERSION_DATE = '21/08/2026';
+/* ============================================================
+   FIREBASE — CONFIGURATION & INITIALISATION
+   ============================================================ */
+const firebaseConfig = {
   apiKey: "AIzaSyDyxBub9vexjpmAwlyuNgKd44t2fYqGeTw",
   authDomain: "skyplanning-26392.firebaseapp.com",
   projectId: "skyplanning-26392",
   storageBucket: "skyplanning-26392.firebasestorage.app",
   messagingSenderId: "507713371403",
-  appId: "1:507713371403:web:d321e1e5aea4b94570f60e",
-});
-
-const messaging = firebase.messaging();
-
-// Affiche la notification système quand un push FCM arrive alors que
-// l'appli n'est PAS au premier plan (onglet fermé, téléphone verrouillé...).
-messaging.onBackgroundMessage((payload) => {
-  const title = (payload.notification && payload.notification.title) || "SKYPLANNING";
-  const body = (payload.notification && payload.notification.body) || "";
-  self.registration.showNotification(title, {
-    body,
-    icon: "/icon-192.png",
-    badge: "/icon-192.png",
+  appId: "1:507713371403:web:d321e1e5aea4b94570f60e"
+};
+const FCM_VAPID_KEY = "BAFLMJt5c1KfwS8tmNmqK2b1eRz1WJar5xqI4ZDp42we2J-NFKzMn7r_UZfgP4tExNXZ87g4Lr-PmD1JXkNdn6A";
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const auth = firebase.auth();
+// L'application gère ses propres comptes (username/mot de passe stockés dans
+// Firestore) et n'utilise PAS Firebase Authentication pour le login visible.
+// On se connecte quand même de façon anonyme, en silence, uniquement pour que
+// les règles de sécurité Firestore puissent exiger `request.auth != null`
+// (sinon n'importe qui sur Internet pourrait lire/écrire toute la base).
+function ensureFirebaseAuth(){
+  return new Promise((resolve)=>{
+    auth.onAuthStateChanged(user=>{
+      if(user){ resolve(user); }
+      else { auth.signInAnonymously().catch(e=>{ console.error('Connexion anonyme Firebase impossible', e); resolve(null); }); }
+    });
   });
+}
+const FIRESTORE_COLLECTION = 'skyplanning_state';
+// Clés stockées dans FIRESTORE_COLLECTION qui font partie de l'état collaboratif
+// et doivent donc être synchronisées en temps réel entre tous les appareils.
+const FIRESTORE_KEY_MAP = {
+  users:'users', codes:'codes', schedules:'schedules', notifications:'notifications',
+  comments:'comments', fonctions:'fonctions', services:'services', desideratas:'desideratas',
+  alertRules:'alertRules', monthValidations:'monthValidations', postValidationChanges:'postValidationChanges',
+  cpAllowances:'cpAllowances', employeeDrafts:'employeeDrafts', exchanges:'exchanges',
+  featureFlags:'featureFlags'
+};
+// Enregistrement précoce et silencieux du service worker FCM (permet de recevoir
+// des notifications en arrière-plan même avant que l'utilisateur active les alertes).
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('firebase-messaging-sw.js').catch(()=>{ /* silencieux */ });
+}
+const AUGUST_2026_IMPORT = {"aborrel": {"2026-08-01": "CPA", "2026-08-06": "M", "2026-08-07": "M", "2026-08-08": "M", "2026-08-09": "M", "2026-08-14": "S", "2026-08-15": "S", "2026-08-16": "S", "2026-08-17": "S", "2026-08-22": "M", "2026-08-23": "M", "2026-08-24": "M", "2026-08-25": "M", "2026-08-31": "S"}, "aclaverie": {"2026-08-03": "ADM", "2026-08-04": "ADM", "2026-08-05": "ADM", "2026-08-06": "ADM", "2026-08-07": "ADM", "2026-08-10": "ADM", "2026-08-11": "ADM", "2026-08-12": "ADM", "2026-08-13": "ADM", "2026-08-14": "ADM", "2026-08-15": "FER", "2026-08-17": "ADM", "2026-08-18": "ADM", "2026-08-19": "ADM", "2026-08-20": "ADM", "2026-08-21": "ADM", "2026-08-24": "ADM", "2026-08-25": "ADM", "2026-08-26": "ADM", "2026-08-27": "ADM", "2026-08-28": "ADM", "2026-08-31": "ADM"}, "amouetaux": {"2026-08-02": "S", "2026-08-03": "S", "2026-08-04": "S", "2026-08-05": "S", "2026-08-10": "CPA", "2026-08-11": "CPA", "2026-08-12": "CPA", "2026-08-13": "CPA", "2026-08-14": "CPA", "2026-08-15": "CPA", "2026-08-16": "CPA", "2026-08-17": "CPA", "2026-08-18": "CPA", "2026-08-19": "CPA", "2026-08-20": "CPA", "2026-08-21": "CPA", "2026-08-22": "CPA", "2026-08-23": "CPA", "2026-08-24": "CPA", "2026-08-25": "CPA", "2026-08-26": "CPA", "2026-08-27": "CPA", "2026-08-28": "CPA", "2026-08-29": "CPA", "2026-08-30": "CPA"}, "ekerrien": {"2026-08-01": "S", "2026-08-06": "S", "2026-08-07": "S", "2026-08-08": "S", "2026-08-09": "S", "2026-08-12": "S", "2026-08-13": "S", "2026-08-14": "S", "2026-08-15": "S", "2026-08-22": "S", "2026-08-23": "S", "2026-08-24": "S", "2026-08-25": "S", "2026-08-28": "M", "2026-08-29": "M", "2026-08-30": "S", "2026-08-31": "S"}, "ewinter": {"2026-08-01": "S", "2026-08-03": "CPA", "2026-08-04": "CPA", "2026-08-05": "CPA", "2026-08-06": "CPA", "2026-08-07": "CPA", "2026-08-08": "CPA", "2026-08-09": "CPA", "2026-08-10": "CPA", "2026-08-11": "CPA", "2026-08-12": "CPA", "2026-08-13": "CPA", "2026-08-14": "CPA", "2026-08-15": "CPA", "2026-08-16": "CPA", "2026-08-17": "CPA", "2026-08-18": "CPA", "2026-08-19": "CPA", "2026-08-20": "CPA", "2026-08-21": "CPA", "2026-08-22": "CPA", "2026-08-23": "CPA", "2026-08-26": "S", "2026-08-27": "S"}, "hkergutuil": {"2026-08-02": "S", "2026-08-03": "S", "2026-08-06": "S", "2026-08-07": "S", "2026-08-10": "M", "2026-08-11": "M", "2026-08-12": "M", "2026-08-13": "M", "2026-08-18": "M", "2026-08-19": "M", "2026-08-20": "S", "2026-08-21": "S", "2026-08-22": "CP", "2026-08-23": "CP", "2026-08-24": "CP", "2026-08-25": "CP", "2026-08-26": "CP", "2026-08-27": "CP", "2026-08-28": "CP", "2026-08-29": "CP", "2026-08-30": "CP"}, "hmoine": {"2026-08-01": "CPA", "2026-08-02": "CPA", "2026-08-04": "M", "2026-08-05": "M", "2026-08-06": "S", "2026-08-07": "S", "2026-08-12": "M", "2026-08-13": "M", "2026-08-14": "M", "2026-08-15": "M", "2026-08-17": "CPA", "2026-08-18": "CPA", "2026-08-19": "CPA", "2026-08-20": "CPA", "2026-08-21": "CPA", "2026-08-22": "CPA", "2026-08-23": "CPA", "2026-08-28": "M", "2026-08-29": "M", "2026-08-30": "M", "2026-08-31": "M"}, "jbighetti": {"2026-08-01": "S", "2026-08-08": "S", "2026-08-09": "S", "2026-08-10": "S", "2026-08-11": "S", "2026-08-18": "S", "2026-08-19": "S", "2026-08-20": "S", "2026-08-21": "S", "2026-08-24": "M", "2026-08-25": "M", "2026-08-26": "M", "2026-08-27": "M"}, "jcavatorta": {"2026-08-01": "M", "2026-08-06": "M", "2026-08-07": "M", "2026-08-08": "M", "2026-08-09": "M", "2026-08-14": "M", "2026-08-15": "M", "2026-08-16": "M", "2026-08-17": "M", "2026-08-18": "M", "2026-08-20": "M", "2026-08-21": "M", "2026-08-23": "M", "2026-08-30": "M", "2026-08-31": "M"}, "jgueguen": {"2026-08-01": "CPA", "2026-08-02": "CPA", "2026-08-03": "CPA", "2026-08-04": "CPA", "2026-08-05": "CPA", "2026-08-06": "CPA", "2026-08-07": "CPA", "2026-08-08": "CPA", "2026-08-09": "CPA", "2026-08-14": "M", "2026-08-15": "M", "2026-08-16": "M", "2026-08-17": "M", "2026-08-22": "S", "2026-08-23": "S", "2026-08-24": "S", "2026-08-25": "S", "2026-08-30": "M", "2026-08-31": "M"}, "jpetrozzi": {"2026-08-01": "M", "2026-08-03": "CPA", "2026-08-04": "CPA", "2026-08-05": "CPA", "2026-08-06": "CPA", "2026-08-07": "CPA", "2026-08-08": "CPA", "2026-08-09": "CPA", "2026-08-10": "CPA", "2026-08-11": "CPA", "2026-08-12": "CPA", "2026-08-13": "CPA", "2026-08-14": "CPA", "2026-08-15": "CPA", "2026-08-16": "CPA", "2026-08-17": "CPA", "2026-08-18": "CPA", "2026-08-19": "CPA", "2026-08-20": "CPA", "2026-08-21": "CPA", "2026-08-22": "CPA", "2026-08-23": "CPA", "2026-08-24": "CPA", "2026-08-25": "CPA", "2026-08-30": "S", "2026-08-31": "S"}, "lcharlot": {"2026-08-02": "M", "2026-08-03": "M", "2026-08-04": "M", "2026-08-05": "M", "2026-08-10": "CPA", "2026-08-11": "CPA", "2026-08-12": "CPA", "2026-08-13": "CPA", "2026-08-14": "CPA", "2026-08-15": "CPA", "2026-08-16": "CPA", "2026-08-17": "CPA", "2026-08-18": "CPA", "2026-08-19": "CPA", "2026-08-20": "CPA", "2026-08-21": "CPA", "2026-08-22": "CPA", "2026-08-23": "CPA", "2026-08-26": "M", "2026-08-27": "M", "2026-08-28": "M", "2026-08-29": "M"}, "lethuin": {"2026-08-02": "M", "2026-08-03": "M", "2026-08-04": "M", "2026-08-05": "M", "2026-08-10": "S", "2026-08-11": "S", "2026-08-12": "S", "2026-08-13": "S", "2026-08-16": "S", "2026-08-17": "S", "2026-08-18": "S", "2026-08-19": "S", "2026-08-26": "S", "2026-08-27": "S", "2026-08-28": "S", "2026-08-29": "S"}, "ning": {"2026-08-01": "CPA", "2026-08-02": "CPA", "2026-08-03": "CPA", "2026-08-04": "CPA", "2026-08-05": "CPA", "2026-08-06": "CPA", "2026-08-07": "CPA", "2026-08-08": "S", "2026-08-09": "S", "2026-08-10": "S", "2026-08-11": "S", "2026-08-13": "ADM", "2026-08-15": "FER", "2026-08-16": "M", "2026-08-17": "M", "2026-08-18": "M", "2026-08-19": "M", "2026-08-22": "S", "2026-08-23": "S", "2026-08-24": "S", "2026-08-25": "S", "2026-08-27": "ADM", "2026-08-28": "ADM", "2026-08-31": "ADM"}, "rcorvisier": {"2026-08-02": "M", "2026-08-03": "M", "2026-08-04": "S", "2026-08-05": "S", "2026-08-08": "M", "2026-08-09": "M", "2026-08-10": "CPA", "2026-08-11": "CPA", "2026-08-12": "CPA", "2026-08-13": "CPA", "2026-08-14": "CPA", "2026-08-15": "CPA", "2026-08-16": "CPA", "2026-08-17": "CPA", "2026-08-18": "CPA", "2026-08-19": "CPA", "2026-08-20": "CPA", "2026-08-21": "CPA", "2026-08-22": "CPA", "2026-08-23": "CPA", "2026-08-24": "M", "2026-08-25": "M", "2026-08-26": "M", "2026-08-27": "M", "2026-08-28": "ADM", "2026-08-31": "ADM"}, "sroblette": {"2026-08-01": "CPA", "2026-08-02": "CPA", "2026-08-03": "CPA", "2026-08-04": "CPA", "2026-08-05": "CPA", "2026-08-06": "CPA", "2026-08-07": "CPA", "2026-08-08": "CPA", "2026-08-09": "CPA", "2026-08-10": "CPA", "2026-08-11": "CPA", "2026-08-12": "S", "2026-08-13": "S", "2026-08-14": "S", "2026-08-15": "S", "2026-08-20": "M", "2026-08-21": "M", "2026-08-22": "M", "2026-08-23": "M", "2026-08-28": "S", "2026-08-29": "S", "2026-08-30": "S", "2026-08-31": "S"}, "valvarez": {"2026-08-01": "M", "2026-08-02": "S", "2026-08-03": "S", "2026-08-06": "M", "2026-08-07": "M", "2026-08-10": "M", "2026-08-11": "M", "2026-08-16": "S", "2026-08-17": "S", "2026-08-18": "S", "2026-08-19": "S", "2026-08-20": "S", "2026-08-21": "S", "2026-08-24": "CP", "2026-08-25": "CP", "2026-08-26": "CP", "2026-08-27": "CP", "2026-08-28": "CP", "2026-08-29": "CP", "2026-08-30": "CP"}, "xhernandez": {"2026-08-01": "CPA", "2026-08-02": "CPA", "2026-08-03": "S", "2026-08-04": "S", "2026-08-05": "S", "2026-08-10": "M", "2026-08-11": "M", "2026-08-12": "M", "2026-08-13": "M", "2026-08-19": "M", "2026-08-20": "M", "2026-08-21": "M", "2026-08-22": "M", "2026-08-26": "S", "2026-08-27": "S", "2026-08-28": "S", "2026-08-29": "S"}};
+
+/* ============================================================
+   JOURS FÉRIÉS FRANÇAIS (algorithme de Gauss pour Pâques)
+   ============================================================ */
+function easterDate(year){
+  const a=year%19,b=Math.floor(year/100),c=year%100,d=Math.floor(b/4),e=b%4;
+  const f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3);
+  const h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4;
+  const l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451);
+  const month=Math.floor((h+l-7*m+114)/31),day=((h+l-7*m+114)%31)+1;
+  return new Date(year, month-1, day);
+}
+function addDays(date,n){const d=new Date(date);d.setDate(d.getDate()+n);return d;}
+function isoWeekNumber(date){
+  const d=new Date(Date.UTC(date.getFullYear(),date.getMonth(),date.getDate()));
+  const dayNum=(d.getUTCDay()+6)%7;
+  d.setUTCDate(d.getUTCDate()-dayNum+3);
+  const firstThursday=d.getTime();
+  d.setUTCMonth(0,1);
+  if(d.getUTCDay()!==4) d.setUTCMonth(0, 1+((4-d.getUTCDay())+7)%7);
+  return 1+Math.round((firstThursday-d.getTime())/(7*24*3600*1000));
+}
+function dkey(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+const holidayCache={};
+function frenchHolidays(year){
+  if(holidayCache[year]) return holidayCache[year];
+  const easter=easterDate(year);
+  const list=[
+    {d:new Date(year,0,1),  n:"Jour de l'an"},
+    {d:addDays(easter,1),   n:"Lundi de Pâques"},
+    {d:new Date(year,4,1),  n:"Fête du Travail"},
+    {d:new Date(year,4,8),  n:"Victoire 1945"},
+    {d:addDays(easter,39),  n:"Ascension"},
+    {d:addDays(easter,50),  n:"Lundi de Pentecôte"},
+    {d:new Date(year,6,14), n:"Fête nationale"},
+    {d:new Date(year,7,15), n:"Assomption"},
+    {d:new Date(year,10,1), n:"Toussaint"},
+    {d:new Date(year,10,11),n:"Armistice"},
+    {d:new Date(year,11,25),n:"Noël"},
+  ];
+  const map={};
+  list.forEach(h=>map[dkey(h.d)]=h.n);
+  holidayCache[year]=map;
+  return map;
+}
+
+/* ============================================================
+   STOCKAGE — FIREBASE FIRESTORE (repli mémoire si hors-ligne)
+   Même signature qu'avant : aucun appelant n'a besoin de changer.
+   ============================================================ */
+const memoryFallback={};
+async function storageGet(key,shared){
+  try{
+    const snap = await db.collection(FIRESTORE_COLLECTION).doc(key).get();
+    if(!snap.exists) return null;
+    return {key, value: snap.data().value, shared};
+  }catch(e){
+    return (key in memoryFallback) ? {key,value:memoryFallback[key],shared} : null;
+  }
+}
+async function storageSet(key,value,shared){
+  try{
+    await db.collection(FIRESTORE_COLLECTION).doc(key).set({
+      value,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    memoryFallback[key]=value;
+    return {key,value,shared};
+  }catch(e){
+    memoryFallback[key]=value;
+    return {key,value,shared};
+  }
+}
+
+/* ============================================================
+   FIREBASE — SYNCHRONISATION TEMPS RÉEL (tous appareils : PC & mobile)
+   ============================================================ */
+function startRealtimeSync(){
+  db.collection(FIRESTORE_COLLECTION).onSnapshot(snapshot=>{
+    let changed=false;
+    snapshot.docChanges().forEach(change=>{
+      const key=change.doc.id;
+      if(!(key in FIRESTORE_KEY_MAP)) return;
+      if(!change.doc.exists) return;
+      try{
+        state[FIRESTORE_KEY_MAP[key]] = JSON.parse(change.doc.data().value);
+        changed=true;
+      }catch(e){ /* payload invalide, ignoré */ }
+    });
+    if(changed && state.screen==='app') render();
+  }, (err)=>{ console.error('Erreur de synchronisation Firestore', err); });
+}
+
+/* ============================================================
+   ÉTAT
+   ============================================================ */
+let state={
+  screen:'loading',
+  currentUser:null,
+  loginError:'',
+  users:[],
+  codes:JSON.parse(JSON.stringify(DEFAULT_CODES)),
+  fonctions:{},
+  services:[],
+  dragUser:null,
+  schedules:{},
+  notifications:{},
+  comments:{},
+  desideratas:[],
+  exchanges:[],
+  featureFlags:{desideratas:true, echanges:true, alertes:true, genAuto:true, impression:true, photos:true, perService:{}},
+  alertRules:[],
+  monthValidations:{},
+  postValidationChanges:[],
+  showAcknowledgedChanges:false,
+  genMode:false,
+  genSelections:{},
+  cpAllowances:{},
+  annualYear:new Date().getFullYear(),
+  annualSelectedDay:null,
+  annualGenMode:false,
+  indivSelectedCode:null,
+  employeeDrafts:{},
+  desidFilterStatus:'pending',
+  desidFilterYear:'all',
+  desidShowArchived:false,
+  desidAdminFilterStatus:'pending',
+  desidAdminFilterYear:'all',
+  desidAdminFilterService:'',
+  desidAdminShowArchived:false,
+  exchFilterStatus:'all',
+  exchAdminFilterStatus:'pending',
+  exchAdminFilterService:'',
+  tab:'planning',
+  viewDate:new Date(),
+  selectedCode:null,
+  modal:null,
+  bellOpen:false,
+  showNotifBanner:true,
+  notifPermission: (typeof Notification!=='undefined') ? Notification.permission : 'unsupported',
+};
+function toast(msg,isErr){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className='toast show'+(isErr?' err':'');
+  clearTimeout(window.__toastTimer);
+  window.__toastTimer=setTimeout(()=>t.className='toast',2400);
+}
+
+/* ============================================================
+   CHARGEMENT INITIAL + COMPTES DE DÉMONSTRATION
+   ============================================================ */
+async function loadAll(){
+  try{
+    const u=await storageGet('users', true);
+    state.users = u ? JSON.parse(u.value) : null;
+  }catch(e){ state.users=null; }
+  if(!state.users || state.users.length===0){
+    state.users=[
+      {username:'admin',      password:'Admin2026!',      name:'Administrateur',        role:'admin',    startDate:'', endDate:'', team:'',    fonction:''},
+      // Responsables (CCO)
+      {username:'ning',       password:'Ning2026!',        name:'NING',                  role:'employee', startDate:'', endDate:'', team:'CCO', fonction:'Responsables'},
+      {username:'rcorvisier', password:'Rcorvisier2026!',  name:'Richard CORVISIER',     role:'employee', startDate:'', endDate:'', team:'CCO', fonction:'Responsables'},
+      {username:'aclaverie',  password:'Aclaverie2026!',   name:'Alain CLAVERIE',        role:'employee', startDate:'', endDate:'', team:'CCO', fonction:'Responsables'},
+      // CDQ (CCO)
+      {username:'ewinter',    password:'Ewinter2026!',     name:'Eric WINTER',           role:'employee', startDate:'', endDate:'', team:'CCO', fonction:'CDQ'},
+      {username:'hmoine',     password:'Hmoine2026!',      name:'Hervé MOINE',           role:'employee', startDate:'', endDate:'', team:'CCO', fonction:'CDQ'},
+      {username:'valvarez',   password:'Valvarez2026!',    name:'Vincent ALVAREZ',       role:'employee', startDate:'', endDate:'', team:'CCO', fonction:'CDQ'},
+      {username:'sroblette',  password:'Sroblette2026!',   name:'Sylvain ROBLETTE',      role:'employee', startDate:'', endDate:'', team:'CCO', fonction:'CDQ'},
+      // Techniciens (CCO)
+      {username:'jbighetti',  password:'Jbighetti2026!',   name:'Jan-Philippe BIGHETTI', role:'employee', startDate:'', endDate:'', team:'CCO', fonction:'Techniciens'},
+      {username:'xhernandez', password:'Xhernandez2026!',  name:'Xavier HERNANDEZ',      role:'employee', startDate:'', endDate:'', team:'CCO', fonction:'Techniciens'},
+      {username:'hkergutuil', password:'Hkergutuil2026!',  name:'Hervé KERGUTUIL',       role:'employee', startDate:'', endDate:'', team:'CCO', fonction:'Techniciens'},
+      {username:'lcharlot',   password:'Lcharlot2026!',    name:'Laurent CHARLOT',       role:'employee', startDate:'', endDate:'', team:'CCO', fonction:'Techniciens'},
+      {username:'amouetaux',  password:'Amouetaux2026!',   name:'Annie MOUETAUX',        role:'employee', startDate:'', endDate:'', team:'CCO', fonction:'Techniciens'},
+      {username:'lethuin',    password:'Lethuin2026!',     name:'Laurent ETHUIN',        role:'employee', startDate:'', endDate:'', team:'CCO', fonction:'Techniciens'},
+      {username:'jcavatorta', password:'Jcavatorta2026!',  name:'Jean-Charles CAVATORTA',role:'employee', startDate:'', endDate:'', team:'CCO', fonction:'Techniciens'},
+      {username:'ekerrien',   password:'Ekerrien2026!',    name:'Emmanuel KERRIEN',      role:'employee', startDate:'', endDate:'', team:'CCO', fonction:'Techniciens'},
+      {username:'aborrel',    password:'Aborrel2026!',     name:'Arnaud BORREL',         role:'employee', startDate:'', endDate:'', team:'CCO', fonction:'Techniciens'},
+      {username:'jgueguen',   password:'Jgueguen2026!',    name:'Jean-Marc GUEGUEN',     role:'employee', startDate:'', endDate:'', team:'CCO', fonction:'Techniciens'},
+      {username:'jpetrozzi',  password:'Jpetrozzi2026!',   name:'Jerome PETROZZI',       role:'employee', startDate:'', endDate:'', team:'CCO', fonction:'Techniciens'},
+    ];
+    await storageSet('users', JSON.stringify(state.users), true);
+  }
+  // Les salariés dont l'affectation (service/fonction) change à une date donnée
+  // ont leur team/fonction "affichés" resynchronisés sur l'affectation en cours
+  // aujourd'hui — le reste de l'app (qui lit u.team/u.fonction directement)
+  // reflète donc toujours l'affectation courante sans modification ailleurs.
+  state.users.forEach(syncCurrentAffectation);
+  try{
+    const c=await storageGet('codes', true);
+    state.codes = (c && JSON.parse(c.value).length) ? JSON.parse(c.value) : DEFAULT_CODES;
+    state.codes.forEach(cd=>{ if(cd.isWork===undefined) cd.isWork = !!(cd.startTime && cd.endTime); });
+  }catch(e){ state.codes=DEFAULT_CODES; }
+  try{
+    const s=await storageGet('schedules', true);
+    state.schedules = s ? JSON.parse(s.value) : {};
+  }catch(e){ state.schedules={}; }
+  try{
+    const n=await storageGet('notifications', true);
+    state.notifications = n ? JSON.parse(n.value) : {};
+  }catch(e){ state.notifications={}; }
+  try{
+    const cm=await storageGet('comments', true);
+    state.comments = cm ? JSON.parse(cm.value) : {};
+  }catch(e){ state.comments={}; }
+  try{
+    const fn=await storageGet('fonctions', true);
+    state.fonctions = fn ? JSON.parse(fn.value) : null;
+  }catch(e){ state.fonctions=null; }
+  if(!state.fonctions || Array.isArray(state.fonctions)){ state.fonctions={CCO:['Responsables','CDQ','Techniciens']}; await storageSet('fonctions', JSON.stringify(state.fonctions), true); }
+  try{
+    const sv=await storageGet('services', true);
+    state.services = sv ? JSON.parse(sv.value) : null;
+  }catch(e){ state.services=null; }
+  if(!state.services){ state.services=['CCO']; await storageSet('services', JSON.stringify(state.services), true); }
+  try{
+    const ds=await storageGet('desideratas', true);
+    state.desideratas = ds ? JSON.parse(ds.value) : [];
+  }catch(e){ state.desideratas=[]; }
+  try{
+    const ex=await storageGet('exchanges', true);
+    state.exchanges = ex ? JSON.parse(ex.value) : [];
+  }catch(e){ state.exchanges=[]; }
+  try{
+    const ff=await storageGet('featureFlags', true);
+    const parsed = ff ? JSON.parse(ff.value) : null;
+    // Fusion avec les valeurs par défaut : une fonctionnalité ajoutée plus tard
+    // par une mise à jour de l'appli reste activée par défaut si l'admin n'a
+    // encore rien configuré explicitement.
+    state.featureFlags = Object.assign(
+      {desideratas:true, echanges:true, alertes:true, genAuto:true, impression:true, photos:true, perService:{}},
+      parsed||{}
+    );
+    if(!state.featureFlags.perService) state.featureFlags.perService={};
+  }catch(e){ /* garde les valeurs par défaut de state */ }
+  try{
+    const ar=await storageGet('alertRules', true);
+    state.alertRules = ar ? JSON.parse(ar.value) : null;
+  }catch(e){ state.alertRules=null; }
+  if(!state.alertRules){
+    state.alertRules=[
+      {id:genId(), label:'Effectif Matin — CDQ + Responsables', type:'daily_group', service:'CCO', fonctions:['CDQ','Responsables'], codes:['M'], min:1, max:null, active:true},
+      {id:genId(), label:'Charge hebdo Techniciens (M/S)', type:'weekly_person', service:'CCO', fonctions:['Techniciens'], codes:['M','S'], min:3, max:4, active:true},
+    ];
+    await storageSet('alertRules', JSON.stringify(state.alertRules), true);
+  }
+  try{
+    const mv=await storageGet('monthValidations', true);
+    state.monthValidations = mv ? JSON.parse(mv.value) : {};
+  }catch(e){ state.monthValidations={}; }
+  try{
+    const pvc=await storageGet('postValidationChanges', true);
+    state.postValidationChanges = pvc ? JSON.parse(pvc.value) : [];
+  }catch(e){ state.postValidationChanges=[]; }
+
+  // Import ponctuel et non-destructif du planning réel d'août 2026 (une seule fois,
+  // ne touche jamais une case déjà renseignée par l'admin ni un salarié déjà existant)
+  try{
+    const importFlag=await storageGet('importAug2026Done', true);
+    if(!importFlag){
+      let changedUsers=false, changedSchedules=false;
+      if(!state.users.some(u=>u.username==='ning')){
+        state.users.push({username:'ning', password:'Ning2026!', name:'NING', role:'employee', startDate:'', endDate:'', team:'CCO', fonction:'Responsables'});
+        changedUsers=true;
+      }
+      Object.keys(AUGUST_2026_IMPORT).forEach(username=>{
+        const days=AUGUST_2026_IMPORT[username];
+        if(!state.schedules[username]) state.schedules[username]={};
+        Object.keys(days).forEach(dateKey=>{
+          if(state.schedules[username][dateKey]===undefined){
+            state.schedules[username][dateKey]=days[dateKey];
+            changedSchedules=true;
+          }
+        });
+      });
+      if(changedUsers) await persistUsers();
+      if(changedSchedules) await persistSchedules();
+      await storageSet('importAug2026Done', 'true', true);
+    }
+  }catch(e){ /* import silencieux, ne bloque jamais le chargement */ }
+
+  // Ajout ponctuel de la règle « CPA max 5j/semaine » (séparée de la règle M/S de charge de travail)
+  try{
+    const cpaFlag=await storageGet('importCpaRuleDone', true);
+    if(!cpaFlag){
+      if(!state.alertRules.some(r=>r.codes.length===1 && r.codes[0]==='CPA')){
+        state.alertRules.push({
+          id:genId(), label:'Congés CPA — max 5j/semaine', type:'weekly_person', service:'CCO',
+          fonctions:['Responsables','CDQ','Techniciens'], codes:['CPA'], excludeCodes:[], min:null, max:5, active:true
+        });
+        await persistAlertRules();
+      }
+      await storageSet('importCpaRuleDone', 'true', true);
+    }
+  }catch(e){ /* import silencieux */ }
+
+  // Ajout ponctuel : la règle « Charge hebdo M/S » ne doit pas pénaliser une semaine où le salarié a aussi du CPA/CP/FOR
+  try{
+    const excFlag=await storageGet('importExcludeCodesDone', true);
+    if(!excFlag){
+      let changed=false;
+      state.alertRules.forEach(r=>{
+        if(r.type==='weekly_person' && (!r.excludeCodes || r.excludeCodes.length===0) && !r.codes.includes('CPA')){
+          r.excludeCodes=['CPA','CP','FOR'];
+          changed=true;
+        }
+      });
+      if(changed) await persistAlertRules();
+      await storageSet('importExcludeCodesDone', 'true', true);
+    }
+  }catch(e){ /* import silencieux */ }
+
+  // Ajout ponctuel : refonte des règles d'alertes (effectif Matin+Soir séparés, charge hebdo M et S séparées)
+  try{
+    const rulesV2Flag=await storageGet('importAlertRulesV2Done', true);
+    if(!rulesV2Flag){
+      // retire l'ancienne règle combinée "Charge hebdo Techniciens (M/S)" si présente
+      state.alertRules = state.alertRules.filter(r=>r.label!=='Charge hebdo Techniciens (M/S)');
+      const wanted=[
+        {label:'Effectif Matin — CDQ + Responsables', type:'daily_group', service:'CCO', fonctions:['CDQ','Responsables'], codes:['M'], excludeCodes:[], min:1, max:null},
+        {label:'Effectif Soir — CDQ + Responsables',  type:'daily_group', service:'CCO', fonctions:['CDQ','Responsables'], codes:['S'], excludeCodes:[], min:1, max:null},
+        {label:'Charge hebdo Techniciens — M', type:'weekly_person', service:'CCO', fonctions:['Techniciens'], codes:['M'], excludeCodes:['CPA','CP','FOR'], min:2, max:null},
+        {label:'Charge hebdo Techniciens — S', type:'weekly_person', service:'CCO', fonctions:['Techniciens'], codes:['S'], excludeCodes:['CPA','CP','FOR'], min:2, max:null},
+      ];
+      let changed=false;
+      wanted.forEach(w=>{
+        if(!state.alertRules.some(r=>r.label===w.label)){
+          state.alertRules.push(Object.assign({id:genId(), active:true}, w));
+          changed=true;
+        }
+      });
+      if(changed) await persistAlertRules();
+      await storageSet('importAlertRulesV2Done', 'true', true);
+    }
+  }catch(e){ /* import silencieux */ }
+
+  // Ajout ponctuel : génération des e-mails par défaut pour les salariés qui n'en ont pas
+  try{
+    const emailFlag=await storageGet('importEmailsDone', true);
+    if(!emailFlag){
+      let changed=false;
+      state.users.forEach(u=>{
+        if(!u.email && u.name){ u.email=generateEmail(u.name); changed=true; }
+      });
+      if(changed) await persistUsers();
+      await storageSet('importEmailsDone', 'true', true);
+    }
+  }catch(e){ /* import silencieux */ }
+
+  try{
+    const cpa=await storageGet('cpAllowances', true);
+    state.cpAllowances = cpa ? JSON.parse(cpa.value) : {};
+  }catch(e){ state.cpAllowances={}; }
+
+  try{
+    const ed=await storageGet('employeeDrafts', true);
+    state.employeeDrafts = ed ? JSON.parse(ed.value) : {};
+  }catch(e){ state.employeeDrafts={}; }
+
+  state.screen='login';
+  render();
+}
+async function persistUsers(){ await storageSet('users', JSON.stringify(state.users), true); }
+async function persistCodes(){ await storageSet('codes', JSON.stringify(state.codes), true); }
+async function persistSchedules(){ await storageSet('schedules', JSON.stringify(state.schedules), true); }
+async function persistNotifications(){ await storageSet('notifications', JSON.stringify(state.notifications), true); }
+async function persistComments(){ await storageSet('comments', JSON.stringify(state.comments), true); }
+async function persistFonctions(){ await storageSet('fonctions', JSON.stringify(state.fonctions), true); }
+async function persistServices(){ await storageSet('services', JSON.stringify(state.services), true); }
+async function persistDesideratas(){ await storageSet('desideratas', JSON.stringify(state.desideratas), true); }
+async function persistExchanges(){ await storageSet('exchanges', JSON.stringify(state.exchanges), true); }
+async function persistFeatureFlags(){ await storageSet('featureFlags', JSON.stringify(state.featureFlags), true); }
+/**
+ * Une fonctionnalité est active si : (1) elle n'est pas désactivée
+ * globalement par le grand admin dans « Fonctionnalités », ET (2) — pour les
+ * fonctionnalités qui le permettent (désidératas, échanges) — elle n'est pas
+ * désactivée spécifiquement pour le service demandé.
+ */
+function isFeatureEnabled(flag, service){
+  const ff=state.featureFlags||{};
+  if(ff[flag]===false) return false;
+  if(service && ff.perService && ff.perService[service] && ff.perService[service][flag]===false) return false;
+  return true;
+}
+async function persistAlertRules(){ await storageSet('alertRules', JSON.stringify(state.alertRules), true); }
+async function persistMonthValidations(){ await storageSet('monthValidations', JSON.stringify(state.monthValidations), true); }
+async function persistPostValidationChanges(){ await storageSet('postValidationChanges', JSON.stringify(state.postValidationChanges), true); }
+async function cancelPostValidationChange(id){
+  const chg=state.postValidationChanges.find(c=>c.id===id);
+  if(!chg) return;
+  if(!state.schedules[chg.username]) state.schedules[chg.username]={};
+  const key=chg.year+'-'+String(chg.month+1).padStart(2,'0')+'-'+String(chg.day).padStart(2,'0');
+  if(chg.oldCode) state.schedules[chg.username][key]=chg.oldCode; else delete state.schedules[chg.username][key];
+  await persistSchedules();
+  const wasAcked=chg.acknowledged;
+  state.postValidationChanges=state.postValidationChanges.filter(c=>c.id!==id);
+  await persistPostValidationChanges();
+  if(wasAcked){
+    await pushNotification(chg.username, 'Une modification de votre planning du '+fmtDateFr(chg.year,chg.month,chg.day)+' a été annulée — retour à '+(chg.oldCode||'Vide')+'.');
+  }
+}
+function monthValidationKey(service,year,month){ return service+':'+year+'-'+String(month+1).padStart(2,'0'); }
+function isMonthValidated(service,year,month){
+  if(!service) return false; // pas de service assigné = reste verrouillé par défaut (sécurité)
+  return !!(state.monthValidations[monthValidationKey(service,year,month)] && state.monthValidations[monthValidationKey(service,year,month)].validated);
+}
+async function setMonthValidated(service,year,month,validated){
+  const key=monthValidationKey(service,year,month);
+  state.monthValidations[key]=validated?{validated:true,validatedAt:new Date().toISOString(),validatedBy:state.currentUser.username}:{validated:false};
+  await persistMonthValidations();
+}
+
+/* ============================================================
+   GÉNÉRATION AUTOMATIQUE DU PLANNING (cycle 4j OFF / 4j travail)
+   ============================================================ */
+function toggleGenMode(){
+  state.genMode=!state.genMode;
+  state.genSelections={};
+}
+function handleGenSelectClick(username, dateKey, code){
+  const existing=state.genSelections[username];
+  if(existing && existing.date===dateKey){
+    delete state.genSelections[username];
+    render();
+    return;
+  }
+  if(code!=='M' && code!=='S'){
+    toast("Sélectionnez le dernier jour travaillé en code M ou S pour ce salarié.", true);
+    return;
+  }
+  state.genSelections[username]={date:dateKey, code};
+  render();
+}
+async function generateAutoPlanning(months){
+  const entries=Object.entries(state.genSelections);
+  let totalDays=0;
+  for(const [username, sel] of entries){
+    const lastDate=new Date(sel.date+'T00:00:00');
+    const inverse = sel.code==='M' ? 'S' : 'M';
+    const endDate=new Date(lastDate.getFullYear(), lastDate.getMonth()+months, lastDate.getDate());
+    if(!state.schedules[username]) state.schedules[username]={};
+    let current=addDays(lastDate,1);
+    let dayCounter=0;
+    while(current<=endDate){
+      const blockIndex=Math.floor(dayCounter/4);
+      const isOff=blockIndex%2===0;
+      const key=dkey(current);
+      if(isOff){
+        delete state.schedules[username][key];
+      } else {
+        const workBlockNumber=Math.floor((blockIndex-1)/2);
+        state.schedules[username][key] = workBlockNumber%2===0 ? inverse : sel.code;
+      }
+      totalDays++;
+      current=addDays(current,1);
+      dayCounter++;
+    }
+    await pushNotification(username, 'Votre planning a été régénéré automatiquement à partir du '+fmtDateKeyFr(sel.date)+' (cycle 4 jours travaillés / 4 jours repos), pour les '+months+' prochain(s) mois.');
+  }
+  await persistSchedules();
+  return {employees:entries.length, days:totalDays};
+}
+
+/* ============================================================
+   PLANNING ANNUEL EN LIBRE-SERVICE (salarié) — opère sur un BROUILLON
+   personnel séparé, jamais sur le planning officiel validé par l'admin
+   ============================================================ */
+function getDraftCode(username,year,month,day){
+  const key=year+'-'+String(month+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+  const dr=state.employeeDrafts[username];
+  return dr ? dr[key] : undefined;
+}
+async function persistEmployeeDrafts(){ await storageSet('employeeDrafts', JSON.stringify(state.employeeDrafts), true); }
+function applyAlternatingCycleInclusive(username, startDate, code, endDate){
+  const inverse = code==='M' ? 'S' : (code==='S' ? 'M' : code);
+  if(!state.employeeDrafts[username]) state.employeeDrafts[username]={};
+  let current=new Date(startDate);
+  let dayCounter=0, count=0;
+  while(current<=endDate){
+    const posInCycle=dayCounter%8;
+    const cycleNumber=Math.floor(dayCounter/8);
+    const key=dkey(current);
+    if(posInCycle>=4){
+      delete state.employeeDrafts[username][key];
+    } else {
+      state.employeeDrafts[username][key] = cycleNumber%2===0 ? code : inverse;
+    }
+    count++;
+    current=addDays(current,1);
+    dayCounter++;
+  }
+  return count;
+}
+async function generateOwnAnnualPlanning(username, startDateKey, code){
+  const emp=state.users.find(u=>u.username===username);
+  const startDate=new Date(startDateKey+'T00:00:00');
+  const year=startDate.getFullYear();
+  let endDate=new Date(year,11,31);
+  if(emp && emp.endDate){
+    const empEnd=new Date(emp.endDate+'T00:00:00');
+    if(empEnd<endDate) endDate=empEnd;
+  }
+  if(endDate<startDate) return 0;
+  const days=applyAlternatingCycleInclusive(username, startDate, code, endDate);
+  await persistEmployeeDrafts();
+  return days;
+}
+async function clearOwnYearPlanning(username, year){
+  if(!state.employeeDrafts[username]) return 0;
+  let count=0;
+  Object.keys(state.employeeDrafts[username]).forEach(k=>{
+    if(k.startsWith(year+'-')){ delete state.employeeDrafts[username][k]; count++; }
+  });
+  await persistEmployeeDrafts();
+  return count;
+}
+function countCodeUsedInYear(username, year, code){
+  const dr=state.employeeDrafts[username]||{};
+  let count=0;
+  Object.keys(dr).forEach(k=>{ if(k.startsWith(year+'-') && dr[k]===code) count++; });
+  return count;
+}
+function cpAllowanceKey(username,year){ return username+':'+year; }
+async function paintOwnDay(username, dateKey, code){
+  if(!state.employeeDrafts[username]) state.employeeDrafts[username]={};
+  const current=state.employeeDrafts[username][dateKey];
+  if(code==='VIDE' || current===code){ delete state.employeeDrafts[username][dateKey]; }
+  else { state.employeeDrafts[username][dateKey]=code; }
+  await persistEmployeeDrafts();
+}
+/* ============================================================
+   CORRECTION : VÉRIFICATION DU QUOTA CP/CPA AVANT SAISIE
+   ============================================================ */
+async function paintOwnDayWithQuotaCheck(username, dateKey, code) {
+  const year = new Date(dateKey + 'T00:00:00').getFullYear();
+
+  // Si le code appliqué est un congé payé (CP ou CPA)
+  if (code === 'CP' || code === 'CPA') {
+    const allowanceKey = cpAllowanceKey(username, year);
+    const maxAllowed = state.cpAllowances[allowanceKey] || 0;
+
+    // Compte les jours déjà posés sur l'année pour ce code dans le brouillon
+    const currentUsed = countCodeUsedInYear(username, year, code);
+    const existingCodeOnDay = getDraftCode(username, year, new Date(dateKey).getMonth(), new Date(dateKey).getDate());
+
+    // Si la case n'avait pas déjà ce code et qu'on dépasse le quota accordé
+    if (existingCodeOnDay !== code && (currentUsed + 1) > maxAllowed) {
+      toast(`Quota dépassé ! Vous avez un droit de ${maxAllowed} jour(s) de ${code} pour ${year}.`, true);
+      return false;
+    }
+  }
+  // Application normale sur le brouillon
+  await paintOwnDay(username, dateKey, code);
+  return true;
+}
+async function persistCpAllowances(){ await storageSet('cpAllowances', JSON.stringify(state.cpAllowances), true); }
+
+function escapeHtml(str){
+  return String(str==null?'':str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function commentKey(username,y,m,d){ return username+'::'+y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0'); }
+function openCommentModal(username,name,y,m,d){
+  const key=commentKey(username,y,m,d);
+  const existing=state.comments[key]||{};
+  state.modal={type:'comment', username, name, y, m, d, key, activeTab:'public', publicText:existing.public||'', privateText:existing.private||''};
+  render();
+}
+
+/* ============================================================
+   DÉSIDÉRATAS
+   ============================================================ */
+function genId(){ return Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7); }
+function dateRangeDays(startKey,endKey){
+  const days=[]; let cur=new Date(startKey+'T00:00:00'); const end=new Date(endKey+'T00:00:00');
+  while(cur<=end){ days.push(dkey(cur)); cur=addDays(cur,1); }
+  return days;
+}
+function fmtDateKeyFr(key){ const [y,m,d]=key.split('-'); return d+'/'+m+'/'+y; }
+async function createDesiderata(username,name,dateStart,dateEnd,code,comment){
+  state.desideratas.push({
+    id:genId(), username, name, dateStart, dateEnd, code, comment,
+    status:'pending', adminComment:'', archived:false,
+    createdAt:new Date().toISOString(), processedAt:null
+  });
+  await persistDesideratas();
+}
+async function cancelDesiderata(id){
+  state.desideratas=state.desideratas.filter(d=>d.id!==id);
+  await persistDesideratas();
+}
+async function setDesiderataArchived(id,val){
+  const d=state.desideratas.find(x=>x.id===id);
+  if(d){ d.archived=val; await persistDesideratas(); }
+}
+async function validateDesiderata(id,adminComment){
+  const d=state.desideratas.find(x=>x.id===id);
+  if(!d) return;
+  d.status='validated'; d.adminComment=adminComment||''; d.processedAt=new Date().toISOString();
+  if(!state.schedules[d.username]) state.schedules[d.username]={};
+  dateRangeDays(d.dateStart,d.dateEnd).forEach(k=>{ state.schedules[d.username][k]=d.code; });
+  await persistSchedules();
+  await persistDesideratas();
+  const info=codeInfo(d.code);
+  await pushNotification(d.username, 'Votre désidérata du '+fmtDateKeyFr(d.dateStart)+' au '+fmtDateKeyFr(d.dateEnd)+' a été validé ('+(info?info.label:d.code)+').');
+}
+async function refuseDesiderata(id,adminComment){
+  const d=state.desideratas.find(x=>x.id===id);
+  if(!d) return;
+  d.status='refused'; d.adminComment=adminComment||''; d.processedAt=new Date().toISOString();
+  await persistDesideratas();
+  await pushNotification(d.username, 'Votre désidérata du '+fmtDateKeyFr(d.dateStart)+' au '+fmtDateKeyFr(d.dateEnd)+' a été refusé.'+(adminComment?' Motif : '+adminComment:''));
+}
+function desiderataForCell(username,dateKey){
+  const matches=state.desideratas.filter(d=>d.username===username && !d.archived && dateKey>=d.dateStart && dateKey<=d.dateEnd);
+  if(!matches.length) return null;
+  return matches.find(d=>d.status==='pending') || matches[0];
+}
+function desidStatusLabel(s){ return s==='pending'?'En attente':s==='validated'?'Validé':'Refusé'; }
+function desidStatusColor(s){ return s==='pending'?{bg:'#FEF3E2',fg:'#B5690A'}:s==='validated'?{bg:'#E7F6EC',fg:'#1E7B3C'}:{bg:'#FBEAE9',fg:'#C0392B'}; }
+
+/* ============================================================
+   ÉCHANGES DE SERVICE ENTRE SALARIÉS
+   ============================================================ */
+function getDayCodeByKey(username,dateKey){
+  const sc=state.schedules[username];
+  return sc ? sc[dateKey] : undefined;
+}
+async function logExchangeChangeIfNeeded(username,dateKey,oldCode,newCode,message){
+  const emp=state.users.find(u=>u.username===username);
+  if(!emp || oldCode===newCode) return;
+  // Service applicable CE JOUR-LÀ (historique d'affectation), pas le service
+  // "actuel" de l'employé — cohérent avec paintCell.
+  const cellTeam=affectationAt(emp,dateKey).team;
+  if(!cellTeam) return;
+  const [y,m,d]=dateKey.split('-').map(Number);
+  if(!isMonthValidated(cellTeam,y,m-1)) return;
+  state.postValidationChanges.push({
+    id:genId(), service:cellTeam, year:y, month:m-1, day:d, username, name:emp.name,
+    oldCode:oldCode||null, newCode:newCode||null, message, changedAt:new Date().toISOString(),
+    changedBy:state.currentUser.username, acknowledged:false
+  });
+  await persistPostValidationChanges();
+}
+async function createExchange(requesterUsername,requesterName,targetUsername,targetName,dateA,dateB,comment){
+  const codeA=getDayCodeByKey(requesterUsername,dateA)||null;
+  const codeB=getDayCodeByKey(targetUsername,dateB)||null;
+  state.exchanges.push({
+    id:genId(), requesterUsername, requesterName, targetUsername, targetName,
+    dateA, dateB, codeA, codeB, comment:comment||'',
+    status:'pending', adminComment:'', createdAt:new Date().toISOString(), processedAt:null
+  });
+  await persistExchanges();
+  await pushNotification(targetUsername, requesterName+' vous propose un échange de journée : '+fmtDateKeyFr(dateA)+' ↔ '+fmtDateKeyFr(dateB)+'. En attente de validation par l\u2019administrateur.');
+}
+async function cancelExchange(id){
+  state.exchanges=state.exchanges.filter(x=>x.id!==id);
+  await persistExchanges();
+}
+async function validateExchange(id,adminComment){
+  const ex=state.exchanges.find(x=>x.id===id);
+  if(!ex) return;
+  ex.status='validated'; ex.adminComment=adminComment||''; ex.processedAt=new Date().toISOString();
+  if(!state.schedules[ex.requesterUsername]) state.schedules[ex.requesterUsername]={};
+  if(!state.schedules[ex.targetUsername]) state.schedules[ex.targetUsername]={};
+  const oldA=state.schedules[ex.requesterUsername][ex.dateA]||null;
+  const oldB=state.schedules[ex.targetUsername][ex.dateB]||null;
+  if(ex.codeB) state.schedules[ex.requesterUsername][ex.dateA]=ex.codeB; else delete state.schedules[ex.requesterUsername][ex.dateA];
+  if(ex.codeA) state.schedules[ex.targetUsername][ex.dateB]=ex.codeA; else delete state.schedules[ex.targetUsername][ex.dateB];
+  await persistSchedules();
+  const msgA='Échange validé avec '+ex.targetName+' : '+fmtDateKeyFr(ex.dateA)+' → '+(ex.codeB||'Vide')+'.';
+  const msgB='Échange validé avec '+ex.requesterName+' : '+fmtDateKeyFr(ex.dateB)+' → '+(ex.codeA||'Vide')+'.';
+  await logExchangeChangeIfNeeded(ex.requesterUsername, ex.dateA, oldA, ex.codeB||null, msgA);
+  await logExchangeChangeIfNeeded(ex.targetUsername, ex.dateB, oldB, ex.codeA||null, msgB);
+  await persistExchanges();
+  await pushNotification(ex.requesterUsername, 'Votre échange avec '+ex.targetName+' a été validé par l\u2019administrateur.');
+  await pushNotification(ex.targetUsername, 'L\u2019échange avec '+ex.requesterName+' a été validé par l\u2019administrateur.');
+}
+async function refuseExchange(id,adminComment){
+  const ex=state.exchanges.find(x=>x.id===id);
+  if(!ex) return;
+  ex.status='refused'; ex.adminComment=adminComment||''; ex.processedAt=new Date().toISOString();
+  await persistExchanges();
+  await pushNotification(ex.requesterUsername, 'Votre demande d\u2019échange avec '+ex.targetName+' a été refusée.'+(adminComment?' Motif : '+adminComment:''));
+  await pushNotification(ex.targetUsername, 'La demande d\u2019échange proposée par '+ex.requesterName+' a été refusée.');
+}
+function exchangeStatusLabel(s){ return s==='pending'?'En attente':s==='validated'?'Validé':'Refusé'; }
+function exchangeStatusColor(s){ return desidStatusColor(s); }
+function weekDatesAround(dateKey){
+  const d=new Date(dateKey+'T00:00:00');
+  const dow=(d.getDay()+6)%7; // 0=lundi
+  const monday=addDays(d,-dow);
+  const days=[];
+  for(let i=0;i<7;i++) days.push(dkey(addDays(monday,i)));
+  return days;
+}
+function exchangeMiniRowHtml(username, weekDates, overrideDateKey, overrideCode){
+  const cells=weekDates.map(dk=>{
+    const isOverride = dk===overrideDateKey;
+    const code = isOverride ? overrideCode : getDayCodeByKey(username, dk);
+    const info = code?codeInfo(code):null;
+    const dd=dk.slice(8,10);
+    return `<div style="flex:1;min-width:30px;text-align:center;">
+      <div style="font-size:9px;color:var(--ink-soft);margin-bottom:2px;">${dd}</div>
+      <div style="height:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;background:${info?info.color:'#EDEFF2'};color:${info?info.text:'#B7BEC9'};${isOverride?'outline:2px solid var(--primary);outline-offset:-2px;':''}">${code||'—'}</div>
+    </div>`;
+  }).join('');
+  return `<div style="display:flex;gap:3px;">${cells}</div>`;
+}
+// Simule l'échange (sans rien persister) pour détecter si le valider ferait
+// apparaître une NOUVELLE alerte d'effectif/charge par rapport à la situation
+// actuelle. Mutation + calcul + restauration se font de façon synchrone, donc
+// sans risque d'être lues entre-temps par un autre traitement.
+function computeExchangeAlertImpact(ex){
+  const ru=state.users.find(u=>u.username===ex.requesterUsername);
+  const tu=state.users.find(u=>u.username===ex.targetUsername);
+  if(!ru || !tu) return [];
+  const relevantServices=new Set([ru.team, tu.team].filter(Boolean));
+  if(!relevantServices.size) return [];
+  const monthsToCheck=new Set([ex.dateA.slice(0,7), ex.dateB.slice(0,7)]);
+  const sigOf=a=> a.rule.id+'|'+(a.rule.type==='daily_group'?a.date:(a.employee.username+'|'+a.weekStart))+'|'+a.kind;
+  const collect=()=>{
+    const map=new Map();
+    monthsToCheck.forEach(key=>{
+      const [yy,mm]=key.split('-').map(Number);
+      computeAllAlerts(yy, mm-1).filter(a=>relevantServices.has(a.rule.service)).forEach(a=>map.set(sigOf(a), a));
+    });
+    return map;
+  };
+  const beforeAlerts=collect();
+  if(!state.schedules[ex.requesterUsername]) state.schedules[ex.requesterUsername]={};
+  if(!state.schedules[ex.targetUsername]) state.schedules[ex.targetUsername]={};
+  const savedA=state.schedules[ex.requesterUsername][ex.dateA];
+  const savedB=state.schedules[ex.targetUsername][ex.dateB];
+  if(ex.codeB) state.schedules[ex.requesterUsername][ex.dateA]=ex.codeB; else delete state.schedules[ex.requesterUsername][ex.dateA];
+  if(ex.codeA) state.schedules[ex.targetUsername][ex.dateB]=ex.codeA; else delete state.schedules[ex.targetUsername][ex.dateB];
+  const afterAlerts=collect();
+  if(savedA!==undefined) state.schedules[ex.requesterUsername][ex.dateA]=savedA; else delete state.schedules[ex.requesterUsername][ex.dateA];
+  if(savedB!==undefined) state.schedules[ex.targetUsername][ex.dateB]=savedB; else delete state.schedules[ex.targetUsername][ex.dateB];
+  const newOnes=[];
+  afterAlerts.forEach((a,key)=>{ if(!beforeAlerts.has(key)) newOnes.push(a); });
+  return newOnes.map(a=> a.rule.type==='daily_group'
+    ? (a.rule.label+' — '+fmtDateKeyFr(a.date)+' ('+(a.kind==='min'?'sous-effectif':'sur-effectif')+')')
+    : (a.rule.label+' — '+a.employee.name+' S'+a.weekNum+' ('+(a.kind==='min'?'sous-charge':'sur-charge')+')')
+  );
+}
+
+/* ============================================================
+   ALERTES — moteur de calcul (toujours recalculé à la volée,
+   jamais stocké : pas d'accumulation ni de nettoyage nécessaire)
+   ============================================================ */
+function ymdKey(y,m,d){ return y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0'); }
+function computeDailyGroupAlerts(rule,year,month){
+  const nDays=daysInMonth(year,month);
+  // Un salarié ne compte dans l'effectif de ce service/fonction QUE les jours où
+  // son affectation (historique service/fonction) correspond réellement à la
+  // règle — un changement de service en cours de mois est donc pris en compte
+  // jour par jour, pas sur la base d'un service figé pour tout le mois.
+  const candidates=state.users.filter(u=>!isSuperAdmin(u));
+  const results=[];
+  for(let d=1; d<=nDays; d++){
+    const key=ymdKey(year,month,d);
+    let count=0; const names=[];
+    candidates.forEach(e=>{
+      if(!isEmployeeValidForMonth(e,year,month)) return;
+      const aff=affectationAt(e,key);
+      if(aff.team!==rule.service || !rule.fonctions.includes(aff.fonction)) return;
+      const code=state.schedules[e.username] && state.schedules[e.username][key];
+      if(code && rule.codes.includes(code)){ count++; names.push(e.name); }
+    });
+    if(rule.min!=null && count<rule.min){
+      results.push({rule, kind:'min', date:key, count, names, target:rule.min});
+    }
+    if(rule.max!=null && count>rule.max){
+      results.push({rule, kind:'max', date:key, count, names, target:rule.max});
+    }
+  }
+  return results;
+}
+function computeWeeklyPersonAlerts(rule,year,month){
+  const candidates=state.users.filter(u=>!isSuperAdmin(u) && isEmployeeValidForMonth(u,year,month));
+  const nDays=daysInMonth(year,month);
+  const seenWeeks=new Set();
+  const results=[];
+  for(let d=1; d<=nDays; d++){
+    const date=new Date(year,month,d);
+    const wn=isoWeekNumber(date);
+    const wKey=date.getFullYear()+'-W'+wn;
+    if(seenWeeks.has(wKey)) continue;
+    seenWeeks.add(wKey);
+    const dow=(date.getDay()+6)%7;
+    const monday=addDays(date,-dow);
+    const weekDates=Array.from({length:7},(_,i)=>dkey(addDays(monday,i)));
+    candidates.forEach(e=>{
+      let count=0, hasExcluded=false, matchedAnyDay=false;
+      const excludeCodes=rule.excludeCodes||[];
+      weekDates.forEach(k=>{
+        const aff=affectationAt(e,k);
+        if(aff.team!==rule.service || !rule.fonctions.includes(aff.fonction)) return;
+        matchedAnyDay=true;
+        const code=state.schedules[e.username] && state.schedules[e.username][k];
+        if(code && rule.codes.includes(code)) count++;
+        if(code && excludeCodes.includes(code)) hasExcluded=true;
+      });
+      if(!matchedAnyDay) return; // pas dans ce service/fonction cette semaine-là
+      if(hasExcluded) return; // semaine avec congé/absence : on ne pénalise pas le salarié pour cette règle
+      if(rule.min!=null && count<rule.min){
+        results.push({rule, kind:'min', weekNum:wn, weekStart:weekDates[0], weekEnd:weekDates[6], employee:e, count, target:rule.min});
+      }
+      if(rule.max!=null && count>rule.max){
+        results.push({rule, kind:'max', weekNum:wn, weekStart:weekDates[0], weekEnd:weekDates[6], employee:e, count, target:rule.max});
+      }
+    });
+  }
+  return results;
+}
+function computeAllAlerts(year,month){
+  let all=[];
+  state.alertRules.filter(r=>r.active).forEach(r=>{
+    all = all.concat(r.type==='daily_group' ? computeDailyGroupAlerts(r,year,month) : computeWeeklyPersonAlerts(r,year,month));
+  });
+  return all;
+}
+function currentMonthAlertCount(){
+  const t=new Date();
+  // Un admin restreint à certains services (ex : un responsable comme Stéphanie,
+  // limité à LOG + REGULPN) ne doit voir dans son badge que SES alertes, pas
+  // celles de tous les autres services de l'application.
+  const scope=getAdminScope(state.currentUser);
+  return computeAllAlerts(t.getFullYear(), t.getMonth()).filter(a=>!scope || scope.includes(a.rule.service)).length;
+}
+function formatGroupAlertTooltip(dailyAlerts){
+  // Regroupe par règle, une ligne par jour
+  const byRule={};
+  dailyAlerts.forEach(a=>{
+    if(!byRule[a.rule.label]) byRule[a.rule.label]=[];
+    byRule[a.rule.label].push(a);
+  });
+  const lines=[];
+  Object.keys(byRule).forEach(label=>{
+    lines.push('● '+label+' :');
+    byRule[label].forEach(a=>{
+      lines.push('   '+fmtDateKeyFr(a.date)+' — '+a.count+'/'+a.target+' ('+(a.kind==='min'?'sous-effectif':'sur-effectif')+')');
+    });
+  });
+  return lines.join('\n');
+}
+function formatWeeklyAlertTooltip(weeklyAlerts){
+  // Regroupe par règle, une ligne par semaine
+  const byRule={};
+  weeklyAlerts.forEach(a=>{
+    if(!byRule[a.rule.label]) byRule[a.rule.label]=[];
+    byRule[a.rule.label].push(a);
+  });
+  const lines=[];
+  Object.keys(byRule).forEach(label=>{
+    lines.push('● '+label+' :');
+    byRule[label].forEach(a=>{
+      lines.push('   Semaine S'+a.weekNum+' — '+a.count+' jour'+(a.count>1?'s':'')+' (seuil '+(a.kind==='min'?'min. '+a.target:'max. '+a.target)+')');
+    });
+  });
+  return lines.join('\n');
+}
+
+/* ============================================================
+   AUTH
+   ============================================================ */
+function tryLogin(username,password){
+  const u=state.users.find(x=>x.username.toLowerCase()===username.trim().toLowerCase() && x.password===password);
+  if(!u){ state.loginError="Identifiant ou mot de passe incorrect."; render(); return; }
+  state.currentUser={username:u.username,name:u.name,role:u.role,adminServices:u.adminServices||[]};
+  state.loginError='';
+  state.screen='app';
+  state.tab = u.role==='admin' ? 'calendrier' : 'planning';
+  state.viewDate=new Date();
+  state.showNotifBanner=true;
+  render();
+  startPolling();
+}
+function logout(){
+  stopPolling();
+  state.currentUser=null; state.loginError=''; state.screen='login'; state.bellOpen=false; render();
+}
+
+/* ============================================================
+   NOTIFICATIONS
+   ============================================================ */
+function myNotifs(){
+  if(!state.currentUser) return [];
+  return state.notifications[state.currentUser.username] || [];
+}
+function unreadCount(){ return myNotifs().filter(n=>!n.read).length; }
+
+async function pushNotification(username, message){
+  if(!state.notifications[username]) state.notifications[username]=[];
+  const notif={id:Date.now()+'-'+Math.random().toString(36).slice(2,7), date:new Date().toISOString(), message, read:false};
+  state.notifications[username].unshift(notif);
+  state.notifications[username]=state.notifications[username].slice(0,50);
+  await persistNotifications();
+  return notif;
+}
+
+/* ============================================================
+   NOTIFICATIONS LOCALES — TOUJOURS via le Service Worker.
+   Ne JAMAIS appeler `new Notification(...)` sur le thread principal :
+   ça échoue sur Chrome Android (Illegal constructor).
+   ============================================================ */
+async function showLocalNotification(title, body){
+  try{
+    if(!('serviceWorker' in navigator)){ toast(title+' — '+body); return; }
+    const reg = await navigator.serviceWorker.ready;
+    await reg.showNotification(title, {body});
+  }catch(e){
+    console.error('showLocalNotification a échoué', e);
+    toast(title+' — '+body);
+  }
+}
+
+async function requestNotifPermission(){
+  if(typeof Notification==='undefined' || !('serviceWorker' in navigator)){
+    toast("Les notifications ne sont pas prises en charge sur cet appareil.", true);
+    return;
+  }
+  try{
+    const permission = await Notification.requestPermission();
+    state.notifPermission = permission;
+    if(permission==='granted'){
+      const reg = await navigator.serviceWorker.register('firebase-messaging-sw.js');
+      await navigator.serviceWorker.ready;
+      const messaging = firebase.messaging();
+      const token = await messaging.getToken({ vapidKey: FCM_VAPID_KEY, serviceWorkerRegistration: reg });
+      if(token && state.currentUser){
+        await db.collection('fcm_tokens').doc(token).set({
+          username: state.currentUser.username,
+          token,
+          userAgent: navigator.userAgent,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      }
+      toast('Notifications activées ✓');
+      await showLocalNotification("SKYPLANNING", 'Vous recevrez une alerte à chaque modification de votre planning.');
+    } else {
+      toast('Notifications refusées. Vous verrez toujours les alertes dans la cloche ci-dessus.', true);
+    }
+  }catch(e){
+    console.error('Activation des notifications push impossible', e);
+    toast("Impossible d'activer les notifications push sur cet appareil.", true);
+  }
+  render();
+}
+
+// Réception des notifications FCM pendant que l'app est au premier plan
+try{
+  if('serviceWorker' in navigator && typeof Notification!=='undefined'){
+    const fgMessaging = firebase.messaging();
+    fgMessaging.onMessage(async(payload)=>{
+      const title = (payload.notification && payload.notification.title) || 'SKYPLANNING';
+      const body = (payload.notification && payload.notification.body) || '';
+      await showLocalNotification(title, body);
+    });
+  }
+}catch(e){ /* FCM non supporté sur ce navigateur, on ignore silencieusement */ }
+
+let pollUnsub=null;
+function startPolling(){
+  stopPolling();
+  if(!state.currentUser || state.currentUser.role!=='employee') return;
+  let knownIds=new Set(myNotifs().map(n=>n.id));
+  pollUnsub = db.collection(FIRESTORE_COLLECTION).doc('notifications').onSnapshot(async(doc)=>{
+    if(!doc.exists) return;
+    let all;
+    try{ all=JSON.parse(doc.data().value); }catch(e){ return; }
+    state.notifications=all;
+    const mine=myNotifs();
+    const fresh=mine.filter(x=>!knownIds.has(x.id));
+    if(fresh.length){
+      for(const f of fresh){
+        knownIds.add(f.id);
+        await showLocalNotification('Planning modifié', f.message);
+      }
+      toast(fresh.length===1? fresh[0].message : fresh.length+' nouvelles modifications de votre planning');
+    }
+    mine.forEach(x=>knownIds.add(x.id));
+    if(fresh.length && state.screen==='app') render();
+  }, (err)=>{ console.error('Erreur de synchronisation des notifications', err); });
+}
+function stopPolling(){ if(pollUnsub){ pollUnsub(); pollUnsub=null; } }
+
+/* ============================================================
+   HELPERS PLANNING
+   ============================================================ */
+function daysInMonth(y,m){return new Date(y,m+1,0).getDate();}
+function isEmployeeValidForMonth(emp,year,month){
+  const monthStart=new Date(year,month,1), monthEnd=new Date(year,month+1,0);
+  const start = emp.startDate ? new Date(emp.startDate) : null;
+  const end = emp.endDate ? new Date(emp.endDate) : null;
+  if(start && monthEnd < start) return false;
+  if(end && monthStart > end) return false;
+  return true;
+}
+/* ============================================================
+   HISTORIQUE SERVICE / FONCTION D'UN SALARIÉ
+   Un salarié peut changer de service et/ou de fonction à une date donnée
+   (ex : Agent-REGULPN jusqu'au 28/08, puis Technicien-CCO dès le 29/08).
+   u.affectations = [{id, startDate:'YYYY-MM-DD', team, fonction}, ...]
+   triés par date croissante. Les salariés sans historique (anciens comptes)
+   se comportent exactement comme avant, via un historique "virtuel" à une
+   seule entrée basée sur u.team/u.fonction — donc aucune régression.
+   ============================================================ */
+function getAffectations(u){
+  if(u.affectations && u.affectations.length){
+    return [...u.affectations].sort((a,b)=>a.startDate.localeCompare(b.startDate));
+  }
+  return [{id:'base', startDate:u.startDate||'2000-01-01', team:u.team||'', fonction:u.fonction||''}];
+}
+function affectationAt(u, dateKey){
+  const list=getAffectations(u);
+  let current=list[0];
+  for(const a of list){ if(a.startDate<=dateKey) current=a; else break; }
+  return current;
+}
+function affectationsForMonth(u, year, month){
+  // Renvoie les tranches d'affectation qui recouvrent le mois demandé, avec
+  // leur jour de début/fin DANS ce mois (1..nDays) — utile pour griser les
+  // jours d'un service où le salarié n'était pas encore/plus affecté.
+  const nDays=daysInMonth(year,month);
+  const monthStart=ymdKey(year,month,1), monthEnd=ymdKey(year,month,nDays);
+  const list=getAffectations(u);
+  const segments=[];
+  for(let i=0;i<list.length;i++){
+    const a=list[i];
+    const nextStart = list[i+1] ? list[i+1].startDate : null;
+    if(nextStart && nextStart<=monthStart) continue;
+    if(a.startDate>monthEnd) continue;
+    const segStartDay = a.startDate>monthStart ? Number(a.startDate.slice(8,10)) : 1;
+    const segEndDay = (nextStart && nextStart<=monthEnd) ? Number(nextStart.slice(8,10))-1 : nDays;
+    if(segEndDay<segStartDay) continue;
+    segments.push({team:a.team, fonction:a.fonction, startDay:segStartDay, endDay:segEndDay});
+  }
+  return segments;
+}
+function employeeActiveInServiceDuringMonth(u, service, year, month){
+  if((u.extraTeams||[]).includes(service)) return true;
+  return affectationsForMonth(u, year, month).some(s=>s.team===service);
+}
+function resolveFonctionForService(e, service){
+  const matches=getAffectations(e).filter(a=>a.team===service);
+  if(!matches.length) return e.fonction||'';
+  return matches[matches.length-1].fonction||'';
+}
+function syncCurrentAffectation(u){
+  const today=dkey(new Date());
+  const cur=affectationAt(u, today);
+  if(cur){ u.team=cur.team||''; u.fonction=cur.fonction||''; }
+}
+function setImmediateAffectation(u, team, fonction){
+  // Utilisé quand l'admin change directement le Service/Fonction depuis la
+  // fiche salarié (effet immédiat, à la date du jour) plutôt que de
+  // programmer un changement futur.
+  const today=dkey(new Date());
+  const list=getAffectations(u).filter(a=>a.startDate!==today);
+  list.push({id:genId(), startDate:today, team, fonction});
+  u.affectations=list.sort((a,b)=>a.startDate.localeCompare(b.startDate));
+  u.team=team; u.fonction=fonction;
+}
+function isDayWithinValidity(emp, dateKey, serviceContext){
+  if(emp.startDate && dateKey<emp.startDate) return false;
+  if(emp.endDate && dateKey>emp.endDate) return false;
+  if(serviceContext){
+    const aff=affectationAt(emp, dateKey);
+    if(aff.team!==serviceContext && !(emp.extraTeams||[]).includes(serviceContext)) return false;
+  }
+  return true;
+}
+function codeInfo(code){ return state.codes.find(c=>c.code===code); }
+function getDayCode(username,year,month,day){
+  const key=year+'-'+String(month+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+  const sc=state.schedules[username];
+  return sc ? sc[key] : undefined;
+}
+function fmtDateFr(y,m,d){
+  return String(d).padStart(2,'0')+'/'+String(m+1).padStart(2,'0')+'/'+y;
+}
+async function paintCell(username,year,month,day){
+  const key=year+'-'+String(month+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+  if(!state.schedules[username]) state.schedules[username]={};
+  const current=state.schedules[username][key];
+  const dateStr=fmtDateFr(year,month,day);
+  const oldCode=current||null;
+  let newCode, message;
+  if(state.selectedCode==='VIDE' || current===state.selectedCode){
+    delete state.schedules[username][key];
+    newCode=null;
+    message='Votre journée du '+dateStr+' a été effacée (case vide).';
+  } else {
+    state.schedules[username][key]=state.selectedCode;
+    newCode=state.selectedCode;
+    const info=codeInfo(state.selectedCode);
+    message='Votre journée du '+dateStr+' a été mise à jour : '+(info?info.label:state.selectedCode)+' ('+state.selectedCode+').';
+  }
+  render();
+  try{
+    await persistSchedules();
+    const emp=state.users.find(u=>u.username===username);
+    // Important : on utilise le service applicable CE JOUR-LÀ (historique
+    // d'affectation), pas le service "actuel" de l'employé — un salarié
+    // transféré en cours de mois (ex : Patrick Napel arrivé au CCO en août)
+    // doit voir ses modifications correctement rattachées à CCO sur les
+    // jours où il y est réellement affecté, jamais à son ancien service.
+    const cellTeam = emp ? affectationAt(emp, key).team : '';
+    const monthValidated = !!(emp && cellTeam && isMonthValidated(cellTeam,year,month));
+    if(emp && cellTeam && oldCode!==newCode && monthValidated){
+      // Mois déjà validé : on NE notifie PAS tout de suite. On journalise juste
+      // le changement ; la notification ne part que lorsque l'admin valide
+      // (acquitte) cette modification — voir data-ack-change / ackAllChanges.
+      state.postValidationChanges.push({
+        id:genId(), service:cellTeam, year, month, day, username, name:emp.name,
+        oldCode, newCode, message, changedAt:new Date().toISOString(), changedBy:state.currentUser.username, acknowledged:false
+      });
+      await persistPostValidationChanges();
+      render();
+    }
+    // Mois pas encore validé : AUCUNE notification à l'édition. Le salarié ne voit
+    // de toute façon pas encore son planning ; il sera notifié en une seule fois
+    // pour tout le service au moment où l'admin validera le mois (voir plus bas).
+  }catch(e){ toast('Erreur de sauvegarde','err'); }
+}
+
+/* ============================================================
+   ÉCRAN — FONCTIONNALITÉS (grand admin uniquement)
+   Active/désactive des fonctionnalités du site, globalement ou par service.
+   ============================================================ */
+function renderFonctionnalites(){
+  if(!isSuperAdmin(state.currentUser)){ state.tab='calendrier'; render(); return; }
+  const ff=state.featureFlags;
+
+  const globalToggle=(key,label,desc)=>`
+    <label class="feat-toggle-row">
+      <div class="feat-toggle-text">
+        <div class="feat-toggle-label">${label}</div>
+        <div class="feat-toggle-desc">${desc}</div>
+      </div>
+      <input type="checkbox" data-feat-global="${key}" ${ff[key]!==false?'checked':''}>
+    </label>`;
+
+  const perServiceRows = state.services.map(svc=>{
+    const ov=(ff.perService && ff.perService[svc]) || {};
+    return `
+    <tr>
+      <td>${escapeHtml(svc)}</td>
+      <td style="text-align:center;"><input type="checkbox" data-feat-svc="${escapeHtml(svc)}" data-feat-key="desideratas" ${ov.desideratas!==false?'checked':''} ${ff.desideratas===false?'disabled':''}></td>
+      <td style="text-align:center;"><input type="checkbox" data-feat-svc="${escapeHtml(svc)}" data-feat-key="echanges" ${ov.echanges!==false?'checked':''} ${ff.echanges===false?'disabled':''}></td>
+    </tr>`;
+  }).join('');
+
+  const inner=`
+    <div class="legend-hint">Activez ou désactivez des fonctionnalités pour l'ensemble du site. Une fonctionnalité désactivée disparaît des menus de tous les comptes concernés (admin comme salariés).</div>
+    <div class="feat-card">
+      <h3>Fonctionnalités générales</h3>
+      ${globalToggle('desideratas','Désidératas','Les salariés peuvent demander des jours spécifiques, l\u2019admin valide ou refuse.')}
+      ${globalToggle('echanges','Échanges de service','Un salarié peut proposer un échange de journée avec un collègue, validé en un clic par l\u2019admin.')}
+      ${globalToggle('alertes','Alertes d\u2019effectif','Détection automatique des sous/sur-effectifs et dépassements de charge hebdo.')}
+      ${globalToggle('genAuto','Génération automatique du planning','Le bouton « 🪄 Générer automatiquement » sur le Calendrier Mensuel.')}
+      ${globalToggle('impression','Impression PDF','Les boutons « Imprimer le planning » (admin, planning équipe, planning individuel).')}
+      ${globalToggle('photos','Photo de profil','Permet aux salariés d\u2019ajouter une photo depuis « Mon compte ».')}
+    </div>
+    <div class="feat-card">
+      <h3>Droits par service</h3>
+      <div class="helper" style="margin:-4px 0 12px;">Affine désidératas et échanges service par service (ex : un service peut ne pas vouloir des échanges entre salariés). Sans effet si la case est déjà décochée ci-dessus au niveau général.</div>
+      ${state.services.length ? `
+      <table class="feat-service-table">
+        <thead><tr><th>Service</th><th>Désidératas</th><th>Échanges</th></tr></thead>
+        <tbody>${perServiceRows}</tbody>
+      </table>` : `<div class="empty-state">Aucun service créé pour l'instant.</div>`}
+    </div>
+  `;
+  renderShell(inner,'Fonctionnalités');
+  document.querySelectorAll('[data-feat-global]').forEach(chk=>{
+    chk.addEventListener('change', async()=>{
+      state.featureFlags[chk.dataset.featGlobal]=chk.checked;
+      await persistFeatureFlags();
+      toast(chk.checked?'Fonctionnalité activée.':'Fonctionnalité désactivée.');
+      render();
+    });
+  });
+  document.querySelectorAll('[data-feat-svc]').forEach(chk=>{
+    chk.addEventListener('change', async()=>{
+      const svc=chk.dataset.featSvc, key=chk.dataset.featKey;
+      if(!state.featureFlags.perService) state.featureFlags.perService={};
+      if(!state.featureFlags.perService[svc]) state.featureFlags.perService[svc]={};
+      state.featureFlags.perService[svc][key]=chk.checked;
+      await persistFeatureFlags();
+      toast('Réglage mis à jour pour '+svc+'.');
+      render();
+    });
+  });
+}
+
+/* ============================================================
+   ÉCRAN — LOGIN
+   ============================================================ */
+function renderLogin(){
+  const app=document.getElementById('app');
+  app.innerHTML=`
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="login-mark skyplanning-logo">SKYPLANNING</div>
+      ${state.loginError?`<div class="login-error">${state.loginError}</div>`:''}
+      <form id="loginForm">
+        <div class="field">
+          <label>Identifiant</label>
+          <input id="loginUser" type="text" autocomplete="username" required>
+        </div>
+        <div class="field">
+          <label>Mot de passe</label>
+          <input id="loginPass" type="password" autocomplete="current-password" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Se connecter</button>
+      </form>
+      <div class="login-version">${APP_VERSION} — ${APP_VERSION_DATE}</div>
+    </div>
+  </div>`;
+  document.getElementById('loginForm').addEventListener('submit',e=>{
+    e.preventDefault();
+    tryLogin(document.getElementById('loginUser').value, document.getElementById('loginPass').value);
+  });
+}
+
+/* ============================================================
+   RENDU — SHELL (sidebar + topbar)
+   ============================================================ */
+function isMobileDevice(){
+  const hasTouch = ('ontouchstart' in window) || navigator.maxTouchPoints>0;
+  const smallScreen = Math.min(window.innerWidth, window.innerHeight) <= 500;
+  return hasTouch && smallScreen;
+}
+function navItems(){
+  if(isMobileDevice()){
+    return state.currentUser.role==='admin'
+      ? [{id:'calendrier', label:'Calendrier Mensuel', icon:'▦'}]
+      : [{id:'individuel', label:'Planning individuel', icon:'🗓️'}, {id:'equipe', label:'Planning équipe', icon:'👥'}];
+  }
+  if(state.currentUser.role==='admin'){
+    const items=[
+      {id:'calendrier', label:'Calendrier Mensuel', icon:'▦'},
+      {id:'salaries', label:'Gestion des salariés', icon:'☺'},
+      {id:'codes', label:'Gestion des codes', icon:'▤'},
+    ];
+    if(isFeatureEnabled('desideratas')) items.push({id:'desideratas', label:'Désidératas', icon:'🖐️'});
+    if(isFeatureEnabled('echanges')) items.push({id:'echanges', label:'Échanges', icon:'🔄'});
+    if(isFeatureEnabled('alertes')) items.push({id:'alertes', label:'Alertes', icon:'⚠️'});
+    if(isSuperAdmin(state.currentUser)) items.push({id:'fonctionnalites', label:'Fonctionnalités', icon:'🧩'});
+    return items;
+  }
+  const me=state.users.find(u=>u.username===state.currentUser.username);
+  const myTeam=(me&&me.team)?me.team:'';
+  const items=[
+    {id:'planning', label:'Planning', icon:'▦'},
+    {id:'annuel', label:'Mon planning annuel', icon:'📅'},
+    {id:'equipe', label:'Planning équipe', icon:'👥'},
+  ];
+  if(isFeatureEnabled('desideratas', myTeam)) items.push({id:'mesdesid', label:'Mes désidératas', icon:'🖐️'});
+  if(isFeatureEnabled('echanges', myTeam)) items.push({id:'echanges', label:'Échanges', icon:'🔄'});
+  return items;
+}
+function initials(name){
+  return name.split(' ').map(p=>p[0]).join('').slice(0,2).toUpperCase();
+}
+function timeAgo(iso){
+  const diff=Math.max(0, Date.now()-new Date(iso).getTime());
+  const min=Math.floor(diff/60000);
+  if(min<1) return "à l'instant";
+  if(min<60) return 'il y a '+min+' min';
+  const h=Math.floor(min/60);
+  if(h<24) return 'il y a '+h+' h';
+  return 'il y a '+Math.floor(h/24)+' j';
+}
+function bellHtml(){
+  if(!state.currentUser || state.currentUser.role!=='employee') return '';
+  const count=unreadCount();
+  const notifs=myNotifs();
+  return `
+  <div style="position:relative;">
+    <button class="bell-btn" id="bellBtn">🔔${count?`<span class="bell-dot">${count>9?'9+':count}</span>`:''}</button>
+    ${state.bellOpen?`
+    <div class="bell-panel">
+      <div class="bell-panel-head">
+        <h4>Notifications</h4>
+        ${notifs.length?'<button id="markAllRead">Tout marquer lu</button>':''}
+      </div>
+      ${notifs.length? notifs.map(n=>`
+        <div class="notif-item ${n.read?'':'unread'}">
+          <div class="msg">${n.message}</div>
+          <div class="date">${timeAgo(n.date)}</div>
+        </div>`).join('') : `<div class="notif-empty">Aucune notification pour le moment.</div>`}
+    </div>`:''}
+  </div>`;
+}
+function bindBell(){
+  const btn=document.getElementById('bellBtn');
+  if(!btn) return;
+  btn.addEventListener('click',async(e)=>{
+    e.stopPropagation();
+    state.bellOpen=!state.bellOpen;
+    render();
+    if(state.bellOpen){
+      const mine=myNotifs();
+      if(mine.some(n=>!n.read)){
+        mine.forEach(n=>n.read=true);
+        await persistNotifications();
+      }
+    }
+  });
+  const markBtn=document.getElementById('markAllRead');
+  if(markBtn) markBtn.addEventListener('click',async(e)=>{
+    e.stopPropagation();
+    myNotifs().forEach(n=>n.read=true);
+    await persistNotifications();
+    render();
+  });
+  document.addEventListener('click',function closeBell(){ if(state.bellOpen){ state.bellOpen=false; render(); } document.removeEventListener('click',closeBell); }, {once:true});
+}
+function notifBannerHtml(){
+  if(!state.currentUser || state.currentUser.role!=='employee') return '';
+  if(state.notifPermission==='unsupported' || state.notifPermission==='granted' || !state.showNotifBanner) return '';
+  return `
+  <div class="notif-banner">
+    <span>🔔 Activez les notifications pour être alerté·e dès qu'un changement est apporté à votre planning.</span>
+    <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
+      <button id="enableNotifBtn">Activer</button>
+      <button class="close" id="dismissNotifBtn">✕</button>
+    </div>
+  </div>`;
+}
+function bindNotifBanner(){
+  const en=document.getElementById('enableNotifBtn');
+  if(en) en.addEventListener('click', requestNotifPermission);
+  const dm=document.getElementById('dismissNotifBtn');
+  if(dm) dm.addEventListener('click',()=>{ state.showNotifBanner=false; render(); });
+}
+function renderShell(innerHtml,title,sidebarExtraHtml){
+  const app=document.getElementById('app');
+  const items=navItems();
+  app.innerHTML=`
+  <div class="shell">
+    <div class="sidebar">
+      <div class="sidebar-brand"><span class="sidebar-skyplanning">SKYPLANNING</span></div>
+      <div class="sidebar-nav">
+        ${items.map(it=>{
+          const badge = it.id==='desideratas'
+            ? state.desideratas.filter(d=>{
+                if(d.status!=='pending' || d.archived) return false;
+                const scope=getAdminScope(state.currentUser);
+                if(!scope) return true;
+                const u=state.users.find(x=>x.username===d.username);
+                return u && scope.includes(u.team);
+              }).length
+            : it.id==='alertes'
+              ? currentMonthAlertCount()
+              : it.id==='echanges'
+                ? (state.currentUser.role==='admin'
+                    ? state.exchanges.filter(ex=>{
+                        if(ex.status!=='pending') return false;
+                        const scope=getAdminScope(state.currentUser);
+                        if(!scope) return true;
+                        const ru=state.users.find(u=>u.username===ex.requesterUsername);
+                        const tu=state.users.find(u=>u.username===ex.targetUsername);
+                        return (ru&&scope.includes(ru.team)) || (tu&&scope.includes(tu.team));
+                      }).length
+                    : state.exchanges.filter(ex=>ex.targetUsername===state.currentUser.username && ex.status==='pending').length)
+                : 0;
+          return `<button data-tab="${it.id}" class="${state.tab===it.id?'active':''}">${it.icon} <span class="label">${it.label}</span>${badge?`<span class="nav-badge">${badge>9?'9+':badge}</span>`:''}</button>`;
+        }).join('')}
+      </div>
+      ${sidebarExtraHtml ? `<div class="sidebar-extra">${sidebarExtraHtml}</div>` : ''}
+      <div class="sidebar-foot">
+        <div class="sidebar-user"><b>${state.currentUser.name}</b>${state.currentUser.role==='admin'?(isSuperAdmin(state.currentUser)?'Administrateur':'Admin · '+(getAdminScope(state.currentUser)||[]).join(', ')):'Salarié·e'}</div>
+        <button id="btnAccount">⚙ <span class="label">Mon compte</span></button>
+        <button id="btnLogout">↪ <span class="label">Se déconnecter</span></button>
+      </div>
+    </div>
+    <div class="main">
+      <div class="topbar">
+        <h2>${title}</h2>
+        ${bellHtml()}
+      </div>
+      <div class="content">
+        ${isMobileDevice() ? `<div class="legend-hint mobile-restricted-hint">📱 Vue mobile simplifiée — seul « ${escapeHtml(items[0].label)} » est disponible ici. Pour la gestion complète (saisie, désidératas, alertes...), utilisez un ordinateur.</div>` : ''}
+        ${notifBannerHtml()}
+        ${innerHtml}
+      </div>
+    </div>
+  </div>`;
+  document.querySelectorAll('.sidebar-nav [data-tab]').forEach(btn=>{
+    btn.addEventListener('click',()=>{ state.tab=btn.dataset.tab; state.selectedCode=null; render(); });
+  });
+  document.getElementById('btnLogout').addEventListener('click',logout);
+  document.getElementById('btnAccount').addEventListener('click',()=>{ state.modal={type:'account'}; render(); });
+  bindBell();
+  bindNotifBanner();
+}
+
+/* ============================================================
+   RENDU — NAVIGATION MOIS
+   ============================================================ */
+function monthNavHtml(){
+  const y=state.viewDate.getFullYear(), m=state.viewDate.getMonth();
+  return `
+  <div class="month-nav">
+    <button class="nav-arrow" id="prevMonth">‹</button>
+    <div class="month-label">${MOIS[m]} ${y}</div>
+    <button class="nav-arrow" id="nextMonth">›</button>
+    <button class="today-btn" id="todayBtn">Aujourd'hui</button>
+  </div>`;
+}
+function bindMonthNav(onChange){
+  document.getElementById('prevMonth').addEventListener('click',()=>{
+    state.viewDate=new Date(state.viewDate.getFullYear(),state.viewDate.getMonth()-1,1); onChange();
+  });
+  document.getElementById('nextMonth').addEventListener('click',()=>{
+    state.viewDate=new Date(state.viewDate.getFullYear(),state.viewDate.getMonth()+1,1); onChange();
+  });
+  document.getElementById('todayBtn').addEventListener('click',()=>{
+    state.viewDate=new Date(); onChange();
+  });
+}
+
+/* ============================================================
+   RENDU — LÉGENDE / PALETTE
+   ============================================================ */
+function legendHtml(interactive){
+  const chips=state.codes.map(c=>`
+    <div class="chip ${interactive?'selectable':''} ${state.selectedCode===c.code?'active':''}" data-code="${c.code}">
+      <span class="dot ${c.code==='VIDE'?'dot-outline':''}" style="background:${c.color}"></span>${c.code} · ${c.label}
+    </div>`).join('');
+  const addChip = interactive ? `<div class="chip add-code" id="addCodeChip">+ Ajouter un code</div>` : '';
+  return `<div class="legend">${chips}${addChip}</div>`;
+}
+function bindLegend(){
+  document.querySelectorAll('.legend .chip.selectable').forEach(chip=>{
+    chip.addEventListener('click',()=>{
+      const code=chip.dataset.code;
+      state.selectedCode = state.selectedCode===code ? null : code;
+      render();
+    });
+  });
+  const addBtn=document.getElementById('addCodeChip');
+  if(addBtn) addBtn.addEventListener('click',()=>{ state.modal={type:'code', isNew:true, data:{code:'',label:'',color:'#8AB4F8',text:'#1E2433',startTime:'',endTime:'',description:'',isWork:true}}; render(); });
+}
+
+/* ============================================================
+   RENDU — GRILLE (mois) pour un ou plusieurs employés
+   ============================================================ */
+function gridHtml({employees, readonly, alerts, changes, serviceContext}){
+  alerts = alerts || [];
+  changes = changes || [];
+  const changesMap={};
+  changes.forEach(c=>{
+    const k=c.username+'::'+c.year+'-'+String(c.month+1).padStart(2,'0')+'-'+String(c.day).padStart(2,'0');
+    if(!changesMap[k]) changesMap[k]=[];
+    changesMap[k].push(c);
+  });
+  const y=state.viewDate.getFullYear(), m=state.viewDate.getMonth();
+  const nDays=daysInMonth(y,m);
+  const holidays=frenchHolidays(y);
+  // Largeurs en % (et non en px fixes) pour que la grille s'adapte toujours à
+  // la largeur de l'écran : tous les jours du mois restent visibles sans
+  // défilement horizontal, quelle que soit la taille de la fenêtre.
+  const empColPct = 12;
+  const dayColPct = (100-empColPct)/nDays;
+  const colgroup = `<colgroup><col style="width:${empColPct}%">` + Array.from({length:nDays}).map(()=>`<col style="width:${dayColPct}%">`).join('') + `</colgroup>`;
+  let weekHead=`<tr><th class="emp-col"></th>`;
+  {
+    let dd=1;
+    while(dd<=nDays){
+      const wn=isoWeekNumber(new Date(y,m,dd));
+      let span=1;
+      while(dd+span<=nDays && isoWeekNumber(new Date(y,m,dd+span))===wn) span++;
+      weekHead+=`<th colspan="${span}" class="week-head">S${wn}</th>`;
+      dd+=span;
+    }
+  }
+  weekHead+='</tr>';
+  let head=`<tr><th class="emp-col">Salarié</th>`;
+  for(let d=1; d<=nDays; d++){
+    const date=new Date(y,m,d);
+    const dow=date.getDay();
+    const isWeekend = dow===0 || dow===6;
+    const isHoliday = !!holidays[dkey(date)];
+    head+=`<th class="${isWeekend?'weekend':''} ${isHoliday?'holiday':''}" title="${isHoliday?holidays[dkey(date)]:''}">${d}<span class="dow">${DOW[(dow+6)%7]}</span></th>`;
+  }
+  head+='</tr>';
+
+  let bodyRows='';
+  const svcGroups=groupByServiceThenFonction(employees, false, serviceContext);
+  const showServiceBar = svcGroups.length>1;
+  svcGroups.forEach(svcGroup=>{
+    if(showServiceBar){
+      const svcLabel = svcGroup.service==='__none_service__' ? 'Sans service' : svcGroup.service;
+      bodyRows+=`<tr><td class="service-head" colspan="${nDays+1}">${escapeHtml(svcLabel)}</td></tr>`;
+    }
+    svcGroup.sub.forEach(group=>{
+      if(group.fonction!==null){
+        const label = group.fonction==='__none__' ? 'Sans fonction' : group.fonction;
+        const grpDailyAlerts = alerts.filter(a=>a.rule.type==='daily_group' && a.rule.service===svcGroup.service && a.rule.fonctions.includes(group.fonction));
+        const alertBadge = grpDailyAlerts.length ? `<span class="alert-badge" title="${escapeHtml(formatGroupAlertTooltip(grpDailyAlerts))}">⚠ ${grpDailyAlerts.length}</span>` : '';
+        bodyRows+=`<tr><td class="fonction-head" colspan="${nDays+1}">${escapeHtml(label)}${alertBadge}</td></tr>`;
+      }
+      const groupAlertDays=new Set(alerts.filter(a=>a.rule.type==='daily_group' && a.rule.service===svcGroup.service && (group.fonction===null||a.rule.fonctions.includes(group.fonction))).map(a=>a.date+'|'+a.kind));
+      group.list.forEach(emp=>{
+    const empWeeklyAlerts = alerts.filter(a=>a.rule.type==='weekly_person' && a.employee && a.employee.username===emp.username);
+    const empAlertBadge = empWeeklyAlerts.length ? `<span class="alert-badge-dot" title="${escapeHtml(formatWeeklyAlertTooltip(empWeeklyAlerts))}">⚠</span>` : '';
+    let row=`<tr data-user="${emp.username}"><td class="emp-col">${emp.photoUrl?`<span class="grid-emp-avatar"><img src="${emp.photoUrl}" alt=""></span>`:''}${emp.name}${empAlertBadge}</td>`;
+    for(let d=1; d<=nDays; d++){
+      const date=new Date(y,m,d);
+      const dow=date.getDay();
+      const isWeekend = dow===0 || dow===6;
+      const holidayName=holidays[dkey(date)];
+      const dateKeyStr=y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+      const dayValid=isDayWithinValidity(emp, dateKeyStr, serviceContext);
+      const code=getDayCode(emp.username,y,m,d);
+      const info=code?codeInfo(code):null;
+      const style=info?`background:${info.color};color:${info.text};`:'';
+      const holidayMarkHtml=holidayName?`<span class="grid-holiday-mark" title="${escapeHtml(holidayName)}">F</span>`:'';
+      const cm=state.comments[commentKey(emp.username,y,m,d)];
+      let marks='';
+      if(cm && cm.public) marks+='<span class="cmt-dot pub" title="Commentaire"></span>';
+      if(cm && cm.private) marks+='<span class="cmt-dot priv" title="Commentaire privé"></span>';
+      const desid=desiderataForCell(emp.username,dateKeyStr);
+      let desidStripHtml='', cellClass='', desidTitle='', alertMarkHtml='';
+      const dateKeyForAlert=ymdKey(y,m,d);
+      if(!dayValid){
+        if(serviceContext && emp.startDate && dateKeyStr>=emp.startDate && (!emp.endDate || dateKeyStr<=emp.endDate)){
+          const aff=affectationAt(emp, dateKeyStr);
+          desidTitle+=' — Rattaché à un autre service ce jour-là'+(aff.team?' ('+aff.team+(aff.fonction?' · '+aff.fonction:'')+')':'');
+        } else {
+          desidTitle+=' — Hors période de validité du salarié';
+        }
+      }
+      if(groupAlertDays.has(dateKeyForAlert+'|min') || groupAlertDays.has(dateKeyForAlert+'|max')){
+        alertMarkHtml='<span class="alert-day-mark" title="Alerte effectif"></span>';
+        desidTitle+=(groupAlertDays.has(dateKeyForAlert+'|min')?' — ⚠ Effectif insuffisant ce jour':' — ⚠ Effectif en surnombre ce jour');
+      }
+      if(state.genMode && state.genSelections[emp.username] && state.genSelections[emp.username].date===dateKeyForAlert){
+        cellClass+=' gen-selected';
+        desidTitle+=' — ★ Dernier jour sélectionné pour la génération automatique';
+      }
+      if(desid){
+        const dinfo=codeInfo(desid.code);
+        const dLabel=dinfo?dinfo.label:desid.code;
+        desidTitle+=' — Désidérata ('+desidStatusLabel(desid.status)+') : '+dLabel+(desid.comment?' — "'+desid.comment.replace(/"/g,'')+'"':'');
+        const stripStyle=dinfo?`background:${dinfo.color};color:${dinfo.text};`:'background:#EDEFF2;color:#7A8393;';
+        const icon = desid.status==='pending' ? '⏳' : desid.status==='validated' ? '✓' : '✕';
+        cellClass+=' desid-'+desid.status;
+        desidStripHtml=`<div class="desid-strip ${desid.status}" style="${stripStyle}" title="Demande : ${escapeHtml(desid.code)} · ${escapeHtml(dLabel)}${desid.comment?' — '+escapeHtml(desid.comment):''}">${desid.code}<span class="desid-strip-icon">${icon}</span></div>`;
+      }
+      if(!dayValid) cellClass+=' invalid-day';
+      const changeKey=emp.username+'::'+dateKeyStr;
+      const chgList=changesMap[changeKey];
+      let changePastilleHtml='';
+      if(chgList && chgList.length){
+        const hasPending=chgList.some(c=>!c.acknowledged);
+        cellClass+= hasPending ? ' has-change-pending' : ' has-change-acked';
+        const sorted=[...chgList].sort((a,b)=>b.changedAt.localeCompare(a.changedAt));
+        const tooltipLines=sorted.map(c=>{
+          const oldLbl=c.oldCode||'Vide', newLbl=c.newCode||'Vide';
+          return c.acknowledged
+            ? oldLbl+' → '+newLbl+' — validé le '+new Date(c.acknowledgedAt||c.changedAt).toLocaleDateString('fr-FR')+' par '+(c.acknowledgedBy||c.changedBy)
+            : oldLbl+' → '+newLbl+' — en attente de validation (modifié le '+new Date(c.changedAt).toLocaleDateString('fr-FR')+' par '+c.changedBy+')';
+        });
+        desidTitle+=' — ✎ '+tooltipLines.join(' | ');
+        changePastilleHtml=`<span class="change-pastille ${hasPending?'pending':'acked'}" title="${escapeHtml(tooltipLines.join('\n'))}"></span>`;
+      }
+      row+=`<td class="day-cell ${isWeekend?'weekend':''} ${cellClass}" data-day="${d}" data-user="${emp.username}" data-invalid="${!dayValid}" title="${(holidayName||'')+desidTitle}">
+        ${marks}
+        ${alertMarkHtml}
+        ${changePastilleHtml}
+        ${dayValid?holidayMarkHtml:''}
+        <div class="day-cell-inner">
+          <div class="code-badge" style="${dayValid?style:''}">${dayValid?(code||''):''}</div>
+          ${dayValid?desidStripHtml:''}
+        </div>
+      </td>`;
+    }
+    row+='</tr>';
+    bodyRows+=row;
+      });
+    });
+  });
+
+  if(employees.length===0){
+    return `<div class="grid-card"><div class="empty-state">Aucun salarié valide pour cette période.<br>Vérifiez les dates de validité dans « Gestion des salariés ».</div></div>`;
+  }
+
+  return `<div class="grid-card"><table class="grid ${readonly?'readonly':''}">${colgroup}<thead>${weekHead}${head}</thead><tbody>${bodyRows}</tbody></table></div>`;
+}
+let gridClickTimer=null;
+function bindGrid(readonly){
+  if(readonly) return;
+  document.querySelectorAll('td.day-cell').forEach(td=>{
+    td.addEventListener('click',(e)=>{
+      if(td.dataset.invalid==='true'){
+        if(e.detail>1) return;
+        toast("Ce salarié n'est pas dans l'effectif à cette date (hors période de validité).", true);
+        return;
+      }
+      if(state.genMode){
+        if(e.detail>1) return;
+        const username=td.dataset.user, day=parseInt(td.dataset.day,10);
+        const y=state.viewDate.getFullYear(), m=state.viewDate.getMonth();
+        const dateKeyStr=ymdKey(y,m,day);
+        const code=getDayCode(username,y,m,day);
+        handleGenSelectClick(username, dateKeyStr, code);
+        return;
+      }
+      if(gridClickTimer) clearTimeout(gridClickTimer);
+      gridClickTimer=setTimeout(()=>{
+        gridClickTimer=null;
+        if(!state.selectedCode){ toast("Sélectionnez d'abord un code dans la palette ci-dessus.", true); return; }
+        const user=td.dataset.user, day=parseInt(td.dataset.day,10);
+        td.classList.add('painted');
+        paintCell(user, state.viewDate.getFullYear(), state.viewDate.getMonth(), day);
+      }, 260);
+    });
+    td.addEventListener('dblclick',(e)=>{
+      e.preventDefault();
+      if(td.dataset.invalid==='true') return;
+      if(gridClickTimer){ clearTimeout(gridClickTimer); gridClickTimer=null; }
+      const username=td.dataset.user, day=parseInt(td.dataset.day,10);
+      const emp=state.users.find(u=>u.username===username);
+      openCommentModal(username, emp?emp.name:username, state.viewDate.getFullYear(), state.viewDate.getMonth(), day);
+    });
+    td.addEventListener('contextmenu',(e)=>{
+      const username=td.dataset.user, day=parseInt(td.dataset.day,10);
+      const dateKeyStr=state.viewDate.getFullYear()+'-'+String(state.viewDate.getMonth()+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+      const desid=desiderataForCell(username,dateKeyStr);
+      if(!desid) return; // laisse le menu contextuel du navigateur pour les cases sans désidérata
+      e.preventDefault();
+      if(gridClickTimer){ clearTimeout(gridClickTimer); gridClickTimer=null; }
+      state.modal={type:'desid-review', id:desid.id, adminComment:desid.adminComment||''};
+      render();
+    });
+  });
+}
+
+/* ============================================================
+   PEINTURE AU GLISSER — sélectionner un code puis passer la souris
+   (ou le doigt) sur plusieurs jours pour les remplir d'un coup.
+   Écouteurs posés une seule fois sur `document` (et non sur les
+   cases) car la grille est reconstruite à chaque case peinte —
+   des écouteurs posés sur les <td> seraient perdus en cours de
+   glissé. Le clic simple existant (avec son délai anti-dblclick)
+   n'est pas touché : le glissé n'est activé qu'après un vrai
+   déplacement de quelques pixels, pour ne jamais interférer avec
+   un simple clic ou un double-clic (commentaire).
+   ============================================================ */
+let paintDragActive=false;
+let paintDragMoved=false;
+let paintDragStart=null;
+let paintDragLastKey=null;
+function paintableCellAt(clientX,clientY){
+  const el=document.elementFromPoint(clientX,clientY);
+  const td=el && el.closest ? el.closest('td.day-cell') : null;
+  if(!td) return null;
+  if(td.dataset.invalid==='true') return null;
+  const table=td.closest('table.grid');
+  if(!table || table.classList.contains('readonly')) return null;
+  return td;
+}
+function paintDragToCell(td){
+  const key=td.dataset.user+'::'+td.dataset.day;
+  if(key===paintDragLastKey) return;
+  paintDragLastKey=key;
+  td.classList.add('painted');
+  paintCell(td.dataset.user, state.viewDate.getFullYear(), state.viewDate.getMonth(), parseInt(td.dataset.day,10));
+}
+function startPaintDrag(clientX,clientY){
+  if(state.genMode || !state.selectedCode) return;
+  const td=paintableCellAt(clientX,clientY);
+  if(!td) return;
+  paintDragActive=true;
+  paintDragMoved=false;
+  paintDragStart={x:clientX,y:clientY};
+  paintDragLastKey=null;
+}
+function movePaintDrag(clientX,clientY){
+  if(!paintDragActive) return;
+  if(!paintDragMoved){
+    if(Math.abs(clientX-paintDragStart.x)<5 && Math.abs(clientY-paintDragStart.y)<5) return;
+    paintDragMoved=true;
+    if(gridClickTimer){ clearTimeout(gridClickTimer); gridClickTimer=null; }
+  }
+  const td=paintableCellAt(clientX,clientY);
+  if(td) paintDragToCell(td);
+}
+function endPaintDrag(){
+  paintDragActive=false; paintDragMoved=false; paintDragLastKey=null; paintDragStart=null;
+}
+document.addEventListener('mousedown',(e)=>{
+  if(e.button!==0) return;
+  if(!e.target.closest || !e.target.closest('td.day-cell')) return;
+  startPaintDrag(e.clientX,e.clientY);
+});
+document.addEventListener('mousemove',(e)=>{ if(paintDragActive) movePaintDrag(e.clientX,e.clientY); });
+document.addEventListener('mouseup',endPaintDrag);
+document.addEventListener('mouseleave',endPaintDrag);
+document.addEventListener('touchstart',(e)=>{
+  const t=e.touches[0];
+  if(!t || !e.target.closest || !e.target.closest('td.day-cell')) return;
+  startPaintDrag(t.clientX,t.clientY);
+},{passive:true});
+document.addEventListener('touchmove',(e)=>{
+  if(!paintDragActive) return;
+  const t=e.touches[0];
+  if(!t) return;
+  movePaintDrag(t.clientX,t.clientY);
+  if(paintDragMoved) e.preventDefault();
+},{passive:false});
+document.addEventListener('touchend',endPaintDrag);
+document.addEventListener('touchcancel',endPaintDrag);
+
+/* ============================================================
+   ÉCRAN — PLANNING INDIVIDUEL (mobile, écran d'accueil par défaut)
+   Calendrier mensuel compact pensé pour tenir sur un écran de téléphone :
+   grand code = planning officiel validé par l'administration (comme
+   « Mon planning »), petit badge = brouillon personnel éditable, exactement
+   comme sur « Mon planning annuel » mais un seul mois à la fois.
+   ============================================================ */
+function renderPlanningIndividuel(){
+  const y=state.viewDate.getFullYear(), m=state.viewDate.getMonth();
+  const nDays=daysInMonth(y,m);
+  const holidays=frenchHolidays(y);
+  const firstDow=(new Date(y,m,1).getDay()+6)%7;
+  const todayKey=dkey(new Date());
+  const username=state.currentUser.username;
+  const meRec=state.users.find(u=>u.username===username);
+  const myService=meRec?meRec.team:'';
+  const monthOk=isMonthValidated(myService,y,m);
+  const selectedCode=state.indivSelectedCode;
+
+  function dayCellHtml(d){
+    const date=new Date(y,m,d);
+    const dateKeyStr=ymdKey(y,m,d);
+    const holidayName=holidays[dkey(date)];
+    let officialCode = monthOk ? getDayCode(username,y,m,d) : undefined;
+    if(monthOk && !officialCode) officialCode = holidayName ? 'FER' : 'O';
+    const info=officialCode?codeInfo(officialCode):null;
+    const isToday = dkey(date)===todayKey;
+    const draftCode=getDraftCode(username,y,m,d);
+    const draftInfo=draftCode?codeInfo(draftCode):null;
+    const dayValid = meRec ? isDayWithinValidity(meRec, dateKeyStr) : true;
+    return `<div class="cal-day cal-day-compact ${isToday?'today':''} ${dayValid?'selectable-day':''}" ${dayValid?`data-date="${dateKeyStr}"`:''} title="${dateKeyStr}${draftCode?' — brouillon : '+draftCode:''}">
+      <div class="d-head">
+        <span><span class="d-num">${d}</span><span class="d-dow">${DOW_SHORT[(date.getDay()+6)%7]}</span></span>
+        ${holidayName?'<span class="d-fer" title="'+escapeHtml(holidayName)+'">FÉR</span>':''}
+      </div>
+      <div class="d-code" style="background:${info?info.color:'#F4F5F7'};color:${info?info.text:'#B7BEC9'};">${officialCode||'—'}</div>
+      ${draftCode?`<div class="indiv-draft" style="background:${draftInfo?draftInfo.color:'#DDD'};color:${draftInfo?draftInfo.text:'#333'};">${draftCode}</div>`:''}
+    </div>`;
+  }
+
+  let weekRows='';
+  let dayCounter=1-firstDow;
+  while(dayCounter<=nDays){
+    const weekDays=[];
+    for(let i=0;i<7;i++){
+      const dnum=dayCounter+i;
+      weekDays.push(dnum>=1 && dnum<=nDays ? dayCellHtml(dnum) : '<div class="cal-day blank"></div>');
+    }
+    weekRows+=`<div class="cal-week-days indiv-week-row">${weekDays.join('')}</div>`;
+    dayCounter+=7;
+  }
+
+  const legendChipsHtml=state.codes.map(c=>`
+    <div class="chip selectable ${selectedCode===c.code?'active':''}" data-indiv-code="${c.code}">
+      <span class="dot ${c.code==='VIDE'?'dot-outline':''}" style="background:${c.color}"></span>${c.code}
+    </div>`).join('');
+
+  const inner=`
+    <div class="indiv-mobile-wrap">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div style="flex:1;">${monthNavHtml()}</div>
+      ${(monthOk && isFeatureEnabled('impression')) ? `<button class="icon-btn" id="indivPrintBtn" style="flex-shrink:0;">🖨️</button>` : ''}
+    </div>
+    <div class="legend-hint indiv-hint" style="margin:6px 0 8px;">Touchez un <b>code</b> puis un <b>jour</b> pour poser votre brouillon (comme « Mon planning annuel », mois par mois).</div>
+    <div class="legend indiv-legend" style="margin-bottom:8px;">${legendChipsHtml}</div>
+    <div class="indiv-dow-row" style="display:flex;gap:4px;margin-bottom:4px;">
+      ${DOW_SHORT.map(d=>`<div style="flex:1;text-align:center;font-size:9px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;">${d}</div>`).join('')}
+    </div>
+    <div class="indiv-weeks">${weekRows}</div>
+    ${!monthOk ? `<div class="helper" style="margin-top:8px;text-align:center;">🔒 Planning officiel de ${MOIS[m]} ${y} pas encore validé — vous pouvez déjà préparer votre brouillon.</div>` : ''}
+    </div>
+  `;
+  renderShell(inner,'Planning individuel');
+  bindMonthNav(render);
+  const indivPrintBtn=document.getElementById('indivPrintBtn');
+  if(indivPrintBtn) indivPrintBtn.addEventListener('click', ()=>{ printMonthlyPlanning(myService, y, m); });
+  document.querySelectorAll('.selectable-day').forEach(el=>{
+    el.addEventListener('click', async()=>{
+      if(!selectedCode){ toast('Sélectionnez d\u2019abord un code ci-dessus.', true); return; }
+      await paintOwnDayWithQuotaCheck(username, el.dataset.date, selectedCode);
+      render();
+    });
+  });
+  document.querySelectorAll('[data-indiv-code]').forEach(ch=>{
+    ch.addEventListener('click', ()=>{
+      const code=ch.dataset.indivCode;
+      state.indivSelectedCode = state.indivSelectedCode===code ? null : code;
+      render();
+    });
+  });
+}
+
+/* ============================================================
+   ÉCRAN — PLANNING (salarié, lecture seule)
+   ============================================================ */
+function renderPlanningEmploye(){
+  const y=state.viewDate.getFullYear(), m=state.viewDate.getMonth();
+  const nDays=daysInMonth(y,m);
+  const holidays=frenchHolidays(y);
+  const firstDow=(new Date(y,m,1).getDay()+6)%7; // 0=lundi
+  const todayKey=dkey(new Date());
+  const username=state.currentUser.username;
+  const meRec=state.users.find(u=>u.username===username);
+  const myService=meRec?meRec.team:'';
+  const monthOk=isMonthValidated(myService,y,m);
+
+  function dayCellHtml(d){
+    const date=new Date(y,m,d);
+    const holidayName=holidays[dkey(date)];
+    let code=getDayCode(username,y,m,d);
+    if(!code) code = holidayName ? 'FER' : 'O';
+    const info=codeInfo(code);
+    const isToday = dkey(date)===todayKey;
+    const cm=state.comments[commentKey(username,y,m,d)];
+    const commentHtml = (cm && cm.public) ? `<div class="d-comment" title="${escapeHtml(cm.public)}">💬 ${escapeHtml(cm.public)}</div>` : '';
+    const dateKeyStr=y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    const desid=desiderataForCell(username,dateKeyStr);
+    let desidHtml='';
+    if(desid){
+      const dinfo=codeInfo(desid.code);
+      const sc=desidStatusColor(desid.status);
+      const icon = desid.status==='pending' ? '⏳' : desid.status==='validated' ? '✓' : '✕';
+      desidHtml = `<div class="d-desid" style="background:${sc.bg};color:${sc.fg};" title="Désidérata demandé : ${dinfo?dinfo.label:desid.code}${desid.comment?' — '+escapeHtml(desid.comment):''}">
+        ${icon} Désidérata ${desid.status==='pending'?'en attente':desid.status==='validated'?'validé':'refusé'} : ${desid.code}
+      </div>`;
+    }
+    return `<div class="cal-day ${isToday?'today':''} ${desid&&desid.status==='pending'?'desid-pending-card':''}">
+      <div class="d-head">
+        <span><span class="d-num">${d}</span><span class="d-dow">${DOW_SHORT[(date.getDay()+6)%7]}</span></span>
+        ${holidayName?'<span class="d-fer" title="'+holidayName+'">FÉR</span>':''}
+      </div>
+      <div class="d-code" style="background:${info?info.color:'#EDEFF2'};color:${info?info.text:'#7A8393'};">${code}${info?' · '+info.label:''}</div>
+      ${desidHtml}
+      ${commentHtml}
+    </div>`;
+  }
+
+  // construit les lignes semaine par semaine (avec numéro ISO)
+  let weekRows='';
+  let dayCounter=1-firstDow; // peut démarrer négatif pour compenser le décalage du 1er jour
+  while(dayCounter<=nDays){
+    const weekDays=[];
+    for(let i=0;i<7;i++){
+      const dnum=dayCounter+i;
+      weekDays.push(dnum>=1 && dnum<=nDays ? dayCellHtml(dnum) : '<div class="cal-day blank"></div>');
+    }
+    const wn=isoWeekNumber(new Date(y,m,Math.min(Math.max(dayCounter,1),nDays)));
+    weekRows+=`<div class="cal-week-row">
+      <div class="cal-week-num">S${wn}</div>
+      <div class="cal-week-days">${weekDays.join('')}</div>
+    </div>`;
+    dayCounter+=7;
+  }
+
+  const sc=state.schedules[username]||{};
+  const myCodes={};
+  Object.keys(sc).forEach(k=>{
+    const [ky,km]=k.split('-').map(Number);
+    if(ky===y && km-1===m) myCodes[sc[k]]=(myCodes[sc[k]]||0)+1;
+  });
+  let holidayCount=0;
+  for(let d=1; d<=nDays; d++){
+    const dte=new Date(y,m,d);
+    if(holidays[dkey(dte)]){
+      const explicitCode=getDayCode(username,y,m,d); // sans le repli visuel FER/O
+      const info=explicitCode?codeInfo(explicitCode):null;
+      if(info && info.startTime && info.endTime) holidayCount++; // uniquement les codes de travail (avec horaires)
+    }
+  }
+  const statChips = state.codes.map(c=>`<div class="cal-stat"><b>${myCodes[c.code]||0}</b><span>${c.code}</span></div>`).join('');
+
+  const inner=`
+    <div class="emp-cal-toolbar">
+      <span>Mois :</span>
+      <button class="arrow" id="prevMonth">◀</button>
+      <select id="monthSelect">${MOIS.map((mn,i)=>`<option value="${i}" ${i===m?'selected':''}>${mn.charAt(0).toUpperCase()+mn.slice(1)}</option>`).join('')}</select>
+      <button class="arrow" id="nextMonth">▶</button>
+      <span>Année :</span>
+      <button class="arrow" id="prevYear">◀</button>
+      <select id="yearSelect">${[y-2,y-1,y,y+1,y+2].map(yy=>`<option value="${yy}" ${yy===y?'selected':''}>${yy}</option>`).join('')}</select>
+      <button class="arrow" id="nextYear">▶</button>
+      <button class="btn-afficher" id="afficherBtn">Afficher</button>
+      <button class="btn-today" id="todayBtn">📍 Aujourd'hui</button>
+    </div>
+    <div style="display:flex;gap:10px;">
+      <div class="cal-week-num" style="visibility:hidden;">S00</div>
+      <div class="cal-dow-row" style="flex:1;">${DOW_FULL.map(d=>`<div>${d}</div>`).join('')}</div>
+    </div>
+    ${monthOk ? `
+    ${weekRows}
+    <div style="margin-top:16px;"></div>
+    <div class="cal-stats">
+      <div class="cal-stat"><b>${holidayCount}</b><span>Jours fériés travaillés</span></div>
+      ${statChips}
+    </div>
+    ${commentsRecapHtml(y,m,[username],false)}
+    ` : `
+    <div class="not-validated-card">
+      <div class="not-validated-icon">🔒</div>
+      <h3>Planning pas encore disponible</h3>
+      ${myService
+        ? `<p>Le planning de <b>${MOIS[m]} ${y}</b> n'a pas encore été validé par votre responsable. Revenez un peu plus tard.</p>`
+        : `<p>Aucun <b>service</b> ne vous a été assigné pour le moment. Contactez votre administrateur pour qu'il complète votre fiche dans « Gestion des salariés ».</p>`}
+      ${isMobileDevice()?'':"<p class='helper'>Vous pouvez toujours consulter ou déposer vos désidératas depuis l'onglet « Mes désidératas » (sur ordinateur).</p>"}
+    </div>
+    `}
+  `;
+  renderShell(inner,'Mon planning');
+  document.getElementById('prevMonth').addEventListener('click',()=>{ state.viewDate=new Date(y,m-1,1); render(); });
+  document.getElementById('nextMonth').addEventListener('click',()=>{ state.viewDate=new Date(y,m+1,1); render(); });
+  document.getElementById('prevYear').addEventListener('click',()=>{ state.viewDate=new Date(y-1,m,1); render(); });
+  document.getElementById('nextYear').addEventListener('click',()=>{ state.viewDate=new Date(y+1,m,1); render(); });
+  document.getElementById('todayBtn').addEventListener('click',()=>{ state.viewDate=new Date(); render(); });
+  document.getElementById('afficherBtn').addEventListener('click',()=>{
+    const mm=parseInt(document.getElementById('monthSelect').value,10);
+    const yy=parseInt(document.getElementById('yearSelect').value,10);
+    state.viewDate=new Date(yy,mm,1);
+    render();
+  });
+}
+
+/* ============================================================
+   ÉCRAN — PLANNING ÉQUIPE (salarié, lecture seule, toute l'équipe)
+   ============================================================ */
+function renderPlanningEquipe(){
+  const y=state.viewDate.getFullYear(), m=state.viewDate.getMonth();
+  const me=state.users.find(u=>u.username===state.currentUser.username);
+  const myTeam=(me&&me.team)?me.team:'';
+  // Un salarié peut être rattaché à un service supplémentaire (extraTeams, géré par
+  // l'admin dans « Gestion des salariés ») ou avoir un collègue dont l'affectation
+  // change en cours de mois (« Historique service / fonction ») : il apparaît alors
+  // aussi sur le planning équipe de ce service, avec les jours hors période grisés.
+  const belongsToTeam=u=>employeeActiveInServiceDuringMonth(u, myTeam, y, m);
+  const teamEmployees = myTeam
+    ? state.users.filter(u=>!isSuperAdmin(u) && belongsToTeam(u) && isEmployeeValidForMonth(u,y,m))
+    : state.users.filter(u=>!isSuperAdmin(u) && u.username===state.currentUser.username && isEmployeeValidForMonth(u,y,m));
+  const teamUsernames = (myTeam ? state.users.filter(belongsToTeam) : [me]).filter(Boolean).map(u=>u.username);
+  // Les alertes (effectifs / charge hebdo) sont réservées à l'espace admin :
+  // les salariés ne les voient jamais sur leur planning équipe.
+  const monthOk = isMonthValidated(myTeam,y,m);
+
+  const mobile=isMobileDevice();
+  const sideCodesHtml = `
+    <div class="sidebar-extra-title">Codes</div>
+    ${legendHtml(false)}
+  `;
+  const sideActionsHtml = `
+    <div class="sidebar-extra-title" style="margin-top:16px;">Actions</div>
+    ${(monthOk && myTeam && isFeatureEnabled('impression')) ? `<button class="icon-btn" id="peqPrintBtn">🖨️ Imprimer le planning</button>` : ''}
+    ${isFeatureEnabled('desideratas', myTeam) ? `<button class="btn btn-primary" id="peqNewDesidBtn">🖐️ Demande de désidérata</button>` : ''}
+    ${isFeatureEnabled('echanges', myTeam) ? `<button class="btn btn-primary" id="peqNewExchBtn">🔄 Proposer un échange</button>` : ''}
+  `;
+  const inner=`
+    ${monthNavHtml()}
+    <div class="legend-hint" style="margin:6px 0 12px;">${myTeam?`Planning en lecture seule de l'équipe <b>${escapeHtml(myTeam)}</b>.`:`Aucune équipe ne vous a été assignée pour le moment — seul votre planning est affiché ici.`}</div>
+    ${mobile ? `
+    ${legendHtml(false)}
+    <div style="margin:10px 0 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+      ${(monthOk && myTeam && isFeatureEnabled('impression')) ? `<button class="icon-btn" id="peqPrintBtn">🖨️ Imprimer le planning</button>` : ''}
+      ${isFeatureEnabled('desideratas', myTeam) ? `<button class="btn btn-primary" id="peqNewDesidBtn" style="width:auto;margin:0;">🖐️ Demande de désidérata</button>` : ''}
+      ${isFeatureEnabled('echanges', myTeam) ? `<button class="btn btn-primary" id="peqNewExchBtn" style="width:auto;margin:0;">🔄 Proposer un échange</button>` : ''}
+    </div>
+    ` : ''}
+    ${monthOk ? `
+    ${gridHtml({employees:teamEmployees, readonly:true, alerts:[], serviceContext: myTeam||null})}
+    ${commentsRecapHtml(y,m,teamUsernames,false)}
+    ` : `
+    <div class="not-validated-card">
+      <div class="not-validated-icon">🔒</div>
+      <h3>Planning pas encore disponible</h3>
+      ${myTeam
+        ? `<p>Le planning de <b>${MOIS[m]} ${y}</b> n'a pas encore été validé par votre responsable.</p>`
+        : `<p>Aucun <b>service</b> ne vous a été assigné pour le moment. Contactez votre administrateur pour qu'il complète votre fiche dans « Gestion des salariés ».</p>`}
+      ${isMobileDevice()?'':"<p class='helper'>Vous pouvez toujours consulter ou déposer vos désidératas depuis l'onglet « Mes désidératas » (sur ordinateur).</p>"}
+    </div>
+    `}
+  `;
+  renderShell(inner,'Planning équipe'+(myTeam?' — '+myTeam:''), mobile?null:(sideCodesHtml+sideActionsHtml));
+  bindMonthNav(render);
+  const peqPrintBtn=document.getElementById('peqPrintBtn');
+  if(peqPrintBtn) peqPrintBtn.addEventListener('click', ()=>{ printMonthlyPlanning(myTeam, y, m); });
+  const peqNewDesidBtn=document.getElementById('peqNewDesidBtn');
+  if(peqNewDesidBtn) peqNewDesidBtn.addEventListener('click',()=>{
+    state.modal={type:'new-desiderata', data:{dateStart:'',dateEnd:'',code:state.codes[0]?state.codes[0].code:'',comment:''}};
+    render();
+  });
+  const peqNewExchBtn=document.getElementById('peqNewExchBtn');
+  if(peqNewExchBtn) peqNewExchBtn.addEventListener('click',()=>{
+    const username=state.currentUser.username;
+    const colleagues=state.users.filter(u=>u.role==='employee' && u.username!==username && belongsToTeam(u));
+    if(!colleagues.length){ toast('Aucun collègue disponible dans votre service pour un échange.', true); return; }
+    state.modal={type:'new-exchange', data:{targetUsername:colleagues[0].username, dateA:'', dateB:'', comment:''}, colleagues};
+    render();
+  });
+}
+function changesLogHtml(changes){
+  if(!changes.length) return '';
+  const sorted=[...changes].sort((a,b)=>b.changedAt.localeCompare(a.changedAt));
+  const rows=sorted.map(c=>{
+    const oldInfo=c.oldCode?codeInfo(c.oldCode):null;
+    const newInfo=c.newCode?codeInfo(c.newCode):null;
+    const dateDisp=String(c.day).padStart(2,'0')+'/'+String(c.month+1).padStart(2,'0')+'/'+c.year;
+    return `
+    <div class="change-row ${c.acknowledged?'acked':''}">
+      <div class="change-row-main">
+        <div class="change-row-name">${escapeHtml(c.name)} <span class="change-row-date">— ${dateDisp}</span></div>
+        <div class="change-row-codes">
+          <span class="chip" style="background:${oldInfo?oldInfo.color:'#EDEFF2'};color:${oldInfo?oldInfo.text:'#7A8393'};text-decoration:line-through;opacity:.75;">${c.oldCode||'Vide'}</span>
+          <span style="color:var(--ink-soft);">→</span>
+          <span class="chip" style="background:${newInfo?newInfo.color:'#EDEFF2'};color:${newInfo?newInfo.text:'#7A8393'};">${c.newCode||'Vide'}</span>
+        </div>
+        <div class="helper" style="margin-top:4px;">Modifié le ${new Date(c.changedAt).toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short'})} par ${escapeHtml(c.changedBy)}</div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
+        ${c.acknowledged
+          ? `<span class="status-badge" style="background:#E7F6EC;color:#1E7B3C;">Validé</span>`
+          : `<button class="icon-btn" data-ack-change="${c.id}" style="color:var(--ok);border-color:var(--ok);">Valider</button>`}
+        <button class="icon-btn" data-del-change="${c.id}" style="color:var(--danger);border-color:var(--danger);" title="Annuler cette modification et revenir au code précédent">Supprimer</button>
+      </div>
+    </div>`;
+  }).join('');
+  const pendingCount=changes.filter(c=>!c.acknowledged).length;
+  return `
+  <div class="recap-card" style="margin-top:18px;">
+    <h3 style="display:flex;justify-content:space-between;align-items:center;">
+      <span>✎ Modifications après validation ${pendingCount?'— '+pendingCount+' en attente':''}</span>
+      <span style="display:flex;gap:8px;align-items:center;">
+        ${pendingCount>1?'<button class="icon-btn" id="ackAllChanges">Tout valider</button>':''}
+        <label class="archive-toggle" style="font-weight:600;"><input type="checkbox" id="showAckedChanges" ${state.showAcknowledgedChanges?'checked':''}> Voir les validées</label>
+      </span>
+    </h3>
+    <div class="change-log-list">${rows}</div>
+  </div>`;
+}
+/* ============================================================
+   IMPRESSION — PLANNING MENSUEL D'UN SERVICE (A4 paysage, 1 page)
+   ============================================================ */
+function printMonthlyPlanning(service, year, month){
+  const employees = state.users
+    .filter(u=>!isSuperAdmin(u) && isEmployeeValidForMonth(u,year,month) && employeeActiveInServiceDuringMonth(u,service,year,month))
+    .sort((a,b)=> (a.fonction||'').localeCompare(b.fonction||'') || a.name.localeCompare(b.name));
+  const nDays = daysInMonth(year,month);
+  const holidays = frenchHolidays(year);
+  // Colonne salarié assez large pour afficher nom + prénom en entier, quitte à
+  // ce que la ligne passe sur 2 lignes pour les noms les plus longs — les
+  // colonnes des jours se répartissent le reste de la largeur de la page.
+  const empColPct = 10;
+  const dayColPct = (100-empColPct)/nDays;
+  const colgroup = `<col style="width:${empColPct}%">` + Array.from({length:nDays}).map(()=>`<col style="width:${dayColPct}%">`).join('');
+
+  let daysHead='';
+  for(let d=1; d<=nDays; d++){
+    const date=new Date(year,month,d);
+    const dow=date.getDay();
+    const isWeekend = dow===0||dow===6;
+    const isHoliday = !!holidays[dkey(date)];
+    daysHead += `<th class="${isWeekend?'we':''}${isHoliday?' ho':''}">${d}<br><span class="dow">${DOW[(dow+6)%7]}</span></th>`;
+  }
+
+  let rows='';
+  employees.forEach(emp=>{
+    let cells='';
+    for(let d=1; d<=nDays; d++){
+      const code=getDayCode(emp.username,year,month,d);
+      const info=code?codeInfo(code):null;
+      const dateKey=year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+      const cm=state.comments[commentKey(emp.username,year,month,d)];
+      const hasComment = !!(cm && cm.public);
+      const style = info ? `background:${info.color};color:${info.text};` : '';
+      cells += `<td style="${style}">${code?escapeHtml(code):''}${hasComment?'<span class="pcmt">•</span>':''}</td>`;
+    }
+    rows += `<tr><td class="emp">${escapeHtml(emp.name)}${emp.fonction?`<span class="fx">${escapeHtml(emp.fonction)}</span>`:''}</td>${cells}</tr>`;
+  });
+
+  const commentPrefix='::'+year+'-'+String(month+1).padStart(2,'0')+'-';
+  const empUsernames=employees.map(e=>e.username);
+  const commentItems=[];
+  Object.keys(state.comments).forEach(key=>{
+    if(!key.includes(commentPrefix) || !state.comments[key].public) return;
+    const idx=key.indexOf('::');
+    const username=key.slice(0,idx), dateKey=key.slice(idx+2);
+    if(!empUsernames.includes(username)) return;
+    const user=state.users.find(u=>u.username===username);
+    commentItems.push({name:user?user.name:username, dateKey, text:state.comments[key].public});
+  });
+  commentItems.sort((a,b)=>a.dateKey.localeCompare(b.dateKey));
+  const commentsHtml = commentItems.length ? `
+    <div class="pcmts">
+      <b>Commentaires :</b>
+      ${commentItems.map(it=>{ const [,, dd]=it.dateKey.split('-'); return `<span class="pcmt-item"><b>${dd}/${String(month+1).padStart(2,'0')} ${escapeHtml(it.name)}</b> — ${escapeHtml(it.text)}</span>`; }).join('')}
+    </div>` : '';
+
+  const legendHtml_ = state.codes.filter(c=>c.code!=='VIDE').map(c=>
+    `<span class="pleg-item"><span class="pleg-swatch" style="background:${c.color};color:${c.text};">${escapeHtml(c.code)}</span>${escapeHtml(c.label)}</span>`
+  ).join('');
+
+  const win = window.open('', '_blank');
+  if(!win){ toast("Le navigateur a bloqué l'ouverture de la fenêtre d'impression — autorisez les pop-ups pour ce site.", true); return; }
+  win.document.write(`<!DOCTYPE html>
+<html lang="fr"><head><meta charset="UTF-8">
+<title>Planning ${escapeHtml(service)} — ${MOIS[month]} ${year}</title>
+<style>
+  :root{
+    --c-M:#7FB3F5; --t-M:#12233D; --c-S:#F5A65B; --t-S:#3D2606; --c-N:#544A87; --t-N:#FFFFFF;
+    --c-ADM:#9AA5B1; --t-ADM:#1E2433; --c-FOR:#4FADA3; --t-FOR:#FFFFFF; --c-CP:#6FCF7C; --t-CP:#173A1D;
+    --c-CPA:#BBE7A9; --t-CPA:#1E3A22; --c-FER:#E8615A; --t-FER:#FFFFFF; --c-O:#EDEFF2; --t-O:#7A8393;
+  }
+  @page{ size: A4 landscape; margin: 7mm; }
+  *{box-sizing:border-box; -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; color-adjust:exact !important;}
+  body{font-family:Arial,Helvetica,sans-serif;margin:0;color:#1E2433;}
+  h1{font-size:14px;margin:0 0 2px;}
+  .sub{font-size:10px;color:#626B7A;margin:0 0 8px;}
+  table{width:100%;border-collapse:collapse;table-layout:fixed;}
+  th,td{border:1px solid #D8DCE4;text-align:center;padding:1px;font-size:7px;overflow:hidden;white-space:nowrap;}
+  th{background:#F3F5F8;font-weight:700;font-size:6.5px;padding:2px 1px;}
+  th .dow{display:block;font-weight:400;font-size:5.5px;color:#626B7A;}
+  th.we{background:#E9EDF7;}
+  th.ho{color:#D8544A;}
+  td.emp{text-align:left;font-weight:700;font-size:7px;padding:2px 4px;white-space:normal;overflow:visible;word-break:break-word;line-height:1.15;}
+  td.emp .fx{display:block;font-weight:400;font-size:5.8px;color:#626B7A;}
+  td{position:relative;height:14px;}
+  .pcmt{position:absolute;top:0;right:1px;color:#D8544A;font-weight:900;font-size:9px;}
+  .pcmts{margin-top:8px;font-size:7.5px;line-height:1.6;}
+  .pcmt-item{display:inline-block;margin-right:14px;}
+  .pleg{margin-top:6px;display:flex;flex-wrap:wrap;gap:6px 12px;}
+  .pleg-item{font-size:7px;display:inline-flex;align-items:center;gap:3px;}
+  .pleg-swatch{display:inline-flex;align-items:center;justify-content:center;width:14px;height:11px;border-radius:2px;font-size:6px;font-weight:800;}
+  @media print{ .no-print{display:none;} }
+  .no-print{position:fixed;top:10px;right:10px;}
+  .no-print button{padding:8px 14px;font-size:13px;border-radius:8px;border:none;background:#2C3A63;color:#fff;cursor:pointer;}
+</style></head>
+<body>
+  <div class="no-print"><button onclick="window.print()">🖨️ Imprimer / Enregistrer en PDF</button></div>
+  <h1>Planning — ${escapeHtml(service)} — ${MOIS[month]} ${year}</h1>
+  <div class="sub">${employees.length} salarié${employees.length>1?'s':''} · Édité le ${new Date().toLocaleDateString('fr-FR')}</div>
+  <table>
+    <colgroup>${colgroup}</colgroup>
+    <thead><tr><th></th>${daysHead}</tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div class="pleg">${legendHtml_}</div>
+  ${commentsHtml}
+</body></html>`);
+  win.document.close();
+}
+
+function commentsRecapHtml(y,m,filterUsernames,clickable){
+  if(clickable===undefined) clickable=true;
+  const prefix='::'+y+'-'+String(m+1).padStart(2,'0')+'-';
+  const items=[];
+  Object.keys(state.comments).forEach(key=>{
+    if(key.includes(prefix) && state.comments[key].public){
+      const idx=key.indexOf('::');
+      const username=key.slice(0,idx), dateKey=key.slice(idx+2);
+      if(filterUsernames && !filterUsernames.includes(username)) return;
+      const user=state.users.find(u=>u.username===username);
+      items.push({username, name:user?user.name:username, dateKey, text:state.comments[key].public});
+    }
+  });
+  items.sort((a,b)=>a.dateKey.localeCompare(b.dateKey));
+  const rows=items.map(it=>{
+    const [yy,mm,dd]=it.dateKey.split('-');
+    return `<div class="recap-row" style="cursor:${clickable?'pointer':'default'};" data-recap-user="${it.username}" data-recap-date="${it.dateKey}">
+      <div class="recap-date">${dd}/${mm}/${yy}</div>
+      <div class="recap-name">${escapeHtml(it.name)}</div>
+      <div class="recap-text">${escapeHtml(it.text)}</div>
+    </div>`;
+  }).join('');
+  return `
+  <div class="recap-card">
+    <h3>Récapitulatif des commentaires — ${MOIS[m]} ${y}</h3>
+    <div class="recap-list">
+      ${items.length? rows : `<div class="empty-state" style="padding:24px;">Aucun commentaire public ce mois-ci.</div>`}
+    </div>
+  </div>`;
+}
+function bindCommentsRecap(){
+  document.querySelectorAll('[data-recap-user]').forEach(row=>{
+    row.addEventListener('click',()=>{
+      const username=row.dataset.recapUser;
+      const [yy,mm,dd]=row.dataset.recapDate.split('-').map(Number);
+      const emp=state.users.find(u=>u.username===username);
+      openCommentModal(username, emp?emp.name:username, yy, mm-1, dd);
+    });
+  });
+}
+
+/* ============================================================
+   ÉCRAN — DÉSIDÉRATAS (admin, vue d'ensemble)
+   ============================================================ */
+function renderAdminDesiderata(){
+  if(!isFeatureEnabled('desideratas')){ state.tab='calendrier'; render(); return; }
+  const scope=getAdminScope(state.currentUser);
+  const statusF=state.desidAdminFilterStatus, yearF=state.desidAdminFilterYear, svcF=state.desidAdminFilterService, showArch=state.desidAdminShowArchived;
+  const years=[...new Set(state.desideratas.map(d=>d.dateStart.slice(0,4)))].sort().reverse();
+  let list=state.desideratas.filter(d=>{
+    if(!showArch && d.archived) return false;
+    if(statusF!=='all' && d.status!==statusF) return false;
+    if(yearF!=='all' && d.dateStart.slice(0,4)!==yearF) return false;
+    const u=state.users.find(x=>x.username===d.username);
+    if(scope && (!u || !scope.includes(u.team))) return false;
+    if(svcF){ if(!u || u.team!==svcF) return false; }
+    return true;
+  }).sort((a,b)=> a.status==='pending'&&b.status!=='pending' ? -1 : (b.status==='pending'&&a.status!=='pending'?1:b.createdAt.localeCompare(a.createdAt)));
+
+  const rowHtml=(d)=>{
+    const info=codeInfo(d.code);
+    const sc=desidStatusColor(d.status);
+    return `
+    <div class="desid-row">
+      <div class="desid-row-main">
+        <div class="desid-row-name">${escapeHtml(d.name)}</div>
+        <div class="desid-row-period">${fmtDateKeyFr(d.dateStart)} → ${fmtDateKeyFr(d.dateEnd)} <span style="color:var(--ink-soft);font-weight:500;">(${calculateDesiderataDays(d.dateStart,d.dateEnd)} jour${calculateDesiderataDays(d.dateStart,d.dateEnd)>1?'s':''})</span></div>
+        <span class="chip" style="background:${info?info.color:'#EDEFF2'};color:${info?info.text:'#333'};margin-top:4px;">${d.code} · ${info?info.label:''}</span>
+        ${d.comment?`<div class="desid-row-comment">« ${escapeHtml(d.comment)} »</div>`:''}
+        ${d.adminComment?`<div class="desid-row-comment" style="color:var(--primary);">Réponse : ${escapeHtml(d.adminComment)}</div>`:''}
+      </div>
+      <div class="desid-row-side">
+        <span class="status-badge" style="background:${sc.bg};color:${sc.fg};">${desidStatusLabel(d.status)}</span>
+        ${d.status==='pending' ? `
+          <button class="icon-btn" style="color:var(--ok);border-color:var(--ok);" data-validate="${d.id}">Valider</button>
+          <button class="icon-btn" style="color:var(--danger);border-color:var(--danger);" data-refuse="${d.id}">Refuser</button>
+        ` : `<button class="icon-btn" data-archive="${d.id}">${d.archived?'Désarchiver':'Archiver'}</button>`}
+      </div>
+    </div>`;
+  };
+
+  const inner=`
+    <div class="toolbar" style="flex-wrap:wrap;gap:10px;">
+      <div style="font-size:13px;color:var(--ink-soft);">${list.length} demande${list.length>1?'s':''}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <select id="dsStatus" class="filter-select">
+          <option value="pending" ${statusF==='pending'?'selected':''}>En attente</option>
+          <option value="all" ${statusF==='all'?'selected':''}>Tous les statuts</option>
+          <option value="validated" ${statusF==='validated'?'selected':''}>Validés</option>
+          <option value="refused" ${statusF==='refused'?'selected':''}>Refusés</option>
+        </select>
+        <select id="dsYear" class="filter-select">
+          <option value="all" ${yearF==='all'?'selected':''}>Toutes années</option>
+          ${years.map(y=>`<option value="${y}" ${yearF===y?'selected':''}>${y}</option>`).join('')}
+        </select>
+        <select id="dsService" class="filter-select">
+          <option value="">${scope?'Tous mes services':'Tous les services'}</option>
+          ${(scope||state.services).map(s=>`<option value="${escapeHtml(s)}" ${svcF===s?'selected':''}>${escapeHtml(s)}</option>`).join('')}
+        </select>
+        <label class="archive-toggle"><input type="checkbox" id="dsArchived" ${showArch?'checked':''}> Voir les archivés</label>
+      </div>
+    </div>
+    <div class="desid-list">
+      ${list.length? list.map(rowHtml).join('') : `<div class="empty-state">Aucune demande pour ces filtres.</div>`}
+    </div>
+  `;
+  renderShell(inner,'Désidératas');
+  document.getElementById('dsStatus').addEventListener('change',e=>{ state.desidAdminFilterStatus=e.target.value; render(); });
+  document.getElementById('dsYear').addEventListener('change',e=>{ state.desidAdminFilterYear=e.target.value; render(); });
+  document.getElementById('dsService').addEventListener('change',e=>{ state.desidAdminFilterService=e.target.value; render(); });
+  document.getElementById('dsArchived').addEventListener('change',e=>{ state.desidAdminShowArchived=e.target.checked; render(); });
+  document.querySelectorAll('[data-validate]').forEach(btn=>{
+    btn.addEventListener('click',async()=>{
+      await validateDesiderata(btn.dataset.validate,'');
+      toast('Désidérata validé — planning mis à jour.');
+      render();
+    });
+  });
+  document.querySelectorAll('[data-refuse]').forEach(btn=>{
+    btn.addEventListener('click',async()=>{
+      await refuseDesiderata(btn.dataset.refuse,'');
+      toast('Désidérata refusé.');
+      render();
+    });
+  });
+  document.querySelectorAll('[data-archive]').forEach(btn=>{
+    btn.addEventListener('click',async()=>{
+      const dd=state.desideratas.find(x=>x.id===btn.dataset.archive);
+      await setDesiderataArchived(dd.id, !dd.archived);
+      toast(dd.archived?'Archivé.':'Désarchivé.');
+      render();
+    });
+  });
+}
+
+/* ============================================================
+   ÉCRAN — ÉCHANGES DE SERVICE (admin, vue d'ensemble)
+   ============================================================ */
+function renderAdminEchanges(){
+  if(!isFeatureEnabled('echanges')){ state.tab='calendrier'; render(); return; }
+  const scope=getAdminScope(state.currentUser);
+  const statusF=state.exchAdminFilterStatus, svcF=state.exchAdminFilterService;
+  let list=state.exchanges.filter(ex=>{
+    if(statusF!=='all' && ex.status!==statusF) return false;
+    const ru=state.users.find(u=>u.username===ex.requesterUsername);
+    const tu=state.users.find(u=>u.username===ex.targetUsername);
+    if(scope && !((ru&&scope.includes(ru.team)) || (tu&&scope.includes(tu.team)))) return false;
+    if(svcF && !((ru&&ru.team===svcF) || (tu&&tu.team===svcF))) return false;
+    return true;
+  }).sort((a,b)=> a.status==='pending'&&b.status!=='pending' ? -1 : (b.status==='pending'&&a.status!=='pending'?1:b.createdAt.localeCompare(a.createdAt)));
+
+  const rowHtml=(ex)=>{
+    const sc=exchangeStatusColor(ex.status);
+    const infoA=ex.codeA?codeInfo(ex.codeA):null;
+    const infoB=ex.codeB?codeInfo(ex.codeB):null;
+    const weekA=weekDatesAround(ex.dateA), weekB=weekDatesAround(ex.dateB);
+    const alertImpact = ex.status==='pending' ? computeExchangeAlertImpact(ex) : [];
+    return `
+    <div class="desid-row" style="flex-direction:column;align-items:stretch;">
+      <div style="display:flex;gap:14px;flex-wrap:wrap;">
+        <div class="desid-row-main">
+          <div class="desid-row-name">${escapeHtml(ex.requesterName)} ↔ ${escapeHtml(ex.targetName)}</div>
+          <div class="desid-row-period">
+            <b>${escapeHtml(ex.requesterName)}</b> le ${fmtDateKeyFr(ex.dateA)}
+            <span class="chip" style="background:${infoA?infoA.color:'#EDEFF2'};color:${infoA?infoA.text:'#333'};margin:0 6px;">${ex.codeA||'Vide'}</span>
+            → devient <span class="chip" style="background:${infoB?infoB.color:'#EDEFF2'};color:${infoB?infoB.text:'#333'};">${ex.codeB||'Vide'}</span>
+          </div>
+          <div class="desid-row-period">
+            <b>${escapeHtml(ex.targetName)}</b> le ${fmtDateKeyFr(ex.dateB)}
+            <span class="chip" style="background:${infoB?infoB.color:'#EDEFF2'};color:${infoB?infoB.text:'#333'};margin:0 6px;">${ex.codeB||'Vide'}</span>
+            → devient <span class="chip" style="background:${infoA?infoA.color:'#EDEFF2'};color:${infoA?infoA.text:'#333'};">${ex.codeA||'Vide'}</span>
+          </div>
+          ${ex.comment?`<div class="desid-row-comment">« ${escapeHtml(ex.comment)} »</div>`:''}
+          ${ex.adminComment?`<div class="desid-row-comment" style="color:var(--primary);">Réponse : ${escapeHtml(ex.adminComment)}</div>`:''}
+        </div>
+        <div class="desid-row-side">
+          <span class="status-badge" style="background:${sc.bg};color:${sc.fg};">${exchangeStatusLabel(ex.status)}</span>
+          ${ex.status==='pending' ? `
+            <button class="icon-btn" style="color:var(--ok);border-color:var(--ok);" data-exch-validate="${ex.id}">Valider</button>
+            <button class="icon-btn" style="color:var(--danger);border-color:var(--danger);" data-exch-refuse="${ex.id}">Refuser</button>
+          ` : ''}
+        </div>
+      </div>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--border);display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+        <div>
+          <div style="font-size:11px;font-weight:800;color:var(--ink-soft);margin-bottom:3px;text-transform:uppercase;">${escapeHtml(ex.requesterName)} — avant</div>
+          ${exchangeMiniRowHtml(ex.requesterUsername, weekA, null, null)}
+          <div style="font-size:11px;font-weight:800;color:var(--primary);margin:8px 0 3px;text-transform:uppercase;">${escapeHtml(ex.requesterName)} — après échange</div>
+          ${exchangeMiniRowHtml(ex.requesterUsername, weekA, ex.dateA, ex.codeB||null)}
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:800;color:var(--ink-soft);margin-bottom:3px;text-transform:uppercase;">${escapeHtml(ex.targetName)} — avant</div>
+          ${exchangeMiniRowHtml(ex.targetUsername, weekB, null, null)}
+          <div style="font-size:11px;font-weight:800;color:var(--primary);margin:8px 0 3px;text-transform:uppercase;">${escapeHtml(ex.targetName)} — après échange</div>
+          ${exchangeMiniRowHtml(ex.targetUsername, weekB, ex.dateB, ex.codeA||null)}
+        </div>
+      </div>
+      ${ex.status==='pending' ? (alertImpact.length
+        ? `<div class="legend-hint alert-hint" style="margin-top:12px;margin-bottom:0;">⚠ Valider cet échange générerait ${alertImpact.length} alerte${alertImpact.length>1?'s':''} : ${alertImpact.map(l=>escapeHtml(l)).join(' · ')}</div>`
+        : `<div class="helper" style="margin-top:10px;color:var(--ok);font-weight:600;">✓ Aucune alerte d'effectif détectée si vous validez cet échange.</div>`) : ''}
+    </div>`;
+  };
+
+  const inner=`
+    <div class="legend-hint">Un salarié propose l'échange d'une journée avec un collègue. Validez en un clic pour appliquer l'échange aux deux plannings.</div>
+    <div class="toolbar" style="flex-wrap:wrap;gap:10px;">
+      <div style="font-size:13px;color:var(--ink-soft);">${list.length} échange${list.length>1?'s':''}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <select id="exStatus" class="filter-select">
+          <option value="pending" ${statusF==='pending'?'selected':''}>En attente</option>
+          <option value="all" ${statusF==='all'?'selected':''}>Tous les statuts</option>
+          <option value="validated" ${statusF==='validated'?'selected':''}>Validés</option>
+          <option value="refused" ${statusF==='refused'?'selected':''}>Refusés</option>
+        </select>
+        <select id="exService" class="filter-select">
+          <option value="">${scope?'Tous mes services':'Tous les services'}</option>
+          ${(scope||state.services).map(s=>`<option value="${escapeHtml(s)}" ${svcF===s?'selected':''}>${escapeHtml(s)}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="desid-list">
+      ${list.length? list.map(rowHtml).join('') : `<div class="empty-state">Aucune demande d'échange pour ces filtres.</div>`}
+    </div>
+  `;
+  renderShell(inner,'Échanges de service');
+  document.getElementById('exStatus').addEventListener('change',e=>{ state.exchAdminFilterStatus=e.target.value; render(); });
+  document.getElementById('exService').addEventListener('change',e=>{ state.exchAdminFilterService=e.target.value; render(); });
+  document.querySelectorAll('[data-exch-validate]').forEach(btn=>{
+    btn.addEventListener('click',async()=>{
+      await validateExchange(btn.dataset.exchValidate,'');
+      toast('Échange validé — plannings mis à jour.');
+      render();
+    });
+  });
+  document.querySelectorAll('[data-exch-refuse]').forEach(btn=>{
+    btn.addEventListener('click',async()=>{
+      await refuseExchange(btn.dataset.exchRefuse,'');
+      toast('Échange refusé.');
+      render();
+    });
+  });
+}
+
+/* ============================================================
+   ÉCRAN — MES DÉSIDÉRATAS (salarié)
+   ============================================================ */
+function renderMesDesiderata(){
+  const username=state.currentUser.username;
+  const meG=state.users.find(u=>u.username===username);
+  if(!isFeatureEnabled('desideratas', meG?meG.team:'')){ state.tab='planning'; render(); return; }
+  const mine=state.desideratas.filter(d=>d.username===username);
+  const statusF=state.desidFilterStatus, yearF=state.desidFilterYear, showArch=state.desidShowArchived;
+  const years=[...new Set(mine.map(d=>d.dateStart.slice(0,4)))].sort().reverse();
+  const list=mine.filter(d=>{
+    if(!showArch && d.archived) return false;
+    if(statusF!=='all' && d.status!==statusF) return false;
+    if(yearF!=='all' && d.dateStart.slice(0,4)!==yearF) return false;
+    return true;
+  }).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+
+  const rowHtml=(d)=>{
+    const info=codeInfo(d.code);
+    const sc=desidStatusColor(d.status);
+    return `
+    <div class="desid-row">
+      <div class="desid-row-main">
+        <div class="desid-row-period">${fmtDateKeyFr(d.dateStart)} → ${fmtDateKeyFr(d.dateEnd)} <span style="color:var(--ink-soft);font-weight:500;">(${calculateDesiderataDays(d.dateStart,d.dateEnd)} jour${calculateDesiderataDays(d.dateStart,d.dateEnd)>1?'s':''})</span></div>
+        <span class="chip" style="background:${info?info.color:'#EDEFF2'};color:${info?info.text:'#333'};margin-top:4px;">${d.code} · ${info?info.label:''}</span>
+        ${d.comment?`<div class="desid-row-comment">« ${escapeHtml(d.comment)} »</div>`:''}
+        ${d.adminComment?`<div class="desid-row-comment" style="color:var(--primary);">Réponse admin : ${escapeHtml(d.adminComment)}</div>`:''}
+      </div>
+      <div class="desid-row-side">
+        <span class="status-badge" style="background:${sc.bg};color:${sc.fg};">${desidStatusLabel(d.status)}</span>
+        ${d.status==='pending' ? `<button class="icon-btn" style="color:var(--danger);" data-cancel="${d.id}">Annuler</button>` : `<button class="icon-btn" data-archive="${d.id}">${d.archived?'Désarchiver':'Archiver'}</button>`}
+      </div>
+    </div>`;
+  };
+
+  const inner=`
+    <div class="toolbar" style="flex-wrap:wrap;gap:10px;">
+      <div style="font-size:13px;color:var(--ink-soft);">${list.length} demande${list.length>1?'s':''}</div>
+      <button class="btn btn-primary" id="newDesidBtn" style="width:auto;margin:0;">+ Nouvelle demande</button>
+    </div>
+    <div class="toolbar" style="flex-wrap:wrap;gap:10px;margin-top:4px;">
+      <div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <select id="mdStatus" class="filter-select">
+          <option value="pending" ${statusF==='pending'?'selected':''}>En attente</option>
+          <option value="all" ${statusF==='all'?'selected':''}>Tous les statuts</option>
+          <option value="validated" ${statusF==='validated'?'selected':''}>Validés</option>
+          <option value="refused" ${statusF==='refused'?'selected':''}>Refusés</option>
+        </select>
+        <select id="mdYear" class="filter-select">
+          <option value="all" ${yearF==='all'?'selected':''}>Toutes années</option>
+          ${years.map(y=>`<option value="${y}" ${yearF===y?'selected':''}>${y}</option>`).join('')}
+        </select>
+        <label class="archive-toggle"><input type="checkbox" id="mdArchived" ${showArch?'checked':''}> Voir les archivés</label>
+      </div>
+    </div>
+    <div class="desid-list">
+      ${list.length? list.map(rowHtml).join('') : `<div class="empty-state">Aucune demande pour ces filtres.<br>Cliquez sur « + Nouvelle demande » pour en créer une.</div>`}
+    </div>
+  `;
+  renderShell(inner,'Mes désidératas');
+  document.getElementById('newDesidBtn').addEventListener('click',()=>{
+    state.modal={type:'new-desiderata', data:{dateStart:'',dateEnd:'',code:state.codes[0]?state.codes[0].code:'',comment:''}};
+    render();
+  });
+  document.getElementById('mdStatus').addEventListener('change',e=>{ state.desidFilterStatus=e.target.value; render(); });
+  document.getElementById('mdYear').addEventListener('change',e=>{ state.desidFilterYear=e.target.value; render(); });
+  document.getElementById('mdArchived').addEventListener('change',e=>{ state.desidShowArchived=e.target.checked; render(); });
+  document.querySelectorAll('[data-cancel]').forEach(btn=>{
+    btn.addEventListener('click',async()=>{
+      if(!confirm('Annuler cette demande ?')) return;
+      await cancelDesiderata(btn.dataset.cancel);
+      toast('Demande annulée.');
+      render();
+    });
+  });
+  document.querySelectorAll('[data-archive]').forEach(btn=>{
+    btn.addEventListener('click',async()=>{
+      const dd=state.desideratas.find(x=>x.id===btn.dataset.archive);
+      await setDesiderataArchived(dd.id, !dd.archived);
+      render();
+    });
+  });
+}
+
+/* ============================================================
+   ÉCRAN — ÉCHANGES DE SERVICE (salarié)
+   ============================================================ */
+function renderMesEchanges(){
+  const username=state.currentUser.username;
+  const meG=state.users.find(u=>u.username===username);
+  if(!isFeatureEnabled('echanges', meG?meG.team:'')){ state.tab='planning'; render(); return; }
+  const sent=state.exchanges.filter(ex=>ex.requesterUsername===username);
+  const received=state.exchanges.filter(ex=>ex.targetUsername===username);
+  const statusF=state.exchFilterStatus;
+  const filt=(list)=>list.filter(ex=>statusF==='all'||ex.status===statusF).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+
+  const rowHtml=(ex, mine)=>{
+    const sc=exchangeStatusColor(ex.status);
+    const infoA=ex.codeA?codeInfo(ex.codeA):null;
+    const infoB=ex.codeB?codeInfo(ex.codeB):null;
+    const other = mine ? ex.targetName : ex.requesterName;
+    return `
+    <div class="desid-row">
+      <div class="desid-row-main">
+        <div class="desid-row-name">${mine?'Vers':'De'} ${escapeHtml(other)}</div>
+        <div class="desid-row-period">Votre journée du ${fmtDateKeyFr(mine?ex.dateA:ex.dateB)}
+          <span class="chip" style="background:${(mine?infoA:infoB)?(mine?infoA.color:infoB.color):'#EDEFF2'};color:${(mine?infoA:infoB)?(mine?infoA.text:infoB.text):'#333'};margin:0 6px;">${(mine?ex.codeA:ex.codeB)||'Vide'}</span>
+          ↔ journée de ${escapeHtml(other)} du ${fmtDateKeyFr(mine?ex.dateB:ex.dateA)}
+          <span class="chip" style="background:${(mine?infoB:infoA)?(mine?infoB.color:infoA.color):'#EDEFF2'};color:${(mine?infoB:infoA)?(mine?infoB.text:infoA.text):'#333'};margin:0 6px;">${(mine?ex.codeB:ex.codeA)||'Vide'}</span>
+        </div>
+        ${ex.comment?`<div class="desid-row-comment">« ${escapeHtml(ex.comment)} »</div>`:''}
+        ${ex.adminComment?`<div class="desid-row-comment" style="color:var(--primary);">Réponse admin : ${escapeHtml(ex.adminComment)}</div>`:''}
+      </div>
+      <div class="desid-row-side">
+        <span class="status-badge" style="background:${sc.bg};color:${sc.fg};">${exchangeStatusLabel(ex.status)}</span>
+        ${(mine && ex.status==='pending') ? `<button class="icon-btn" style="color:var(--danger);" data-exch-cancel="${ex.id}">Annuler</button>` : ''}
+      </div>
+    </div>`;
+  };
+
+  const sentList=filt(sent), receivedList=filt(received);
+  const inner=`
+    <div class="toolbar" style="flex-wrap:wrap;gap:10px;">
+      <div style="font-size:13px;color:var(--ink-soft);">Proposez l'échange d'une journée de planning avec un·e collègue. L'échange est appliqué après validation de l'administrateur.</div>
+      <button class="btn btn-primary" id="newExchBtn" style="width:auto;margin:0;">+ Proposer un échange</button>
+    </div>
+    <div class="toolbar" style="flex-wrap:wrap;gap:10px;margin-top:4px;">
+      <div></div>
+      <select id="exMyStatus" class="filter-select">
+        <option value="all" ${statusF==='all'?'selected':''}>Tous les statuts</option>
+        <option value="pending" ${statusF==='pending'?'selected':''}>En attente</option>
+        <option value="validated" ${statusF==='validated'?'selected':''}>Validés</option>
+        <option value="refused" ${statusF==='refused'?'selected':''}>Refusés</option>
+      </select>
+    </div>
+    <h3 style="margin:18px 0 10px;font-size:14px;">Mes demandes envoyées</h3>
+    <div class="desid-list">
+      ${sentList.length? sentList.map(ex=>rowHtml(ex,true)).join('') : `<div class="empty-state">Aucune demande envoyée.</div>`}
+    </div>
+    <h3 style="margin:18px 0 10px;font-size:14px;">Demandes reçues d'un·e collègue</h3>
+    <div class="desid-list">
+      ${receivedList.length? receivedList.map(ex=>rowHtml(ex,false)).join('') : `<div class="empty-state">Aucune demande reçue.</div>`}
+    </div>
+  `;
+  renderShell(inner,'Échanges de service');
+  document.getElementById('exMyStatus').addEventListener('change',e=>{ state.exchFilterStatus=e.target.value; render(); });
+  document.getElementById('newExchBtn').addEventListener('click',()=>{
+    const me=state.users.find(u=>u.username===username);
+    const myTeam=(me&&me.team)?me.team:'';
+    const colleagues=state.users.filter(u=>u.role==='employee' && u.username!==username && u.team===myTeam);
+    if(!colleagues.length){ toast('Aucun collègue disponible dans votre service pour un échange.', true); return; }
+    state.modal={type:'new-exchange', data:{targetUsername:colleagues[0].username, dateA:'', dateB:'', comment:''}, colleagues};
+    render();
+  });
+  document.querySelectorAll('[data-exch-cancel]').forEach(btn=>{
+    btn.addEventListener('click',async()=>{
+      if(!confirm('Annuler cette demande d\u2019échange ?')) return;
+      await cancelExchange(btn.dataset.exchCancel);
+      toast('Demande annulée.');
+      render();
+    });
+  });
+}
+
+/* ============================================================
+   ÉCRAN — MON PLANNING ANNUEL (salarié, libre-service)
+   ============================================================ */
+function renderMonPlanningAnnuel(){
+  const username=state.currentUser.username;
+  const emp=state.users.find(u=>u.username===username);
+  const year=state.annualYear;
+  const holidays=frenchHolidays(year);
+  const genMode=state.annualGenMode;
+
+  const cellHtml=(monthIdx, day)=>{
+    const nDays=daysInMonth(year,monthIdx);
+    if(day>nDays) return '<td class="annual-cell empty"></td>';
+    const dateKeyStr=ymdKey(year,monthIdx,day);
+    const dow=new Date(year,monthIdx,day).getDay();
+    const isWeekend=dow===0||dow===6;
+    const isHoliday=!!holidays[dateKeyStr];
+    const dayValid=emp?isDayWithinValidity(emp,dateKeyStr):true;
+    if(!dayValid){
+      return `<td class="annual-cell invalid" title="${dateKeyStr} — hors période de validité"></td>`;
+    }
+    // Planning VALIDÉ (officiel, admin) — affiché en grand UNIQUEMENT si ce mois a été
+    // validé pour le service du salarié (même verrou que « Mon planning » / « Planning équipe »)
+    const monthValidatedForCell = isMonthValidated(emp?emp.team:'', year, monthIdx);
+    const officialCode = monthValidatedForCell ? getDayCode(username,year,monthIdx,day) : undefined;
+    const officialInfo=officialCode?codeInfo(officialCode):null;
+    const officialStyle=officialInfo?`background:${officialInfo.color};color:${officialInfo.text};`:(isWeekend?'background:#F3F0FA;':'');
+    const holidayMark=isHoliday?`<span class="annual-holiday-mark" title="${escapeHtml(holidays[dateKeyStr])}">F</span>`:'';
+    // Brouillon personnel — petite bulle ronde en bas à droite de la case
+    const draftCode=getDraftCode(username,year,monthIdx,day);
+    const draftInfo=draftCode?codeInfo(draftCode):null;
+    const draftHtml=draftCode?`<span class="annual-draft-bubble" style="background:${draftInfo?draftInfo.color:'#DDD'};color:${draftInfo?draftInfo.text:'#333'};" title="Mon brouillon : ${escapeHtml(draftCode)}">${draftCode}</span>`:'';
+    const selected=genMode && state.annualSelectedDay===dateKeyStr;
+    return `<td class="annual-cell ${selected?'selected':''}" data-date="${dateKeyStr}" title="${dateKeyStr}${officialCode?' — validé : '+officialCode:''}${draftCode?' — brouillon : '+draftCode:''}${isHoliday?' — '+holidays[dateKeyStr]:''}">
+      <div class="annual-cell-inner">
+        ${holidayMark}
+        <div class="annual-cell-official" style="${officialStyle}">${officialCode||''}</div>
+        ${draftHtml}
+      </div>
+    </td>`;
+  };
+
+  // Construit un mini-tableau par mois, avec son propre bandeau de semaines
+  // (aligné exactement comme sur le Calendrier annuel admin) au-dessus des jours
+  let monthBlocks='';
+  for(let mo=0; mo<12; mo++){
+    const nDays=daysInMonth(year,mo);
+    let weekHead=''; {
+      let dd=1;
+      while(dd<=nDays){
+        const wn=isoWeekNumber(new Date(year,mo,dd));
+        let span=1;
+        while(dd+span<=nDays && isoWeekNumber(new Date(year,mo,dd+span))===wn) span++;
+        weekHead+=`<th colspan="${span}" class="annual-week-head">S${wn}</th>`;
+        dd+=span;
+      }
+    }
+    let dayHead='';
+    for(let d=1; d<=nDays; d++){
+      const date=new Date(year,mo,d);
+      const dow=date.getDay();
+      const isWeekend=dow===0||dow===6;
+      const isHol=!!holidays[dkey(date)];
+      dayHead+=`<th class="${isWeekend?'weekend':''} ${isHol?'holiday':''}">${d}<span class="dow">${DOW[(dow+6)%7]}</span></th>`;
+    }
+    let cells='';
+    for(let d=1; d<=nDays; d++) cells+=cellHtml(mo,d);
+    const monthOkLbl=isMonthValidated(emp?emp.team:'', year, mo);
+    const lockMark=monthOkLbl?'':'<span class="annual-month-lock" title="Ce mois n\u2019est pas encore validé par l\u2019administration">🔒</span>';
+    monthBlocks+=`
+    <div class="annual-month-block">
+      <div class="annual-month-block-title">${MOIS[mo].charAt(0).toUpperCase()+MOIS[mo].slice(1)} ${year}${lockMark}</div>
+      <div class="grid-card annual-grid-card">
+        <table class="annual-grid">
+          <thead><tr>${weekHead}</tr><tr>${dayHead}</tr></thead>
+          <tbody><tr>${cells}</tr></tbody>
+        </table>
+      </div>
+    </div>`;
+  }
+
+  const allowance=state.cpAllowances[cpAllowanceKey(username,year)] ?? '';
+  const used=countCodeUsedInYear(username,year,'CP');
+  const remaining = allowance!=='' ? (Number(allowance)-used) : null;
+
+  const holidayWorked=(()=>{
+    let c=0;
+    for(let mo=0; mo<12; mo++){
+      const nDays=daysInMonth(year,mo);
+      for(let d=1; d<=nDays; d++){
+        const dk=ymdKey(year,mo,d);
+        if(holidays[dk]){
+          const explicit=getDraftCode(username,year,mo,d);
+          const info=explicit?codeInfo(explicit):null;
+          if(info && info.startTime && info.endTime) c++;
+        }
+      }
+    }
+    return c;
+  })();
+  const statChips=state.codes.map(c=>`<div class="cal-stat"><b>${countCodeUsedInYear(username,year,c.code)}</b><span>${c.label}</span></div>`).join('');
+
+  const legendChipsHtml=state.codes.map(c=>`
+    <div class="chip selectable ${state.annualSelectedCode===c.code?'active':''}" data-code="${c.code}">
+      <span class="dot ${c.code==='VIDE'?'dot-outline':''}" style="background:${c.color}"></span>${c.code} · ${c.label}
+    </div>`).join('');
+
+  const modeToggleHtml = genMode
+    ? `<button class="btn-gen active" id="annModeToggle">🪄 Mode génération activé — cliquer pour repasser en peinture</button>`
+    : `<button class="btn-gen" id="annModeToggle">🪄 Passer en mode génération (choisir le jour de départ)</button>`;
+
+  const inner=`
+    <div class="legend-hint annual-legend-hint">
+      Le grand code affiché est votre <b>planning validé</b> par l'administration. Le petit badge en bas de case est <b>votre brouillon personnel</b> — il n'écrase jamais le planning officiel.
+    </div>
+    <div class="month-nav" style="margin-bottom:14px;">
+      <button class="nav-arrow" id="annPrevYear">‹</button>
+      <div class="month-label">${year}</div>
+      <button class="nav-arrow" id="annNextYear">›</button>
+      <button class="today-btn" id="annTodayYear">Année en cours</button>
+    </div>
+
+    <div style="margin-bottom:14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+      ${modeToggleHtml}
+      <button class="btn" style="width:auto;background:#FBEAE9;color:var(--danger);" id="annClearBtn">🗑 Vider mon brouillon ${year}</button>
+      <button class="btn" style="width:auto;background:var(--primary-light);color:var(--primary-dark);" id="annDesidBtn">🖐️ Demande de désidérata${state.annualSelectedDay?' — '+fmtDateKeyFr(state.annualSelectedDay):''}</button>
+    </div>
+    ${genMode
+      ? `<div class="legend-hint gen-hint">🪄 Cliquez sur un jour du planning ci-dessous pour le choisir comme <b>jour de départ</b> de la génération automatique. Une fenêtre vous demandera si vous démarrez en M ou en S, et le cycle (4 jours travaillés / 4 jours OFF) se génère aussitôt jusqu'au 31 décembre ${year}.</div>`
+      : `<div class="legend-hint">Sélectionnez d'abord un <b>code</b> ci-dessous, puis cliquez sur les jours de votre brouillon pour les marquer (ex : poser un CP). Un second clic efface la marque.</div>`
+    }
+    ${genMode ? '' : `<div class="legend">${legendChipsHtml}</div>`}
+
+    ${monthBlocks}
+
+    <form class="cp-form" id="cpForm">
+      <div class="cp-form-header">
+        <div class="cp-form-icon">🏖️</div>
+        <div>
+          <h3>Solde de congés payés — ${year}</h3>
+          <p>Ce solde est propre à ${year} — à ressaisir chaque 1er janvier. Chaque code CP posé dans votre brouillon est décompté automatiquement.</p>
+        </div>
+      </div>
+      <div class="cp-form-body">
+        <div class="cp-form-field">
+          <label for="cpAllowanceInput">Jours de CP alloués cette année</label>
+          <div class="cp-input-group">
+            <input type="number" min="0" id="cpAllowanceInput" value="${allowance}" placeholder="25">
+            <span class="cp-input-suffix">jours</span>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary" id="cpSaveBtn">Enregistrer mon solde</button>
+      </div>
+      <div class="cp-balance-row">
+        <div class="cal-stat"><b>${allowance!==''?allowance:'—'}</b><span>Alloués</span></div>
+        <div class="cal-stat"><b>${used}</b><span>CP utilisés</span></div>
+        <div class="cal-stat" style="${remaining!==null && remaining<0?'background:#FBEAE9;color:var(--danger);':''}"><b>${remaining!==null?remaining:'—'}</b><span>Restants</span></div>
+      </div>
+    </form>
+
+    <h3 style="margin:28px 0 14px;font-size:14px;font-weight:800;">📊 Statistiques de mon brouillon ${year}</h3>
+    <div class="cal-stats">
+      <div class="cal-stat"><b>${holidayWorked}</b><span>Fériés travaillés</span></div>
+      ${statChips}
+    </div>
+  `;
+  renderShell(inner,'Mon planning annuel');
+
+  document.getElementById('annPrevYear').addEventListener('click',()=>{ state.annualYear--; render(); });
+  document.getElementById('annNextYear').addEventListener('click',()=>{ state.annualYear++; render(); });
+  document.getElementById('annTodayYear').addEventListener('click',()=>{ state.annualYear=new Date().getFullYear(); render(); });
+  document.getElementById('annModeToggle').addEventListener('click',()=>{ state.annualGenMode=!state.annualGenMode; render(); });
+  document.getElementById('annDesidBtn').addEventListener('click',()=>{
+    const startDate=state.annualSelectedDay || ymdKey(year,0,1);
+    state.modal={type:'new-desiderata', data:{dateStart:startDate, dateEnd:startDate, code:state.codes[0]?state.codes[0].code:'', comment:''}};
+    render();
+  });
+
+  if(!genMode){
+    document.querySelectorAll('.legend .chip.selectable').forEach(chip=>{
+      chip.addEventListener('click',()=>{
+        const code=chip.dataset.code;
+        state.annualSelectedCode = state.annualSelectedCode===code ? null : code;
+        render();
+      });
+    });
+  }
+
+  let annualClickTimer=null;
+  document.querySelectorAll('td.annual-cell[data-date]').forEach(td=>{
+    td.addEventListener('click',()=>{
+      if(annualClickTimer) clearTimeout(annualClickTimer);
+      annualClickTimer=setTimeout(async()=>{
+        annualClickTimer=null;
+        if(genMode){
+          state.annualSelectedDay=td.dataset.date;
+          state.modal={type:'annual-quick-gen', date:td.dataset.date};
+          render();
+        } else {
+          if(!state.annualSelectedCode){ toast("Sélectionnez d'abord un code dans la palette ci-dessus.", true); return; }
+          await paintOwnDayWithQuotaCheck(username, td.dataset.date, state.annualSelectedCode);
+          render();
+        }
+      }, 200);
+    });
+  });
+
+  document.getElementById('annClearBtn').addEventListener('click', async()=>{
+    if(!confirm('Vider tout votre brouillon '+year+' ? Le planning validé par l\u2019admin ne sera pas affecté.')) return;
+    const n=await clearOwnYearPlanning(username, year);
+    toast('Brouillon '+year+' vidé ('+n+' jour(s) effacé(s)).');
+    render();
+  });
+
+  document.getElementById('cpForm').addEventListener('submit', async(e)=>{
+    e.preventDefault();
+    const val=document.getElementById('cpAllowanceInput').value;
+    state.cpAllowances[cpAllowanceKey(username,year)] = val===''?'':Number(val);
+    await persistCpAllowances();
+    toast('Solde de congés enregistré.');
+    render();
+  });
+}
+
+
+/* ============================================================
+   ÉCRAN — ALERTES (admin) : règles + liste calculée en direct
+   ============================================================ */
+function ruleFonctionsLabel(rule){ return rule.fonctions.join(' + '); }
+function ruleCodesLabel(rule){ return rule.codes.join('/'); }
+function ruleThresholdLabel(rule){
+  const parts=[];
+  if(rule.min!=null) parts.push('min '+rule.min);
+  if(rule.max!=null) parts.push('max '+rule.max);
+  return parts.join(' · ') || '—';
+}
+function renderAlertes(){
+  if(!isFeatureEnabled('alertes')){ state.tab='calendrier'; render(); return; }
+  const y=state.viewDate.getFullYear(), m=state.viewDate.getMonth();
+  const scope=getAdminScope(state.currentUser);
+  const availableServices = scope || state.services;
+  if(state.alertesServiceFilter===undefined || (scope && !scope.includes(state.alertesServiceFilter) && state.alertesServiceFilter!=='ALL')){
+    // Le grand admin (scope complet, non restreint à des services précis) doit voir
+    // toutes les règles de tous les services par défaut, sans avoir à changer le filtre.
+    state.alertesServiceFilter = scope ? (availableServices.includes('CCO') ? 'CCO' : (availableServices[0] || 'ALL')) : 'ALL';
+  }
+  const svcFilter=state.alertesServiceFilter;
+  const svcOptions = `<option value="ALL" ${svcFilter==='ALL'?'selected':''}>${scope?'Tous mes services':'Tous les services'}</option>`
+    + availableServices.map(s=>`<option value="${escapeHtml(s)}" ${svcFilter===s?'selected':''}>${escapeHtml(s)}</option>`).join('');
+  const alerts=computeAllAlerts(y,m).filter(a=>(!scope || scope.includes(a.rule.service)) && (svcFilter==='ALL' || a.rule.service===svcFilter));
+  const dailyAlerts=alerts.filter(a=>a.rule.type==='daily_group').sort((a,b)=>a.date.localeCompare(b.date));
+  const weeklyAlerts=alerts.filter(a=>a.rule.type==='weekly_person').sort((a,b)=>a.weekStart.localeCompare(b.weekStart));
+
+  const alertCardHtml=(a)=>{
+    const kindColor = a.kind==='min' ? {bg:'#FBEAE9',fg:'#C0392B',label:'Sous-effectif'} : {bg:'#FDF2E3',fg:'#B5690A',label:'Sur-effectif'};
+    if(a.rule.type==='daily_group'){
+      const groupEmployees=state.users.filter(u=>!isSuperAdmin(u) && affectationAt(u,a.date).team===a.rule.service && a.rule.fonctions.includes(affectationAt(u,a.date).fonction));
+      const namesForFilter=(groupEmployees.map(e=>e.name).join(' ')+' '+a.names.join(' ')).toLowerCase();
+      return `
+      <div class="alert-card" data-names="${escapeHtml(namesForFilter)}">
+        <div class="alert-card-icon" style="background:${kindColor.bg};color:${kindColor.fg};">⚠</div>
+        <div class="alert-card-body">
+          <div class="alert-card-title">${escapeHtml(ruleFonctionsLabel(a.rule))} — ${kindColor.label}</div>
+          <div class="alert-card-sub">${fmtDateKeyFr(a.date)} · code${a.rule.codes.length>1?'s':''} ${escapeHtml(ruleCodesLabel(a.rule))} · ${a.count} constaté${a.count>1?'s':''} (seuil ${a.kind==='min'?'min':'max'} ${a.target})</div>
+          ${a.names.length?`<div class="alert-card-names">${a.names.map(n=>escapeHtml(n)).join(', ')}</div>`:'<div class="alert-card-names">Aucun salarié sur ce code ce jour-là</div>'}
+        </div>
+        <span class="status-badge" style="background:${kindColor.bg};color:${kindColor.fg};">${a.rule.label}</span>
+      </div>`;
+    }
+    return `
+    <div class="alert-card" data-names="${escapeHtml(a.employee.name.toLowerCase())}">
+      <div class="alert-card-icon" style="background:${kindColor.bg};color:${kindColor.fg};">⚠</div>
+      <div class="alert-card-body">
+        <div class="alert-card-title">${escapeHtml(a.employee.name)} — ${kindColor.label} hebdomadaire</div>
+        <div class="alert-card-sub">Semaine S${a.weekNum} (${fmtDateKeyFr(a.weekStart)} → ${fmtDateKeyFr(a.weekEnd)}) · codes ${escapeHtml(ruleCodesLabel(a.rule))} · ${a.count} jour${a.count>1?'s':''} (seuil ${a.kind==='min'?'min':'max'} ${a.target})</div>
+      </div>
+      <span class="status-badge" style="background:${kindColor.bg};color:${kindColor.fg};">${escapeHtml(a.rule.label)}</span>
+    </div>`;
+  };
+
+  const ruleCardHtml=(r)=>`
+    <div class="rule-card ${r.active?'':'rule-inactive'}">
+      <div class="rule-card-head">
+        <div>
+          <div class="rule-card-title">${escapeHtml(r.label)}</div>
+          <div class="rule-card-sub">${r.type==='daily_group'?'Effectif par jour':'Charge hebdomadaire par salarié'} · ${escapeHtml(r.service)} · ${escapeHtml(ruleFonctionsLabel(r))} · codes ${escapeHtml(ruleCodesLabel(r))} · ${ruleThresholdLabel(r)}</div>
+        </div>
+        <label class="switch"><input type="checkbox" data-toggle-rule="${r.id}" ${r.active?'checked':''}><span class="switch-track"></span></label>
+      </div>
+      <div class="rule-card-actions">
+        <button class="icon-btn" data-edit-rule="${r.id}">Modifier</button>
+        <button class="icon-btn" style="color:var(--danger);" data-del-rule="${r.id}">Supprimer</button>
+      </div>
+    </div>`;
+
+  const inner=`
+    ${monthNavHtml()}
+    <div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px;margin-bottom:6px;">
+      <span style="font-size:13.5px;font-weight:700;color:var(--ink-soft);">Service :</span>
+      <select id="alertServiceSelect" class="filter-select">${svcOptions}</select>
+    </div>
+    <div class="alert-summary-row">
+      <div class="alert-summary-card daily"><b>${dailyAlerts.length}</b><span>Alertes d'effectif (jour)</span></div>
+      <div class="alert-summary-card weekly"><b>${weeklyAlerts.length}</b><span>Alertes de charge (semaine)</span></div>
+      <div class="alert-summary-card rules"><b>${state.alertRules.filter(r=>r.active && (!scope||scope.includes(r.service)) && (svcFilter==='ALL'||r.service===svcFilter)).length}</b><span>Règles actives</span></div>
+    </div>
+
+    <div class="toolbar" style="margin-top:6px;flex-wrap:wrap;gap:10px;">
+      <h3 style="margin:0;font-size:14px;font-weight:800;">Alertes détectées — ${MOIS[m]} ${y}${svcFilter==='ALL'?'':' — '+escapeHtml(svcFilter)}</h3>
+      <input type="text" id="alertNameFilter" placeholder="🔎 Filtrer par nom…" class="filter-select" style="min-width:200px;">
+    </div>
+    <div class="desid-list" style="margin-bottom:32px;" id="alertCardsList">
+      ${alerts.length ? [...dailyAlerts,...weeklyAlerts].map(alertCardHtml).join('') : `<div class="empty-state">✅ Aucune alerte ce mois-ci${svcFilter==='ALL'?'':' pour '+escapeHtml(svcFilter)} — les effectifs respectent toutes les règles actives.</div>`}
+    </div>
+    <div class="empty-state" id="alertNoMatch" style="display:none;">Aucune alerte pour ce nom.</div>
+
+    <div class="toolbar">
+      <h3 style="margin:0;font-size:14px;font-weight:800;">Règles configurées${svcFilter==='ALL'?'':' — '+escapeHtml(svcFilter)}</h3>
+      <button class="btn btn-primary" id="addRuleBtn" style="width:auto;margin:0;">+ Nouvelle règle</button>
+    </div>
+    <div class="rule-list">
+      ${(()=>{ const visibleRules=state.alertRules.filter(r=>(!scope||scope.includes(r.service)) && (svcFilter==='ALL'||r.service===svcFilter)); return visibleRules.length? visibleRules.map(ruleCardHtml).join('') : `<div class="empty-state">Aucune règle configurée${svcFilter==='ALL'?'':' pour ce service'}.</div>`; })()}
+    </div>
+  `;
+  renderShell(inner,'Alertes');
+  bindMonthNav(render);
+  const alertServiceSelect=document.getElementById('alertServiceSelect');
+  if(alertServiceSelect) alertServiceSelect.addEventListener('change',(e)=>{ state.alertesServiceFilter=e.target.value; render(); });
+  const nameFilterInput=document.getElementById('alertNameFilter');
+  if(nameFilterInput){
+    nameFilterInput.addEventListener('input',(e)=>{
+      const q=e.target.value.trim().toLowerCase();
+      let anyVisible=false;
+      document.querySelectorAll('#alertCardsList .alert-card').forEach(card=>{
+        const match = !q || (card.dataset.names||'').includes(q);
+        card.style.display = match ? '' : 'none';
+        if(match) anyVisible=true;
+      });
+      const noMatchEl=document.getElementById('alertNoMatch');
+      if(noMatchEl) noMatchEl.style.display = (q && !anyVisible) ? '' : 'none';
+    });
+  }
+  document.getElementById('addRuleBtn').addEventListener('click',()=>{
+    state.modal={type:'alert-rule', isNew:true, data:{label:'',type:'daily_group',service:(scope||state.services)[0]||'',fonctions:[],codes:[],min:null,max:null,active:true}};
+    render();
+  });
+  document.querySelectorAll('[data-edit-rule]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const r=state.alertRules.find(x=>x.id===btn.dataset.editRule);
+      state.modal={type:'alert-rule', isNew:false, data:JSON.parse(JSON.stringify(r))};
+      render();
+    });
+  });
+  document.querySelectorAll('[data-del-rule]').forEach(btn=>{
+    btn.addEventListener('click',async()=>{
+      if(!confirm('Supprimer cette règle d\u2019alerte ?')) return;
+      state.alertRules=state.alertRules.filter(x=>x.id!==btn.dataset.delRule);
+      await persistAlertRules();
+      toast('Règle supprimée.');
+      render();
+    });
+  });
+  document.querySelectorAll('[data-toggle-rule]').forEach(cb=>{
+    cb.addEventListener('change',async()=>{
+      const r=state.alertRules.find(x=>x.id===cb.dataset.toggleRule);
+      r.active=cb.checked;
+      await persistAlertRules();
+      render();
+    });
+  });
+}
+
+function renderCalendrierAdmin(){
+  const y=state.viewDate.getFullYear(), m=state.viewDate.getMonth();
+  const scope=getAdminScope(state.currentUser);
+  const availableServices = scope || state.services;
+  if(state.calendarServiceFilter===undefined || (scope && !scope.includes(state.calendarServiceFilter) && state.calendarServiceFilter!=='ALL')){
+    // Le grand admin doit voir tous les services par défaut sur son calendrier.
+    state.calendarServiceFilter = scope ? (availableServices.includes('CCO') ? 'CCO' : (availableServices[0] || 'ALL')) : 'ALL';
+  }
+  const svcFilter=state.calendarServiceFilter;
+  // Un salarié rattaché en service supplémentaire (extraTeams, "Gestion des salariés")
+  // apparaît aussi ici, tout comme un salarié dont l'affectation change en cours
+  // de mois (voir « Historique service / fonction » dans sa fiche) : il apparaît
+  // dans les deux services concernés, avec les jours hors période grisés.
+  const belongsToService=(u,svc)=> employeeActiveInServiceDuringMonth(u,svc,y,m);
+  const employees=state.users.filter(u=>
+    !isSuperAdmin(u) &&
+    isEmployeeValidForMonth(u,y,m) &&
+    (svcFilter==='ALL' ? availableServices.some(s=>belongsToService(u,s)) : belongsToService(u,svcFilter))
+  );
+  const svcOptions = `<option value="ALL" ${svcFilter==='ALL'?'selected':''}>${scope?'Tous mes services':'Tous les services'}</option>`
+    + availableServices.map(s=>`<option value="${escapeHtml(s)}" ${svcFilter===s?'selected':''}>${escapeHtml(s)}</option>`).join('');
+  const alerts=computeAllAlerts(y,m).filter(a=>!scope || scope.includes(a.rule.service));
+  const allChangesThisMonth=state.postValidationChanges.filter(c=>c.year===y && c.month===m && (svcFilter==='ALL'?availableServices.includes(c.service):c.service===svcFilter));
+  const changes=allChangesThisMonth.filter(c=>state.showAcknowledgedChanges || !c.acknowledged);
+  const pendingChanges=allChangesThisMonth.filter(c=>!c.acknowledged);
+  const canValidate = svcFilter!=='ALL';
+  const validated = canValidate && isMonthValidated(svcFilter,y,m);
+  const validateBtnHtml = canValidate
+    ? (validated
+        ? `<button class="btn-validate validated" id="validateBtn">✓ Mois validé — visible par les salariés</button>`
+        : `<button class="btn-validate" id="validateBtn">🔒 Valider le mois — le rendre visible aux salariés</button>`)
+    : `<span class="helper" style="margin:0;">Sélectionnez un service précis pour valider son mois.</span>`;
+  const genCount=Object.keys(state.genSelections).length;
+  const genAutoOn=isFeatureEnabled('genAuto');
+  const printOn=isFeatureEnabled('impression');
+  const genBtnHtml = !genAutoOn ? '' : (state.genMode
+    ? `<button class="btn-gen active" id="genToggleBtn">🪄 Mode génération activé — cliquer pour quitter</button>`
+    : `<button class="btn-gen" id="genToggleBtn">🪄 Générer automatiquement le planning</button>`);
+  const genSelectionBarHtml = (genAutoOn && state.genMode) ? `
+    <div class="legend-hint gen-hint">
+      🪄 Cliquez sur le <b>dernier jour travaillé (M ou S)</b> de chaque salarié à régénérer. ${genCount} sélectionné${genCount>1?'s':''}.
+      ${genCount>0?`<button class="icon-btn" id="genGoBtn" style="margin-left:10px;background:var(--primary);color:#fff;border-color:var(--primary);">Générer →</button><button class="icon-btn" id="genClearBtn" style="margin-left:6px;">Tout désélectionner</button>`:''}
+    </div>` : '';
+  const sideCodesHtml = `
+    <div class="sidebar-extra-title">Codes</div>
+    ${legendHtml(true)}
+  `;
+  const sideActionsHtml = `
+    <div class="sidebar-extra-title" style="margin-top:16px;">Actions</div>
+    ${validateBtnHtml}
+    ${genBtnHtml}
+    ${(canValidate && printOn) ? `<button class="icon-btn" id="printMonthBtn">🖨️ Imprimer le planning</button>` : ''}
+  `;
+  const mobile=isMobileDevice();
+  const inner=`
+    <div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px;">
+      <div class="month-nav-reset">${monthNavHtml()}</div>
+      <span style="font-size:13.5px;font-weight:700;color:var(--ink-soft);">Service :</span>
+      <select id="calServiceSelect" class="filter-select">${svcOptions}</select>
+    </div>
+    ${mobile ? `
+    <div class="legend-hint" style="margin:12px 0 6px;"><b>Codes</b> — touchez-en un puis touchez une case du planning.</div>
+    ${legendHtml(true)}
+    <div style="margin:10px 0 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">${validateBtnHtml}${genBtnHtml}${(canValidate && printOn) ? `<button class="icon-btn" id="printMonthBtn">🖨️ Imprimer</button>` : ''}</div>
+    ` : ''}
+    ${genSelectionBarHtml}
+    ${canValidate && !validated ? `<div class="legend-hint lock-hint">🔒 Ce mois n'est <b>pas encore validé</b> pour ${escapeHtml(svcFilter)} — les salariés de ce service ne voient rien sur leur planning pour ${MOIS[m]} ${y} (leurs désidératas restent accessibles). Cliquez sur « Valider le mois » ${mobile?'ci-dessus':'dans le bandeau de gauche'} quand vous êtes prêt.</div>` : ''}
+    ${pendingChanges.length?`<div class="legend-hint change-hint">✎ <b>${pendingChanges.length} modification${pendingChanges.length>1?'s':''}</b> apportée${pendingChanges.length>1?'s':''} depuis la validation du mois — cases encadrées en orange, détail tout en bas de page.</div>`:''}
+    ${gridHtml({employees, readonly:false, alerts, changes:allChangesThisMonth, serviceContext: svcFilter!=='ALL'?svcFilter:null})}
+    ${commentsRecapHtml(y,m, (svcFilter==='ALL' && !scope)?null:employees.map(e=>e.username))}
+    ${changesLogHtml(changes)}
+  `;
+  renderShell(inner,'Calendrier Mensuel'+(svcFilter==='ALL'?'':' — '+svcFilter), mobile?null:(sideCodesHtml+sideActionsHtml));
+  bindMonthNav(render);
+  document.getElementById('calServiceSelect').addEventListener('change',(e)=>{ state.calendarServiceFilter=e.target.value; render(); });
+  const printMonthBtn=document.getElementById('printMonthBtn');
+  if(printMonthBtn) printMonthBtn.addEventListener('click', ()=>{ printMonthlyPlanning(svcFilter, y, m); });
+  const genToggleBtn=document.getElementById('genToggleBtn');
+  if(genToggleBtn) genToggleBtn.addEventListener('click',()=>{ toggleGenMode(); render(); });
+  const genGoBtn=document.getElementById('genGoBtn');
+  if(genGoBtn) genGoBtn.addEventListener('click',()=>{ state.modal={type:'auto-generate'}; render(); });
+  const genClearBtn=document.getElementById('genClearBtn');
+  if(genClearBtn) genClearBtn.addEventListener('click',()=>{ state.genSelections={}; render(); });
+  document.querySelectorAll('[data-ack-change]').forEach(btn=>{
+    btn.addEventListener('click', async()=>{
+      const chg=state.postValidationChanges.find(c=>c.id===btn.dataset.ackChange);
+      if(chg){
+        chg.acknowledged=true; chg.acknowledgedAt=new Date().toISOString(); chg.acknowledgedBy=state.currentUser.username;
+        await persistPostValidationChanges();
+        await pushNotification(chg.username, chg.message || ('Votre planning de '+MOIS[chg.month]+' '+chg.year+' a été modifié.'));
+        toast('Modification validée.');
+        render();
+      }
+    });
+  });
+  document.querySelectorAll('[data-del-change]').forEach(btn=>{
+    btn.addEventListener('click', async()=>{
+      const chg=state.postValidationChanges.find(c=>c.id===btn.dataset.delChange);
+      if(!chg) return;
+      if(!confirm('Annuler cette modification et revenir au code précédent ('+(chg.oldCode||'Vide')+') ?')) return;
+      await cancelPostValidationChange(chg.id);
+      toast('Modification annulée — planning restauré.');
+      render();
+    });
+  });
+  const ackAllBtn=document.getElementById('ackAllChanges');
+  if(ackAllBtn) ackAllBtn.addEventListener('click', async()=>{
+    const now=new Date().toISOString();
+    for(const c of changes){
+      if(!c.acknowledged){
+        c.acknowledged=true; c.acknowledgedAt=now; c.acknowledgedBy=state.currentUser.username;
+        await pushNotification(c.username, c.message || ('Votre planning de '+MOIS[c.month]+' '+c.year+' a été modifié.'));
+      }
+    }
+    await persistPostValidationChanges();
+    toast('Toutes les modifications ont été validées.');
+    render();
+  });
+  const showAckedChk=document.getElementById('showAckedChanges');
+  if(showAckedChk) showAckedChk.addEventListener('change',(e)=>{ state.showAcknowledgedChanges=e.target.checked; render(); });
+  const validateBtn=document.getElementById('validateBtn');
+  if(validateBtn) validateBtn.addEventListener('click', ()=>{
+    const nowValidated=isMonthValidated(svcFilter,y,m);
+    state.modal={type:'validate-month-confirm', service:svcFilter, year:y, month:m, nowValidated, employeeCount:employees.length};
+    render();
+  });
+  bindLegend();
+  bindGrid(false);
+  bindCommentsRecap();
+}
+
+/* ============================================================
+   ÉCRAN — GESTION DES SALARIÉS (admin)
+   ============================================================ */
+function getFonctionsForService(service){
+  const key=service||'';
+  return state.fonctions[key] || [];
+}
+function getAdminScope(user){
+  // null = accès complet (grand admin) ; sinon tableau des services autorisés
+  if(!user || user.role!=='admin') return null;
+  if(!user.adminServices || user.adminServices.length===0) return null;
+  return user.adminServices;
+}
+function isSuperAdmin(user){ return !!(user && user.role==='admin' && getAdminScope(user)===null); }
+function groupByFonction(employees, service, includeEmpty){
+  const fonctionsList=getFonctionsForService(service);
+  if(!fonctionsList.length && !includeEmpty) return [{fonction:null, list:employees}];
+  const groups={};
+  fonctionsList.forEach(f=>groups[f]=[]);
+  groups['__none__']=[];
+  employees.forEach(e=>{
+    const f=fonctionsList.includes(e.fonction)?e.fonction:'__none__';
+    groups[f].push(e);
+  });
+  const result=[];
+  fonctionsList.forEach(f=>{ if(includeEmpty || groups[f].length) result.push({fonction:f, list:groups[f]}); });
+  if(includeEmpty || groups['__none__'].length) result.push({fonction:'__none__', list:groups['__none__']});
+  return result;
+}
+function groupByServiceThenFonction(employees, includeEmpty, serviceContext){
+  if(serviceContext){
+    // Vue centrée sur UN service précis (filtre admin, ou planning équipe) :
+    // on affiche un seul groupe pour ce service, et la fonction de chaque
+    // salarié est résolue par rapport à CE service (utile si son affectation
+    // change en cours de mois — voir « Historique service / fonction »).
+    const list=employees.map(e=>({...e, fonction: resolveFonctionForService(e, serviceContext)}));
+    const sub=groupByFonction(list, serviceContext, includeEmpty);
+    return [{service:serviceContext, list, sub}];
+  }
+  const byService={};
+  employees.forEach(e=>{
+    const svc=e.team||'__none_service__';
+    if(!byService[svc]) byService[svc]=[];
+    byService[svc].push(e);
+  });
+  const order=state.services.concat(['__none_service__']);
+  const result=[];
+  order.forEach(svc=>{
+    const list=byService[svc]||[];
+    if(!list.length && !includeEmpty) return;
+    const sub=groupByFonction(list, svc==='__none_service__'?'':svc, includeEmpty);
+    result.push({service:svc, list, sub});
+  });
+  return result;
+}
+function fmtDate(d){ if(!d) return '—'; const dt=new Date(d); return dt.toLocaleDateString('fr-FR'); }
+function renderGestionSalaries(){
+  const today=new Date(); today.setHours(0,0,0,0);
+  const scope=getAdminScope(state.currentUser);
+  const serviceFilter = state.serviceFilter || '';
+  const employees=state.users.filter(u=>u.username!=='admin' && (scope?scope.includes(u.team):true) && (!serviceFilter || u.team===serviceFilter));
+
+  const empRowHtml=(emp)=>{
+    const start=emp.startDate?new Date(emp.startDate):null;
+    const end=emp.endDate?new Date(emp.endDate):null;
+    const inactive=(start && today<start) || (end && today>end);
+    const todayKey=dkey(new Date());
+    const nextAffect=getAffectations(emp).filter(a=>a.startDate>todayKey)[0];
+    return `
+    <div class="emp-row" draggable="true" data-drag-user="${emp.username}">
+      <span class="drag-handle" title="Glisser pour changer de service/fonction">⠿</span>
+      <div class="emp-avatar">${emp.photoUrl?`<img src="${emp.photoUrl}" alt="">`:initials(emp.name)}</div>
+      <div class="emp-info">
+        <div class="name">${escapeHtml(emp.name)} ${emp.role==='admin'?'<span class="badge-admin">'+(isSuperAdmin(emp)?'Grand admin':'Admin — '+escapeHtml((emp.adminServices||[]).join(', ')))+'</span>':''} ${inactive?'<span class="badge-inactive">Hors période</span>':''}</div>
+        <div class="meta">Identifiant : ${emp.username} ${emp.email?'· '+escapeHtml(emp.email)+' ':''}${emp.phone?'· 📞 '+escapeHtml(emp.phone)+' ':''}${emp.team?'· Service : '+escapeHtml(emp.team)+' ':''}${(emp.extraTeams&&emp.extraTeams.length)?'· Aussi visible sur : '+escapeHtml(emp.extraTeams.join(', '))+' ':''}· Validité : ${fmtDate(emp.startDate)} → ${emp.endDate?fmtDate(emp.endDate):'toujours'}</div>
+        ${nextAffect ? `<div class="meta" style="color:var(--primary);font-weight:700;">→ Changement programmé le ${fmtDate(nextAffect.startDate)} : ${escapeHtml(nextAffect.team||'Aucun service')}${nextAffect.fonction?' · '+escapeHtml(nextAffect.fonction):''}</div>` : ''}
+      </div>
+      <div class="emp-actions">
+        <button class="icon-btn" data-move="${emp.username}" title="Alternative tactile au glisser-déposer">↔ Déplacer</button>
+        <button class="icon-btn" data-edit="${emp.username}">Modifier</button>
+        <button class="icon-btn" data-del="${emp.username}" style="color:var(--danger);">Supprimer</button>
+      </div>
+    </div>`;
+  };
+
+  const fonctionSectionHtml=(svcKey, group)=>{
+    const label = group.fonction==='__none__' ? 'Sans fonction' : group.fonction;
+    const fonctionZone = group.fonction==='__none__' ? '' : escapeHtml(group.fonction);
+    return `
+    <div class="fonction-section" data-service-zone="${svcKey}" data-fonction-zone="${fonctionZone}">
+      <div class="fonction-section-head">${escapeHtml(label)} <span style="font-weight:600;color:rgba(255,255,255,.7);">(${group.list.length})</span></div>
+      <div class="emp-list drop-zone" data-service-zone="${svcKey}" data-fonction-zone="${fonctionZone}">
+        ${group.list.map(empRowHtml).join('') || '<div class="empty-state" style="padding:18px;font-size:12.5px;">Glissez un salarié ici.</div>'}
+      </div>
+    </div>`;
+  };
+
+  let listHtml='';
+  if(employees.length===0){
+    listHtml=`<div class="empty-state">Aucun salarié pour l'instant.<br>Cliquez sur « + Ajouter un salarié » pour commencer.</div>`;
+  } else if(serviceFilter){
+    // un seul service filtré : sections de fonctions de CE service (y compris vides)
+    const groups=groupByFonction(employees, serviceFilter, true);
+    listHtml = groups.length
+      ? groups.map(g=>fonctionSectionHtml(escapeHtml(serviceFilter), g)).join('')
+      : `<div class="emp-list">${employees.map(empRowHtml).join('')}</div>`;
+  } else {
+    // tous les services (ou tous ceux du périmètre) : un bloc par service, avec ses fonctions imbriquées
+    const svcGroups=groupByServiceThenFonction(state.users.filter(u=>u.username!=='admin' && (scope?scope.includes(u.team):true)), true);
+    listHtml=svcGroups.map(svcGroup=>{
+      const svcLabel = svcGroup.service==='__none_service__' ? 'Sans service' : svcGroup.service;
+      const svcKey = svcGroup.service==='__none_service__' ? '' : escapeHtml(svcGroup.service);
+      const subHtml = svcGroup.sub.length
+        ? svcGroup.sub.map(g=>fonctionSectionHtml(svcKey, g)).join('')
+        : `<div class="emp-list">${svcGroup.list.map(empRowHtml).join('') || '<div class="empty-state" style="padding:18px;font-size:12.5px;">Aucun salarié.</div>'}</div>`;
+      return `
+      <div class="service-block">
+        <div class="service-block-head">${escapeHtml(svcLabel)}</div>
+        ${subHtml}
+      </div>`;
+    }).join('');
+  }
+
+  const availableServicesGS = scope || state.services;
+  const serviceOptions=`<option value="">${scope?'Tous mes services':'Tous les services'}</option>`+availableServicesGS.map(s=>`<option value="${escapeHtml(s)}" ${serviceFilter===s?'selected':''}>${escapeHtml(s)}</option>`).join('');
+
+  const inner=`
+    <div class="toolbar" style="flex-wrap:wrap;gap:10px;">
+      <div style="font-size:13px;color:var(--ink-soft);">${employees.length} salarié${employees.length>1?'s':''} ${serviceFilter?'dans « '+escapeHtml(serviceFilter)+' »':'au total'}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <select id="serviceFilterSelect" class="filter-select">${serviceOptions}</select>
+        ${scope?'':'<button class="icon-btn" id="manageServicesBtn">Gérer les services</button>'}
+        <button class="icon-btn" id="manageFonctionsBtn">Gérer les fonctions</button>
+        <button class="btn btn-primary" id="addEmpBtn" style="width:auto;margin:0;">+ Ajouter un salarié</button>
+      </div>
+    </div>
+    <div class="helper" style="margin-bottom:16px;">Glissez un salarié (⠿) vers une autre section pour changer son service et/ou sa fonction. Les fonctions sont propres à chaque service — sélectionnez un service ci-dessus puis « Gérer les fonctions » pour les configurer.</div>
+    ${listHtml}
+  `;
+  renderShell(inner,'Gestion des salariés');
+  document.getElementById('serviceFilterSelect').addEventListener('change',(e)=>{ state.serviceFilter=e.target.value; render(); });
+  const manageServicesBtn=document.getElementById('manageServicesBtn');
+  if(manageServicesBtn) manageServicesBtn.addEventListener('click',()=>{ state.modal={type:'list-manager', kind:'service'}; render(); });
+  document.getElementById('manageFonctionsBtn').addEventListener('click',()=>{
+    state.modal={type:'list-manager', kind:'fonction', service: serviceFilter || availableServicesGS[0] || ''};
+    render();
+  });
+  document.getElementById('addEmpBtn').addEventListener('click',()=>{
+    state.modal={type:'employee', data:{username:'',password:generatePassword(),name:'',startDate:'',endDate:'',role:'employee',team:serviceFilter||'',fonction:''}, isNew:true};
+    render();
+  });
+  document.querySelectorAll('[data-move]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const emp=state.users.find(u=>u.username===btn.dataset.move);
+      state.modal={type:'move-employee', username:emp.username, name:emp.name, team:emp.team||'', fonction:emp.fonction||''};
+      render();
+    });
+  });
+  document.querySelectorAll('[data-edit]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const emp=state.users.find(u=>u.username===btn.dataset.edit);
+      state.modal={type:'employee', data:Object.assign({},emp), isNew:false};
+      render();
+    });
+  });
+  document.querySelectorAll('[data-del]').forEach(btn=>{
+    btn.addEventListener('click',async()=>{
+      if(!confirm('Supprimer ce salarié ? Son historique de planning sera conservé mais il perdra son accès.')) return;
+      state.users=state.users.filter(u=>u.username!==btn.dataset.del);
+      await persistUsers();
+      toast('Salarié supprimé.');
+      render();
+    });
+  });
+
+  // Glisser-déposer entre sections de service/fonction
+  document.querySelectorAll('[data-drag-user]').forEach(row=>{
+    row.addEventListener('dragstart',(e)=>{
+      state.dragUser=row.dataset.dragUser;
+      row.classList.add('dragging');
+      e.dataTransfer.effectAllowed='move';
+    });
+    row.addEventListener('dragend',()=>{ row.classList.remove('dragging'); });
+  });
+  document.querySelectorAll('.drop-zone').forEach(zone=>{
+    zone.addEventListener('dragover',(e)=>{ e.preventDefault(); zone.classList.add('drop-over'); });
+    zone.addEventListener('dragleave',()=>{ zone.classList.remove('drop-over'); });
+    zone.addEventListener('drop',async(e)=>{
+      e.preventDefault();
+      zone.classList.remove('drop-over');
+      const username=state.dragUser;
+      if(!username) return;
+      const emp=state.users.find(u=>u.username===username);
+      if(!emp) return;
+      setImmediateAffectation(emp, zone.dataset.serviceZone||'', zone.dataset.fonctionZone||'');
+      state.dragUser=null;
+      await persistUsers();
+      toast('Salarié déplacé.');
+      render();
+    });
+  });
+}
+const CSS_VAR_HEX = {
+  'var(--c-M)':'#7FB3F5','var(--c-S)':'#F5A65B','var(--c-N)':'#544A87','var(--c-ADM)':'#9AA5B1',
+  'var(--c-FOR)':'#4FADA3','var(--c-CP)':'#6FCF7C','var(--c-CPA)':'#BBE7A9','var(--c-FER)':'#E8615A','var(--c-O)':'#EDEFF2'
+};
+function resolveHexColor(c){ return CSS_VAR_HEX[c] || (c && c.startsWith('#') ? c : '#8AB4F8'); }
+/* ============================================================
+   CORRECTION : CALCUL INCLUSIF DE LA DURÉE EN JOURS
+   ============================================================ */
+function calculateDesiderataDays(startDateStr, endDateStr) {
+  if (!startDateStr || !endDateStr) return 0;
+
+  const start = new Date(startDateStr + 'T00:00:00');
+  const end = new Date(endDateStr + 'T00:00:00');
+
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) {
+    return 0;
+  }
+
+  // Ajout de 1 jour (+86400000 ms) pour inclure le jour de fin inclus
+  const diffTime = Math.abs(end - start);
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+  return diffDays;
+}
+function computeDuration(startTime,endTime){
+  if(!startTime||!endTime) return '—';
+  const [sh,sm]=startTime.split(':').map(Number);
+  const [eh,em]=endTime.split(':').map(Number);
+  let mins=(eh*60+em)-(sh*60+sm);
+  if(mins<=0) mins+=24*60;
+  const h=mins/60;
+  return (Number.isInteger(h)?h:h.toFixed(1))+'h';
+}
+function renderGestionCodes(){
+  const workCodes=state.codes.filter(c=>c.isWork);
+  const otherCodes=state.codes.filter(c=>!c.isWork);
+  const rowHtml=(c,showDuree)=>`
+    <div class="code-row">
+      <div class="col-code">${c.code}</div>
+      <div class="col-libelle">${c.label}</div>
+      <div class="col-couleur"><div class="swatch" style="background:${c.color}"></div></div>
+      ${showDuree?`<div class="col-duree">${computeDuration(c.startTime,c.endTime)}</div>`:''}
+      ${showDuree?`<div class="col-horaires">${c.startTime&&c.endTime?c.startTime+' - '+c.endTime:'—'}</div>`:''}
+      <div class="col-desc">${c.description||'—'}</div>
+      <div class="col-actions">
+        <button class="code-act-btn" data-edit-code="${c.code}" title="Modifier">✎</button>
+        <button class="code-act-btn del" data-del-code="${c.code}" title="Supprimer">🗑</button>
+      </div>
+    </div>`;
+  const headRow=(showDuree)=>`
+    <div class="code-row head">
+      <div class="col-code">Code</div>
+      <div class="col-libelle">Libellé</div>
+      <div class="col-couleur">Couleur</div>
+      ${showDuree?'<div class="col-duree">Durée</div>':''}
+      ${showDuree?'<div class="col-horaires">Horaires</div>':''}
+      <div class="col-desc">Description</div>
+      <div class="col-actions">Actions</div>
+    </div>`;
+
+  const inner=`
+    <div class="toolbar">
+      <div style="font-size:13px;color:var(--ink-soft);">${state.codes.length} code${state.codes.length>1?'s':''} au total</div>
+      <button class="btn btn-primary" id="addCodeBtn2" style="width:auto;margin:0;">+ Ajouter un code</button>
+    </div>
+    <div class="codes-section">
+      <h3>Codes de travail (${workCodes.length})</h3>
+      <div class="codes-table">
+        ${workCodes.length? headRow(true)+workCodes.map(c=>rowHtml(c,true)).join('') : `<div class="empty-state">Aucun code de travail avec horaires.</div>`}
+      </div>
+    </div>
+    <div class="codes-section">
+      <h3>Autres codes (${otherCodes.length})</h3>
+      <div class="codes-table">
+        ${otherCodes.length? headRow(false)+otherCodes.map(c=>rowHtml(c,false)).join('') : `<div class="empty-state">Aucun autre code.</div>`}
+      </div>
+    </div>
+  `;
+  renderShell(inner,'Gestion des codes');
+  document.getElementById('addCodeBtn2').addEventListener('click',()=>{
+    state.modal={type:'code', isNew:true, data:{code:'',label:'',color:'#8AB4F8',text:'#1E2433',startTime:'',endTime:'',description:'',isWork:true}};
+    render();
+  });
+  document.querySelectorAll('[data-edit-code]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const c=state.codes.find(x=>x.code===btn.dataset.editCode);
+      state.modal={type:'code', isNew:false, data:Object.assign({},c)};
+      render();
+    });
+  });
+  document.querySelectorAll('[data-del-code]').forEach(btn=>{
+    btn.addEventListener('click',async()=>{
+      if(!confirm("Supprimer ce code ? Les jours déjà attribués avec ce code resteront enregistrés mais ne s'afficheront plus correctement.")) return;
+      state.codes=state.codes.filter(c=>c.code!==btn.dataset.delCode);
+      await persistCodes();
+      toast('Code supprimé.');
+      render();
+    });
+  });
+}
+
+function generatePassword(){
+  const chars='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+  let p=''; for(let i=0;i<8;i++) p+=chars[Math.floor(Math.random()*chars.length)];
+  return p;
+}
+function stripAccents(str){
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+}
+function generateEmail(fullName){
+  const parts=fullName.trim().split(/\s+/).filter(Boolean);
+  if(!parts.length) return '';
+  const prenom=parts[0];
+  const nom=parts.slice(1).join('');
+  const local=stripAccents(prenom.charAt(0)+nom).toLowerCase().replace(/[^a-z0-9]/g,'');
+  return local ? local+'@hop.fr' : '';
+}
+function resizeImageToDataUrl(file,maxDim,quality){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onerror=()=>reject(new Error('Lecture du fichier impossible'));
+    reader.onload=()=>{
+      const img=new Image();
+      img.onerror=()=>reject(new Error('Image invalide'));
+      img.onload=()=>{
+        let width=img.width, height=img.height;
+        if(width>height){ if(width>maxDim){ height=Math.round(height*maxDim/width); width=maxDim; } }
+        else { if(height>maxDim){ width=Math.round(width*maxDim/height); height=maxDim; } }
+        const canvas=document.createElement('canvas');
+        canvas.width=width; canvas.height=height;
+        const ctx=canvas.getContext('2d');
+        ctx.drawImage(img,0,0,width,height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src=reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/* ============================================================
+   MODALES
+   ============================================================ */
+function renderModal(){
+  document.querySelectorAll('.overlay').forEach(el=>el.remove());
+  if(!state.modal) return;
+  const overlay=document.createElement('div');
+  overlay.className='overlay';
+  overlay.id='overlay';
+
+  if(state.modal.type==='employee'){
+    const d=state.modal.data;
+    overlay.innerHTML=`
+    <div class="modal">
+      <h3>${state.modal.isNew?'Ajouter un salarié':'Modifier le salarié'}</h3>
+      ${(!state.modal.isNew && d.photoUrl) ? `<div style="display:flex;justify-content:center;margin-bottom:16px;"><div class="emp-avatar" style="width:64px;height:64px;border-radius:50%;font-size:22px;"><img src="${d.photoUrl}" alt=""></div></div>` : ''}
+      <div class="field"><label>Nom complet</label><input id="mName" value="${d.name||''}" placeholder="Ex : Camille Durand"></div>
+      <div class="field"><label>Identifiant de connexion</label><input id="mUser" value="${d.username||''}" placeholder="ex : cdurand" ${!state.modal.isNew?'disabled':''}></div>
+      <div class="field"><label>E-mail</label>
+        <div class="pw-row">
+          <input id="mEmail" value="${d.email||(d.name?generateEmail(d.name):'')}" placeholder="prenom.nom@hop.fr" ${!state.modal.isNew?'disabled':''}>
+          ${state.modal.isNew ? '<button type="button" class="icon-btn" id="mEmailRegen">Régénérer</button>' : ''}
+        </div>
+        <div class="helper">${state.modal.isNew ? 'Par défaut : première lettre du prénom + nom + @hop.fr — modifiable.' : 'Ensuite modifiable uniquement par le salarié lui-même, depuis « Mon compte ».'}</div>
+      </div>
+      ${!state.modal.isNew ? `<div class="field"><label>Téléphone</label><input value="${escapeHtml(d.phone||'')}" placeholder="Non renseigné" disabled></div>` : ''}
+      <div class="row2">
+        <div class="field"><label>Service</label>
+          <select id="mTeam" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14.5px;background:#FBFCFE;">
+            <option value="">Aucun</option>
+            ${(getAdminScope(state.currentUser)||state.services).map(s=>`<option value="${escapeHtml(s)}" ${d.team===s?'selected':''}>${escapeHtml(s)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"><label>Fonction</label>
+          <select id="mFonction" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14.5px;background:#FBFCFE;">
+            <option value="">Aucune</option>
+            ${getFonctionsForService(d.team).map(f=>`<option value="${escapeHtml(f)}" ${d.fonction===f?'selected':''}>${escapeHtml(f)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="helper" style="margin:-10px 0 14px;">Le service détermine qui voit qui sur « Planning équipe ». La liste des fonctions dépend du service choisi (gérée dans « Gestion des salariés »).</div>
+      <div class="field admin-rights-field">
+        <label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:6px;">Visible aussi sur le planning équipe d'autres services</label>
+        <div class="check-list" id="mExtraTeams">
+          ${(getAdminScope(state.currentUser)||state.services).filter(s=>s!==d.team).map(s=>`<label class="check-item"><input type="checkbox" value="${escapeHtml(s)}" ${(d.extraTeams||[]).includes(s)?'checked':''}> ${escapeHtml(s)}</label>`).join('') || '<div class="helper">Aucun autre service disponible.</div>'}
+        </div>
+        <div class="helper">Cochez un service pour que ce salarié apparaisse aussi sur le « Planning équipe » consulté par ce service (ex : un responsable qui supervise plusieurs services). Décochez pour masquer son planning à ce service.</div>
+      </div>
+      <div class="field admin-rights-field">
+        <label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:6px;">Historique service / fonction</label>
+        <div id="mAffectList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:${state.modal.isNew?'0':'8px'};">
+          ${getAffectations(d).map(a=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;background:#FBFCFE;border:1px solid var(--border);border-radius:7px;padding:7px 10px;">
+            <span>À partir du <b>${fmtDate(a.startDate)}</b> : ${escapeHtml(a.team||'Aucun service')}${a.fonction?' · '+escapeHtml(a.fonction):''}${a.startDate>dkey(new Date())?' <span style="color:var(--primary);font-weight:700;">(à venir)</span>':''}</span>
+            ${(!state.modal.isNew && a.startDate>dkey(new Date())) ? `<button type="button" class="icon-btn" data-del-affect="${a.id||a.startDate}" style="color:var(--danger);padding:2px 8px;flex-shrink:0;">✕</button>` : ''}
+          </div>`).join('')}
+        </div>
+        ${!state.modal.isNew ? `
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:end;">
+          <div class="field" style="flex:1;min-width:126px;margin:0;"><label style="font-size:11px;">Date d'effet</label><input type="date" id="mAffectDate"></div>
+          <div class="field" style="flex:1;min-width:120px;margin:0;"><label style="font-size:11px;">Nouveau service</label>
+            <select id="mAffectTeam" style="width:100%;padding:9px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;background:#FBFCFE;">
+              <option value="">Aucun</option>
+              ${(getAdminScope(state.currentUser)||state.services).map(s=>`<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field" style="flex:1;min-width:120px;margin:0;"><label style="font-size:11px;">Nouvelle fonction</label>
+            <select id="mAffectFonction" style="width:100%;padding:9px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;background:#FBFCFE;"><option value="">Aucune</option></select>
+          </div>
+          <button type="button" class="icon-btn" id="mAffectAdd" style="height:38px;">+ Programmer</button>
+        </div>
+        <div class="helper">Le changement s'appliquera automatiquement à la date choisie, sur le planning, les alertes et les filtres par service — pas besoin de revenir modifier la fiche ce jour-là.</div>
+        ` : `<div class="helper">Vous pourrez programmer un changement de service/fonction futur une fois le salarié créé.</div>`}
+      </div>
+      ${isSuperAdmin(state.currentUser) ? `
+      <div class="field admin-rights-field">
+        <label class="admin-rights-toggle"><input type="checkbox" id="mIsAdmin" ${d.role==='admin'?'checked':''}> <b>Droits administrateur</b></label>
+        <div class="helper" style="margin-top:2px;">Donne accès à l'espace admin, limité aux services sélectionnés ci-dessous.</div>
+        <div id="mAdminServicesWrap" style="${d.role==='admin'?'':'display:none;'}margin-top:10px;">
+          <label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:6px;">Service(s) géré(s)</label>
+          <div class="check-list" id="mAdminServices">
+            ${state.services.map(s=>`<label class="check-item"><input type="checkbox" value="${escapeHtml(s)}" ${(d.adminServices||[]).includes(s)?'checked':''}> ${escapeHtml(s)}</label>`).join('') || '<div class="helper">Aucun service créé pour l\u2019instant.</div>'}
+          </div>
+          <div class="helper">Aucun service coché = accès complet à tous les services (grand admin). Cochez-en un ou plusieurs pour limiter son planning à ces services uniquement.</div>
+        </div>
+      </div>` : ''}
+      <div class="field"><label>Mot de passe</label>
+        <div class="pw-row">
+          <input id="mPass" value="${d.password||''}">
+          <button type="button" class="icon-btn" id="mRegen">Générer</button>
+        </div>
+        <div class="helper">Communiquez ce mot de passe au salarié.</div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Début de validité</label><input id="mStart" type="date" value="${d.startDate||''}"></div>
+        <div class="field"><label>Fin de validité (optionnel)</label><input id="mEnd" type="date" value="${d.endDate||''}"></div>
+      </div>
+      <div id="mError" style="color:var(--danger);font-size:12.5px;font-weight:600;display:none;margin-bottom:6px;"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="mCancel">Annuler</button>
+        <button class="btn btn-primary" id="mSave">Enregistrer</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('mRegen').addEventListener('click',()=>{ document.getElementById('mPass').value=generatePassword(); });
+    const mEmailRegenBtn=document.getElementById('mEmailRegen');
+    if(mEmailRegenBtn) mEmailRegenBtn.addEventListener('click',()=>{
+      const name=document.getElementById('mName').value.trim();
+      if(!name){ toast('Renseignez le nom du salarié avant de générer son email.', true); return; }
+      document.getElementById('mEmail').value=generateEmail(name);
+    });
+    document.getElementById('mCancel').addEventListener('click',closeModal);
+    const mIsAdmin=document.getElementById('mIsAdmin');
+    if(mIsAdmin) mIsAdmin.addEventListener('change',(e)=>{
+      document.getElementById('mAdminServicesWrap').style.display = e.target.checked ? '' : 'none';
+    });
+    document.getElementById('mTeam').addEventListener('change',(e)=>{
+      d.team=e.target.value; d.fonction='';
+      const fSel=document.getElementById('mFonction');
+      const opts=getFonctionsForService(d.team);
+      fSel.innerHTML='<option value="">Aucune</option>'+opts.map(f=>`<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join('');
+    });
+    const mAffectTeamSel=document.getElementById('mAffectTeam');
+    const mAffectFonctionSel=document.getElementById('mAffectFonction');
+    if(mAffectTeamSel){
+      const refreshAffectFonctions=()=>{
+        const opts=getFonctionsForService(mAffectTeamSel.value);
+        mAffectFonctionSel.innerHTML='<option value="">Aucune</option>'+opts.map(f=>`<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join('');
+      };
+      refreshAffectFonctions();
+      mAffectTeamSel.addEventListener('change', refreshAffectFonctions);
+      document.getElementById('mAffectAdd').addEventListener('click', async()=>{
+        const emp=state.users.find(u=>u.username===d.username);
+        if(!emp) return;
+        const date=document.getElementById('mAffectDate').value;
+        const team=mAffectTeamSel.value;
+        const fonction=mAffectFonctionSel.value;
+        if(!date){ toast("Merci de choisir une date d'effet.", true); return; }
+        const list=getAffectations(emp).filter(a=>a.startDate!==date);
+        list.push({id:genId(), startDate:date, team, fonction});
+        emp.affectations=list.sort((a,b)=>a.startDate.localeCompare(b.startDate));
+        syncCurrentAffectation(emp);
+        await persistUsers();
+        toast('Changement programmé pour le '+fmtDate(date)+'.');
+        state.modal={type:'employee', data:{...emp}, isNew:false};
+        render();
+      });
+    }
+    document.querySelectorAll('[data-del-affect]').forEach(btn=>{
+      btn.addEventListener('click', async()=>{
+        const emp=state.users.find(u=>u.username===d.username);
+        if(!emp) return;
+        emp.affectations=getAffectations(emp).filter(a=>(a.id||a.startDate)!==btn.dataset.delAffect);
+        syncCurrentAffectation(emp);
+        await persistUsers();
+        toast('Changement programmé supprimé.');
+        state.modal={type:'employee', data:{...emp}, isNew:false};
+        render();
+      });
+    });
+    document.getElementById('mSave').addEventListener('click',async()=>{
+      const name=document.getElementById('mName').value.trim();
+      const username=document.getElementById('mUser').value.trim();
+      const password=document.getElementById('mPass').value.trim();
+      const email=document.getElementById('mEmail').value.trim();
+      const team=document.getElementById('mTeam').value.trim();
+      const fonction=document.getElementById('mFonction').value.trim();
+      const startDate=document.getElementById('mStart').value;
+      const endDate=document.getElementById('mEnd').value;
+      const err=document.getElementById('mError');
+      if(!name||!username||!password){ err.textContent="Merci de remplir le nom, l'identifiant et le mot de passe."; err.style.display='block'; return; }
+      if(state.modal.isNew && state.users.some(u=>u.username.toLowerCase()===username.toLowerCase())){
+        err.textContent='Cet identifiant est déjà utilisé.'; err.style.display='block'; return;
+      }
+      if(endDate && startDate && endDate<startDate){
+        err.textContent='La date de fin doit être postérieure à la date de début.'; err.style.display='block'; return;
+      }
+      const extraTeams=[...document.querySelectorAll('#mExtraTeams input:checked')].map(i=>i.value).filter(s=>s!==team);
+      let role='employee', adminServices=[];
+      const mIsAdminChk=document.getElementById('mIsAdmin');
+      if(mIsAdminChk){
+        if(mIsAdminChk.checked){
+          role='admin';
+          adminServices=[...document.querySelectorAll('#mAdminServices input:checked')].map(i=>i.value);
+        }
+      } else if(!state.modal.isNew && d.role==='admin'){
+        // un admin non-super ne peut pas modifier les droits admin d'un autre : on conserve tels quels
+        role=d.role; adminServices=d.adminServices||[];
+      }
+      if(state.modal.isNew){
+        const newEmp={username,password,name,role,startDate,endDate,team,fonction,email,adminServices,extraTeams};
+        newEmp.affectations=[{id:genId(), startDate: startDate||dkey(new Date()), team, fonction}];
+        state.users.push(newEmp);
+      } else {
+        const emp=state.users.find(u=>u.username===d.username);
+        emp.name=name; emp.password=password; emp.startDate=startDate; emp.endDate=endDate; emp.email=email;
+        emp.role=role; emp.adminServices=adminServices; emp.extraTeams=extraTeams;
+        if(team!==(d.team||'') || fonction!==(d.fonction||'')){
+          setImmediateAffectation(emp, team, fonction);
+        } else {
+          emp.team=team; emp.fonction=fonction;
+        }
+      }
+      await persistUsers();
+      toast('Salarié enregistré.');
+      closeModal();
+    });
+  }
+
+  if(state.modal.type==='code'){
+    const d=state.modal.data;
+    overlay.innerHTML=`
+    <div class="modal">
+      <h3>${state.modal.isNew?'Ajouter un code de journée':'Modifier le code'}</h3>
+      <div class="row2">
+        <div class="field"><label>Code (court)</label><input id="cCode" maxlength="5" value="${d.code||''}" placeholder="Ex : TT" ${!state.modal.isNew?'disabled':''}></div>
+        <div class="field"><label>Couleur</label><input id="cColor" type="color" value="${resolveHexColor(d.color)}" style="width:100%;height:42px;padding:4px;"></div>
+      </div>
+      <div class="field"><label>Libellé</label><input id="cLabel" value="${d.label||''}" placeholder="Ex : Télétravail"></div>
+      <div class="field"><label>Type de code</label>
+        <div class="type-toggle">
+          <label class="type-toggle-opt ${d.isWork!==false?'active':''}"><input type="radio" name="cIsWork" value="1" ${d.isWork!==false?'checked':''}> 💼 Code de travail</label>
+          <label class="type-toggle-opt ${d.isWork===false?'active':''}"><input type="radio" name="cIsWork" value="0" ${d.isWork===false?'checked':''}> 🌴 Autre (congé, repos…)</label>
+        </div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Heure de début (optionnel)</label><input id="cStart" type="time" value="${d.startTime||''}"></div>
+        <div class="field"><label>Heure de fin (optionnel)</label><input id="cEnd" type="time" value="${d.endTime||''}"></div>
+      </div>
+      <div class="helper" style="margin:-10px 0 14px;">Laissez les heures vides pour un code sans horaire (congé, repos, férié…). Le type détermine dans quelle section il apparaît dans « Gestion des codes ».</div>
+      <div class="field"><label>Description</label><input id="cDesc" value="${d.description||''}" placeholder="Ex : Télétravail à domicile"></div>
+      <div id="cError" style="color:var(--danger);font-size:12.5px;font-weight:600;display:none;margin-bottom:6px;"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="cCancel">Annuler</button>
+        <button class="btn btn-primary" id="cSave">${state.modal.isNew?'Ajouter':'Enregistrer'}</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('cCancel').addEventListener('click',closeModal);
+    document.querySelectorAll('input[name="cIsWork"]').forEach(r=>{
+      r.addEventListener('change',()=>{
+        document.querySelectorAll('.type-toggle-opt').forEach(opt=>opt.classList.remove('active'));
+        r.closest('.type-toggle-opt').classList.add('active');
+      });
+    });
+    document.getElementById('cSave').addEventListener('click',async()=>{
+      const code=document.getElementById('cCode').value.trim().toUpperCase();
+      const label=document.getElementById('cLabel').value.trim();
+      const color=document.getElementById('cColor').value;
+      const startTime=document.getElementById('cStart').value;
+      const endTime=document.getElementById('cEnd').value;
+      const description=document.getElementById('cDesc').value.trim();
+      const isWork=document.querySelector('input[name="cIsWork"]:checked').value==='1';
+      const err=document.getElementById('cError');
+      if(!code||!label){ err.textContent='Merci de remplir le code et le libellé.'; err.style.display='block'; return; }
+      if(state.modal.isNew && state.codes.some(c=>c.code===code)){ err.textContent='Ce code existe déjà.'; err.style.display='block'; return; }
+      if((startTime && !endTime) || (!startTime && endTime)){ err.textContent="Merci de renseigner à la fois l'heure de début et de fin, ou aucune des deux."; err.style.display='block'; return; }
+      if(state.modal.isNew){
+        state.codes.push({code,label,color,text:'#1E2433',startTime,endTime,description,isWork});
+      } else {
+        const existing=state.codes.find(c=>c.code===d.code);
+        Object.assign(existing,{label,color,startTime,endTime,description,isWork});
+      }
+      await persistCodes();
+      toast(state.modal.isNew?'Code ajouté.':'Code mis à jour.');
+      closeModal();
+    });
+  }
+
+  if(state.modal.type==='account'){
+    const me=state.users.find(u=>u.username===state.currentUser.username) || {};
+    let pendingPhotoUrl=me.photoUrl||null, photoRemoved=false;
+    overlay.innerHTML=`
+    <div class="modal">
+      <h3>Mon compte</h3>
+      <div style="display:flex;justify-content:center;margin-bottom:12px;">
+        <div class="emp-avatar" id="aAvatarPreview" style="width:76px;height:76px;border-radius:50%;font-size:26px;">${me.photoUrl?`<img src="${me.photoUrl}" alt="">`:initials(state.currentUser.name)}</div>
+      </div>
+      ${isFeatureEnabled('photos') ? `
+      <div style="display:flex;gap:8px;justify-content:center;margin-bottom:20px;flex-wrap:wrap;">
+        <input type="file" id="aPhotoInput" accept="image/*" style="display:none;">
+        <button type="button" class="icon-btn" id="aPhotoBtn">${me.photoUrl?'Changer la photo':'Ajouter une photo'}</button>
+        ${me.photoUrl?'<button type="button" class="icon-btn" id="aPhotoRemove" style="color:var(--danger);">Supprimer la photo</button>':''}
+      </div>` : ''}
+      <div class="field"><label>Nom</label><input value="${escapeHtml(state.currentUser.name)}" disabled></div>
+      <div class="row2">
+        <div class="field"><label>Téléphone</label><input id="aPhone" type="tel" value="${escapeHtml(me.phone||'')}" placeholder="Ex : 06 12 34 56 78"></div>
+        <div class="field"><label>E-mail</label><input id="aEmail" type="email" value="${escapeHtml(me.email||'')}" placeholder="prenom.nom@hop.fr"></div>
+      </div>
+      <div class="field"><label>Nouveau mot de passe</label><input id="aPass" type="password" placeholder="Laisser vide pour ne pas changer"></div>
+      ${state.currentUser.role==='employee' ? `<div class="field"><label>Notifications navigateur</label>
+        <button type="button" class="icon-btn" id="aNotifBtn" style="width:100%;padding:10px;">${state.notifPermission==='granted'?'✓ Activées':'Activer les notifications'}</button>
+      </div>`:''}
+      <div class="helper" style="margin:-6px 0 12px;">Téléphone, e-mail et photo sont visibles par l'administrateur dans « Gestion des salariés », mais vous êtes seul·e à pouvoir les modifier.</div>
+      <div id="aError" style="color:var(--danger);font-size:12.5px;font-weight:600;display:none;margin-bottom:6px;"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="aCancel">Fermer</button>
+        <button class="btn btn-primary" id="aSave">Enregistrer</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('aCancel').addEventListener('click',closeModal);
+    const notifBtn=document.getElementById('aNotifBtn');
+    if(notifBtn) notifBtn.addEventListener('click', requestNotifPermission);
+    const aPhotoBtn=document.getElementById('aPhotoBtn');
+    const aPhotoInput=document.getElementById('aPhotoInput');
+    if(aPhotoBtn && aPhotoInput){
+      aPhotoBtn.addEventListener('click',()=>{ aPhotoInput.click(); });
+      aPhotoInput.addEventListener('change', async (e)=>{
+        const file=e.target.files[0];
+        if(!file) return;
+        if(!file.type.startsWith('image/')){ toast('Merci de choisir un fichier image.', true); return; }
+        try{
+          const dataUrl = await resizeImageToDataUrl(file, 160, 0.72);
+          pendingPhotoUrl=dataUrl; photoRemoved=false;
+          document.getElementById('aAvatarPreview').innerHTML = `<img src="${dataUrl}" alt="">`;
+        }catch(err){ toast("Impossible de charger cette image.", true); }
+      });
+    }
+    const removeBtn=document.getElementById('aPhotoRemove');
+    if(removeBtn) removeBtn.addEventListener('click',()=>{
+      pendingPhotoUrl=null; photoRemoved=true;
+      document.getElementById('aAvatarPreview').innerHTML = initials(state.currentUser.name);
+    });
+    document.getElementById('aSave').addEventListener('click',async()=>{
+      const u=state.users.find(u=>u.username===state.currentUser.username);
+      if(!u){ closeModal(); return; }
+      const pass=document.getElementById('aPass').value.trim();
+      const phone=document.getElementById('aPhone').value.trim();
+      const email=document.getElementById('aEmail').value.trim();
+      let changed=false;
+      if(pass){ u.password=pass; changed=true; }
+      if(phone!==(u.phone||'')){ u.phone=phone; changed=true; }
+      if(email!==(u.email||'')){ u.email=email; changed=true; }
+      if(photoRemoved && u.photoUrl){ delete u.photoUrl; changed=true; }
+      else if(pendingPhotoUrl && pendingPhotoUrl!==u.photoUrl){ u.photoUrl=pendingPhotoUrl; changed=true; }
+      if(changed){
+        await persistUsers();
+        toast('Compte mis à jour.');
+      }
+      closeModal();
+    });
+  }
+
+  if(state.modal.type==='comment'){
+    const mo=state.modal;
+    const dateDisplay=String(mo.d).padStart(2,'0')+'/'+String(mo.m+1).padStart(2,'0')+'/'+mo.y;
+    const currentVal = mo.activeTab==='public' ? mo.publicText : mo.privateText;
+    overlay.innerHTML=`
+    <div class="modal" style="max-width:460px;position:relative;">
+      <button id="cmtClose" style="position:absolute;top:20px;right:20px;background:none;border:none;font-size:18px;color:var(--ink-soft);line-height:1;">✕</button>
+      <h3 style="margin-bottom:4px;">Commentaires — ${escapeHtml(mo.name)}</h3>
+      <div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:18px;">Date : ${dateDisplay}</div>
+      <div class="tab-switch">
+        <button class="tab-btn ${mo.activeTab==='public'?'active':''}" id="tabPublic">Commentaire</button>
+        <button class="tab-btn ${mo.activeTab==='private'?'active':''}" id="tabPrivate">Commentaire privé</button>
+      </div>
+      <label style="display:block;font-size:12.5px;font-weight:700;margin:16px 0 4px;">${mo.activeTab==='public'?'Commentaire public':'Commentaire privé'}</label>
+      <div class="helper" style="margin-bottom:8px;">${mo.activeTab==='public'?'Visible par tous et apparaît dans le récapitulatif mensuel.':'Visible uniquement par vous (administrateur). N\u2019apparaît pas dans le récapitulatif.'}</div>
+      <textarea id="cmtText" rows="5" style="width:100%;border:1.5px solid var(--border);border-radius:9px;padding:10px 12px;font-family:inherit;font-size:13.5px;resize:vertical;">${escapeHtml(currentVal)}</textarea>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="cmtCancel">Annuler</button>
+        <button class="btn btn-primary" id="cmtSave">Enregistrer</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    function captureCurrentTab(){
+      const val=document.getElementById('cmtText').value;
+      if(state.modal.activeTab==='public') state.modal.publicText=val; else state.modal.privateText=val;
+    }
+    document.getElementById('cmtClose').addEventListener('click',closeModal);
+    document.getElementById('cmtCancel').addEventListener('click',closeModal);
+    document.getElementById('tabPublic').addEventListener('click',()=>{ captureCurrentTab(); state.modal.activeTab='public'; render(); });
+    document.getElementById('tabPrivate').addEventListener('click',()=>{ captureCurrentTab(); state.modal.activeTab='private'; render(); });
+    document.getElementById('cmtSave').addEventListener('click',async()=>{
+      captureCurrentTab();
+      const key=state.modal.key;
+      const pub=state.modal.publicText.trim();
+      const priv=state.modal.privateText.trim();
+      if(!pub && !priv){ delete state.comments[key]; }
+      else { state.comments[key]={public:pub, private:priv, updated:new Date().toISOString()}; }
+      await persistComments();
+      toast('Commentaire enregistré.');
+      closeModal();
+    });
+  }
+
+  if(state.modal.type==='validate-month-confirm'){
+    const {service, year, month, nowValidated, employeeCount}=state.modal;
+    const otherValidations=Object.keys(state.monthValidations)
+      .filter(k=>state.monthValidations[k].validated && k!==monthValidationKey(service,year,month))
+      .map(k=>{ const [svc,ym]=k.split(':'); const [yy,mm]=ym.split('-').map(Number); return {svc, label:MOIS[mm-1]+' '+yy}; })
+      .sort((a,b)=>a.svc.localeCompare(b.svc));
+    overlay.innerHTML=`
+    <div class="modal" style="max-width:460px;">
+      <div class="validate-modal-icon ${nowValidated?'unlock':'lock'}">${nowValidated?'🔓':'✅'}</div>
+      <h3 style="text-align:center;margin-bottom:6px;">${nowValidated?'Dévalider':'Valider'} ${MOIS[month]} ${year}</h3>
+      <p style="text-align:center;color:var(--ink-soft);font-size:13.5px;margin:0 0 20px;">
+        Service concerné : <span class="chip" style="display:inline-flex;margin:2px 4px;">${escapeHtml(service)}</span>
+      </p>
+      ${nowValidated
+        ? `<p class="helper" style="text-align:center;font-size:13px;">Les ${employeeCount} salarié${employeeCount>1?'s':''} de ce service ne verront plus leur planning tant qu'il ne sera pas revalidé.</p>`
+        : `<p class="helper" style="text-align:center;font-size:13px;">Les <b>${employeeCount} salarié${employeeCount>1?'s':''}</b> de ce service seront notifiés et pourront consulter leur planning. Les autres services ne sont pas affectés.</p>`
+      }
+      ${otherValidations.length ? `
+      <div class="other-validations-box">
+        <div class="other-validations-title">✔ Déjà validés actuellement (vérifiez qu'il n'y a pas d'erreur) :</div>
+        ${otherValidations.map(v=>`<div class="other-validations-row"><b>${escapeHtml(v.svc)}</b> — ${v.label}</div>`).join('')}
+      </div>` : `<div class="helper" style="text-align:center;">Aucun autre mois n'est actuellement validé.</div>`}
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="valModalCancel">Annuler</button>
+        <button class="btn btn-primary" id="valModalConfirm" style="${nowValidated?'':'background:var(--ok);'}">${nowValidated?'Confirmer la dévalidation':'Confirmer la validation'}</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('valModalCancel').addEventListener('click',closeModal);
+    document.getElementById('valModalConfirm').addEventListener('click', async()=>{
+      await setMonthValidated(service,year,month,!nowValidated);
+      if(!nowValidated){
+        const svcEmployees=state.users.filter(u=>!isSuperAdmin(u) && employeeActiveInServiceDuringMonth(u,service,year,month));
+        for(const emp of svcEmployees){
+          await pushNotification(emp.username, 'Votre planning de '+MOIS[month]+' '+year+' a été validé et est maintenant disponible.');
+        }
+        toast('Mois validé pour '+service+' — '+svcEmployees.length+' salarié'+(svcEmployees.length>1?'s':'')+' averti'+(svcEmployees.length>1?'s':'')+'.');
+      } else {
+        toast('Mois dévalidé — masqué aux salariés.');
+      }
+      closeModal();
+    });
+  }
+
+  if(state.modal.type==='auto-generate'){
+    const count=Object.keys(state.genSelections).length;
+    const listHtml=Object.entries(state.genSelections).map(([u,sel])=>{
+      const emp=state.users.find(x=>x.username===u);
+      const info=codeInfo(sel.code);
+      return `<div class="list-mgr-row"><span>${escapeHtml(emp?emp.name:u)}</span><span style="font-size:12px;color:var(--ink-soft);font-weight:600;">Dernier jour : ${fmtDateKeyFr(sel.date)} · ${escapeHtml(sel.code)}${info?' ('+escapeHtml(info.label)+')':''}</span></div>`;
+    }).join('');
+    overlay.innerHTML=`
+    <div class="modal" style="max-width:460px;">
+      <h3>Générer automatiquement le planning</h3>
+      <div class="helper" style="margin-bottom:12px;">Cycle : 4 jours <b>OFF</b> (cases vides), puis 4 jours travaillés en <b>alternance M/S</b>, à partir du lendemain du dernier jour sélectionné. Le cycle se répète en continu sur la durée choisie.</div>
+      <div class="list-mgr" style="margin-bottom:16px;">${listHtml}</div>
+      <div class="field"><label>Générer pour combien de temps ?</label>
+        <select id="genMonths" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14.5px;background:#FBFCFE;">
+          <option value="1">1 mois</option>
+          <option value="2">2 mois</option>
+          <option value="3" selected>3 mois</option>
+          <option value="4">4 mois</option>
+        </select>
+      </div>
+      <div class="helper" style="margin:-6px 0 14px;color:var(--danger);">⚠ Ceci écrasera les codes déjà saisis pour ${count} salarié${count>1?'s':''} sur la période générée.</div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="genCancel">Annuler</button>
+        <button class="btn btn-primary" id="genConfirm">Générer</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('genCancel').addEventListener('click',closeModal);
+    document.getElementById('genConfirm').addEventListener('click', async()=>{
+      const months=parseInt(document.getElementById('genMonths').value,10);
+      const res=await generateAutoPlanning(months);
+      state.genSelections={};
+      state.genMode=false;
+      toast('Planning généré pour '+res.employees+' salarié'+(res.employees>1?'s':'')+' ('+res.days+' jours au total).');
+      closeModal();
+    });
+  }
+
+  if(state.modal.type==='annual-quick-gen'){
+    const dateKey=state.modal.date;
+    const workCodes=state.codes.filter(c=>c.isWork && (c.code==='M'||c.code==='S'));
+    const otherWorkCodes=state.codes.filter(c=>c.isWork && c.code!=='M' && c.code!=='S');
+    overlay.innerHTML=`
+    <div class="modal" style="max-width:380px;text-align:center;">
+      <h3 style="margin-bottom:4px;">Générer à partir du ${fmtDateKeyFr(dateKey)}</h3>
+      <p class="helper" style="margin-bottom:18px;">Choisissez l'activité de départ : le cycle 4 jours travaillés / 4 jours OFF (alternance M ↔ S) sera généré jusqu'au 31 décembre ${state.annualYear}.</p>
+      <div class="annual-quick-choices">
+        ${workCodes.map(c=>`<button class="annual-quick-btn" data-code="${c.code}"><span class="annual-quick-emoji">${c.code==='M'?'☀️':'🌙'}</span>${c.code} · ${c.label}</button>`).join('')}
+      </div>
+      ${otherWorkCodes.length?`<div class="helper" style="margin:14px 0 8px;">Autre activité :</div><div class="annual-quick-choices">${otherWorkCodes.map(c=>`<button class="annual-quick-btn small" data-code="${c.code}">${c.code} · ${c.label}</button>`).join('')}</div>`:''}
+      <button class="btn btn-ghost" id="quickGenCancel" style="width:100%;margin-top:18px;">Annuler</button>
+    </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('quickGenCancel').addEventListener('click',()=>{ state.annualSelectedDay=null; closeModal(); });
+    document.querySelectorAll('.annual-quick-btn').forEach(btn=>{
+      btn.addEventListener('click', async()=>{
+        const code=btn.dataset.code;
+        const days=await generateOwnAnnualPlanning(state.currentUser.username, dateKey, code);
+        state.annualGenMode=false;
+        state.annualSelectedDay=null;
+        toast('Brouillon généré : '+days+' jour(s) mis à jour.');
+        closeModal();
+      });
+    });
+  }
+
+  if(state.modal.type==='alert-rule'){
+    const rd=state.modal.data;
+    const fonctionsForSvc=getFonctionsForService(rd.service);
+    overlay.innerHTML=`
+    <div class="modal" style="max-width:480px;">
+      <h3>${state.modal.isNew?'Nouvelle règle d\u2019alerte':'Modifier la règle'}</h3>
+      <div class="field"><label>Nom de la règle</label><input id="arLabel" value="${escapeHtml(rd.label)}" placeholder="Ex : Effectif Matin CDQ+Responsables"></div>
+      <div class="field"><label>Type de règle</label>
+        <select id="arType" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14.5px;background:#FBFCFE;">
+          <option value="daily_group" ${rd.type==='daily_group'?'selected':''}>Effectif minimum/maximum par jour (groupe)</option>
+          <option value="weekly_person" ${rd.type==='weekly_person'?'selected':''}>Charge de travail par semaine (par salarié)</option>
+        </select>
+      </div>
+      <div class="field"><label>Service</label>
+        <select id="arService" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14.5px;background:#FBFCFE;">
+          ${(getAdminScope(state.currentUser)||state.services).map(s=>`<option value="${escapeHtml(s)}" ${rd.service===s?'selected':''}>${escapeHtml(s)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field"><label>Fonction(s) concernée(s)</label>
+        <div class="check-list" id="arFonctions">
+          ${fonctionsForSvc.map(f=>`<label class="check-item"><input type="checkbox" value="${escapeHtml(f)}" ${rd.fonctions.includes(f)?'checked':''}> ${escapeHtml(f)}</label>`).join('') || '<div class="helper">Aucune fonction pour ce service.</div>'}
+        </div>
+        <div class="helper">Sélectionnez plusieurs fonctions pour additionner leurs effectifs (ex : CDQ + Responsables).</div>
+      </div>
+      <div class="field"><label>Code(s) comptabilisé(s)</label>
+        <div class="check-list" id="arCodes">
+          ${state.codes.map(c=>`<label class="check-item"><input type="checkbox" value="${c.code}" ${rd.codes.includes(c.code)?'checked':''}> ${c.code} · ${c.label}</label>`).join('')}
+        </div>
+      </div>
+      <div class="field" id="arExcludeWrap" style="${rd.type==='weekly_person'?'':'display:none;'}">
+        <label>Codes qui suspendent la règle cette semaine-là (optionnel)</label>
+        <div class="check-list" id="arExclude">
+          ${state.codes.map(c=>`<label class="check-item"><input type="checkbox" value="${c.code}" ${(rd.excludeCodes||[]).includes(c.code)?'checked':''}> ${c.code} · ${c.label}</label>`).join('')}
+        </div>
+        <div class="helper">Si le salarié a l'un de ces codes (ex : CPA, congé) au moins un jour dans la semaine, il ne sera pas compté comme en infraction cette semaine-là — même si son nombre de jours travaillés est bas.</div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Seuil minimum (optionnel)</label><input type="number" id="arMin" min="0" value="${rd.min!=null?rd.min:''}" placeholder="—"></div>
+        <div class="field"><label>Seuil maximum (optionnel)</label><input type="number" id="arMax" min="0" value="${rd.max!=null?rd.max:''}" placeholder="—"></div>
+      </div>
+      <div id="arError" style="color:var(--danger);font-size:12.5px;font-weight:600;display:none;margin-bottom:6px;"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="arCancel">Annuler</button>
+        <button class="btn btn-primary" id="arSave">${state.modal.isNew?'Créer la règle':'Enregistrer'}</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('arCancel').addEventListener('click',closeModal);
+    document.getElementById('arService').addEventListener('change',(e)=>{
+      rd.service=e.target.value; rd.fonctions=[];
+      const box=document.getElementById('arFonctions');
+      const opts=getFonctionsForService(rd.service);
+      box.innerHTML=opts.map(f=>`<label class="check-item"><input type="checkbox" value="${escapeHtml(f)}"> ${escapeHtml(f)}</label>`).join('') || '<div class="helper">Aucune fonction pour ce service.</div>';
+    });
+    document.getElementById('arType').addEventListener('change',(e)=>{
+      document.getElementById('arExcludeWrap').style.display = e.target.value==='weekly_person' ? '' : 'none';
+    });
+    document.getElementById('arSave').addEventListener('click',async()=>{
+      const label=document.getElementById('arLabel').value.trim();
+      const type=document.getElementById('arType').value;
+      const service=document.getElementById('arService').value;
+      const fonctions=[...document.querySelectorAll('#arFonctions input:checked')].map(i=>i.value);
+      const codes=[...document.querySelectorAll('#arCodes input:checked')].map(i=>i.value);
+      const excludeCodes=[...document.querySelectorAll('#arExclude input:checked')].map(i=>i.value);
+      const minRaw=document.getElementById('arMin').value;
+      const maxRaw=document.getElementById('arMax').value;
+      const min=minRaw===''?null:parseInt(minRaw,10);
+      const max=maxRaw===''?null:parseInt(maxRaw,10);
+      const err=document.getElementById('arError');
+      if(!label){ err.textContent='Merci de donner un nom à la règle.'; err.style.display='block'; return; }
+      if(!fonctions.length){ err.textContent='Sélectionnez au moins une fonction.'; err.style.display='block'; return; }
+      if(!codes.length){ err.textContent='Sélectionnez au moins un code.'; err.style.display='block'; return; }
+      if(min==null && max==null){ err.textContent='Renseignez au moins un seuil (minimum ou maximum).'; err.style.display='block'; return; }
+      if(state.modal.isNew){
+        state.alertRules.push({id:genId(), label, type, service, fonctions, codes, excludeCodes, min, max, active:true});
+      } else {
+        Object.assign(rd, {label, type, service, fonctions, codes, excludeCodes, min, max});
+        const idx=state.alertRules.findIndex(x=>x.id===rd.id);
+        if(idx>=0) state.alertRules[idx]=rd;
+      }
+      await persistAlertRules();
+      toast(state.modal.isNew?'Règle créée.':'Règle mise à jour.');
+      closeModal();
+    });
+  }
+
+  if(state.modal.type==='move-employee'){
+    const mv=state.modal;
+    const svcOptionsM = state.services.map(s=>`<option value="${escapeHtml(s)}" ${mv.team===s?'selected':''}>${escapeHtml(s)}</option>`).join('');
+    const foncOptionsM = getFonctionsForService(mv.team).map(f=>`<option value="${escapeHtml(f)}" ${mv.fonction===f?'selected':''}>${escapeHtml(f)}</option>`).join('');
+    overlay.innerHTML=`
+    <div class="modal" style="max-width:400px;">
+      <h3>Déplacer ${escapeHtml(mv.name)}</h3>
+      <div class="helper" style="margin-bottom:16px;">Alternative au glisser-déposer (pratique sur mobile/tactile).</div>
+      <div class="field"><label>Service</label>
+        <select id="mvService" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14.5px;background:#FBFCFE;">
+          <option value="">Aucun</option>${svcOptionsM}
+        </select>
+      </div>
+      <div class="field"><label>Fonction</label>
+        <select id="mvFonction" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14.5px;background:#FBFCFE;">
+          <option value="">Aucune</option>${foncOptionsM}
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="mvCancel">Annuler</button>
+        <button class="btn btn-primary" id="mvConfirm">Déplacer</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('mvCancel').addEventListener('click',closeModal);
+    document.getElementById('mvService').addEventListener('change',(e)=>{
+      mv.team=e.target.value; mv.fonction='';
+      const opts=getFonctionsForService(mv.team);
+      document.getElementById('mvFonction').innerHTML='<option value="">Aucune</option>'+opts.map(f=>`<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join('');
+    });
+    document.getElementById('mvConfirm').addEventListener('click', async()=>{
+      const emp=state.users.find(u=>u.username===mv.username);
+      setImmediateAffectation(emp, document.getElementById('mvService').value, document.getElementById('mvFonction').value);
+      await persistUsers();
+      toast('Salarié déplacé.');
+      closeModal();
+    });
+  }
+
+  if(state.modal.type==='list-manager'){
+    const kind=state.modal.kind; // 'fonction' | 'service'
+
+    if(kind==='fonction'){
+      const scopeFonc=getAdminScope(state.currentUser);
+      const availableSvcFonc = scopeFonc || state.services;
+      const svc = state.modal.service || availableSvcFonc[0] || '';
+      const list = svc ? (state.fonctions[svc]||[]) : [];
+      const itemsHtml = list.map((item,idx)=>`
+        <div class="list-mgr-row">
+          <span>${escapeHtml(item)}</span>
+          <button class="code-act-btn del" data-del-item="${idx}" title="Supprimer">🗑</button>
+        </div>`).join('') || `<div class="empty-state" style="padding:20px;">Aucune fonction pour ce service.</div>`;
+      const svcOptions = availableSvcFonc.map(s=>`<option value="${escapeHtml(s)}" ${svc===s?'selected':''}>${escapeHtml(s)}</option>`).join('');
+      overlay.innerHTML=`
+      <div class="modal">
+        <h3>Gérer les fonctions</h3>
+        ${availableSvcFonc.length ? `
+        <div class="field"><label>Service concerné</label>
+          <select id="fonctionServiceSelect" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:9px;">${svcOptions}</select>
+        </div>
+        <div class="list-mgr">${itemsHtml}</div>
+        <div class="pw-row" style="margin-top:14px;">
+          <input id="newItemInput" placeholder="Ex : Superviseurs">
+          <button type="button" class="icon-btn" id="addItemBtn">Ajouter</button>
+        </div>` : `<div class="empty-state" style="padding:20px;">Créez d'abord un service (« Gérer les services ») avant de pouvoir lui associer des fonctions.</div>`}
+        <div class="modal-actions">
+          <button class="btn btn-primary" id="listMgrClose" style="flex:1;">Fermer</button>
+        </div>
+      </div>`;
+      document.body.appendChild(overlay);
+      document.getElementById('listMgrClose').addEventListener('click',closeModal);
+      const svcSelect=document.getElementById('fonctionServiceSelect');
+      if(svcSelect) svcSelect.addEventListener('change',(e)=>{ state.modal.service=e.target.value; render(); });
+      const addBtn=document.getElementById('addItemBtn');
+      if(addBtn) addBtn.addEventListener('click',async()=>{
+        const val=document.getElementById('newItemInput').value.trim();
+        if(!val) return;
+        if(!state.fonctions[svc]) state.fonctions[svc]=[];
+        if(state.fonctions[svc].includes(val)){ toast('Cette fonction existe déjà pour ce service.', true); return; }
+        state.fonctions[svc].push(val);
+        await persistFonctions();
+        toast('Fonction ajoutée.');
+        render();
+      });
+      document.querySelectorAll('[data-del-item]').forEach(btn=>{
+        btn.addEventListener('click',async()=>{
+          const idx=parseInt(btn.dataset.delItem,10);
+          const removed=state.fonctions[svc][idx];
+          if(!confirm('Supprimer la fonction « '+removed+' » ? Les salariés concernés basculeront sur « Sans fonction ».')) return;
+          state.fonctions[svc].splice(idx,1);
+          state.users.forEach(u=>{
+            if(u.team===svc && u.fonction===removed) u.fonction='';
+            // Purge aussi la fonction dans l'historique d'affectations, sinon elle
+            // reviendrait au prochain chargement (resynchronisation automatique).
+            if(u.affectations) u.affectations.forEach(a=>{ if(a.team===svc && a.fonction===removed) a.fonction=''; });
+          });
+          await Promise.all([persistFonctions(), persistUsers()]);
+          toast('Fonction supprimée.');
+          render();
+        });
+      });
+    }
+
+    if(kind==='service'){
+      const itemsHtml = state.services.map((item,idx)=>`
+        <div class="list-mgr-row">
+          <span>${escapeHtml(item)}</span>
+          <button class="code-act-btn del" data-del-item="${idx}" title="Supprimer">🗑</button>
+        </div>`).join('') || `<div class="empty-state" style="padding:20px;">Aucun service pour l'instant.</div>`;
+      overlay.innerHTML=`
+      <div class="modal">
+        <h3>Gérer les services</h3>
+        <div class="list-mgr">${itemsHtml}</div>
+        <div class="pw-row" style="margin-top:14px;">
+          <input id="newItemInput" placeholder="Ex : Support">
+          <button type="button" class="icon-btn" id="addItemBtn">Ajouter</button>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-primary" id="listMgrClose" style="flex:1;">Fermer</button>
+        </div>
+      </div>`;
+      document.body.appendChild(overlay);
+      document.getElementById('listMgrClose').addEventListener('click',closeModal);
+      document.getElementById('addItemBtn').addEventListener('click',async()=>{
+        const val=document.getElementById('newItemInput').value.trim();
+        if(!val) return;
+        if(state.services.includes(val)){ toast('Ce service existe déjà.', true); return; }
+        state.services.push(val);
+        if(!state.fonctions[val]) state.fonctions[val]=[];
+        await Promise.all([persistServices(), persistFonctions()]);
+        toast('Service ajouté.');
+        render();
+      });
+      document.querySelectorAll('[data-del-item]').forEach(btn=>{
+        btn.addEventListener('click',async()=>{
+          const idx=parseInt(btn.dataset.delItem,10);
+          const removed=state.services[idx];
+          if(!confirm('Supprimer le service « '+removed+' » ? Les salariés concernés basculeront sur « Sans service » et perdront leur fonction associée.')) return;
+          state.services.splice(idx,1);
+          delete state.fonctions[removed];
+          state.users.forEach(u=>{
+            if(u.team===removed){ u.team=''; u.fonction=''; }
+            (u.extraTeams||[]).includes(removed) && (u.extraTeams=u.extraTeams.filter(s=>s!==removed));
+            // Purge aussi l'historique d'affectations, sinon le service supprimé
+            // reviendrait au prochain chargement (resynchronisation automatique).
+            if(u.affectations) u.affectations.forEach(a=>{ if(a.team===removed){ a.team=''; a.fonction=''; } });
+          });
+          await Promise.all([persistServices(), persistFonctions(), persistUsers()]);
+          toast('Service supprimé.');
+          render();
+        });
+      });
+    }
+  }
+
+  if(state.modal.type==='desid-review'){
+    const d=state.desideratas.find(x=>x.id===state.modal.id);
+    if(!d){ closeModal(); return; }
+    const info=codeInfo(d.code);
+    const sc=desidStatusColor(d.status);
+    overlay.innerHTML=`
+    <div class="modal" style="max-width:440px;">
+      <h3 style="margin-bottom:2px;">Désidérata — ${escapeHtml(d.name)}</h3>
+      <div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;">Du ${fmtDateKeyFr(d.dateStart)} au ${fmtDateKeyFr(d.dateEnd)} (${calculateDesiderataDays(d.dateStart,d.dateEnd)} jour${calculateDesiderataDays(d.dateStart,d.dateEnd)>1?'s':''})</div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;">
+        <span class="chip" style="background:${info?info.color:'#EDEFF2'};color:${info?info.text:'#333'};">${d.code} · ${info?info.label:''}</span>
+        <span style="background:${sc.bg};color:${sc.fg};font-weight:800;font-size:11.5px;padding:4px 10px;border-radius:20px;">${desidStatusLabel(d.status)}</span>
+      </div>
+      ${d.comment?`<div class="helper" style="margin-bottom:14px;background:var(--bg);padding:10px 12px;border-radius:9px;">« ${escapeHtml(d.comment)} »</div>`:''}
+      ${d.status==='pending' ? `
+        <label style="display:block;font-size:12.5px;font-weight:700;margin-bottom:6px;">Commentaire (optionnel)</label>
+        <textarea id="drComment" rows="3" style="width:100%;border:1.5px solid var(--border);border-radius:9px;padding:10px 12px;font-family:inherit;font-size:13.5px;resize:vertical;margin-bottom:14px;">${escapeHtml(state.modal.adminComment)}</textarea>
+        <div class="modal-actions">
+          <button class="btn" style="flex:1;background:#FBEAE9;color:var(--danger);" id="drRefuse">Refuser</button>
+          <button class="btn" style="flex:1;background:#E7F6EC;color:var(--ok);" id="drValidate">Valider</button>
+        </div>
+        <button class="btn btn-ghost" id="drCancel" style="width:100%;margin-top:10px;">Fermer</button>
+      ` : `
+        ${d.adminComment?`<div class="helper" style="margin-bottom:14px;">Réponse admin : ${escapeHtml(d.adminComment)}</div>`:''}
+        <div class="modal-actions"><button class="btn btn-primary" id="drCancel" style="flex:1;">Fermer</button></div>
+      `}
+    </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('drCancel').addEventListener('click',closeModal);
+    const vBtn=document.getElementById('drValidate');
+    const rBtn=document.getElementById('drRefuse');
+    if(vBtn) vBtn.addEventListener('click',async()=>{
+      await validateDesiderata(d.id, document.getElementById('drComment').value.trim());
+      toast('Désidérata validé — planning mis à jour.');
+      closeModal();
+    });
+    if(rBtn) rBtn.addEventListener('click',async()=>{
+      await refuseDesiderata(d.id, document.getElementById('drComment').value.trim());
+      toast('Désidérata refusé.');
+      closeModal();
+    });
+  }
+
+  if(state.modal.type==='new-desiderata'){
+    const nd=state.modal.data;
+    const codeOptions=state.codes.map(c=>`<option value="${c.code}" ${nd.code===c.code?'selected':''}>${c.code} · ${c.label}</option>`).join('');
+    overlay.innerHTML=`
+    <div class="modal" style="max-width:440px;">
+      <h3>Nouvelle demande de désidérata</h3>
+      <div class="row2">
+        <div class="field"><label>Du</label><input type="date" id="ndStart" value="${nd.dateStart}"></div>
+        <div class="field"><label>Au</label><input type="date" id="ndEnd" value="${nd.dateEnd}"></div>
+      </div>
+      <div id="ndDaysCount" style="font-size:12.5px;color:var(--ink-soft);margin:-8px 0 12px;">${nd.dateStart&&nd.dateEnd?calculateDesiderataDays(nd.dateStart,nd.dateEnd)+' jour'+(calculateDesiderataDays(nd.dateStart,nd.dateEnd)>1?'s':''):''}</div>
+      <div class="field"><label>Code souhaité</label>
+        <select id="ndCode" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14.5px;background:#FBFCFE;">${codeOptions}</select>
+      </div>
+      <div class="field"><label>Commentaire (optionnel)</label>
+        <textarea id="ndComment" rows="3" placeholder="Ex : anniversaire de mon fils" style="width:100%;border:1.5px solid var(--border);border-radius:9px;padding:10px 12px;font-family:inherit;font-size:13.5px;resize:vertical;">${escapeHtml(nd.comment)}</textarea>
+      </div>
+      <div id="ndError" style="color:var(--danger);font-size:12.5px;font-weight:600;display:none;margin-bottom:6px;"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="ndCancel">Annuler</button>
+        <button class="btn btn-primary" id="ndSubmit">Envoyer la demande</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    // conserve la saisie en mémoire à chaque changement, pour ne jamais la perdre
+    const updateNdDaysCount=()=>{
+      const el=document.getElementById('ndDaysCount');
+      if(nd.dateStart && nd.dateEnd && nd.dateEnd>=nd.dateStart){
+        const n=calculateDesiderataDays(nd.dateStart,nd.dateEnd);
+        el.textContent=n+' jour'+(n>1?'s':'');
+      } else { el.textContent=''; }
+    };
+    document.getElementById('ndStart').addEventListener('change',e=>{ nd.dateStart=e.target.value; updateNdDaysCount(); });
+    document.getElementById('ndEnd').addEventListener('change',e=>{ nd.dateEnd=e.target.value; updateNdDaysCount(); });
+    document.getElementById('ndCode').addEventListener('change',e=>{ nd.code=e.target.value; });
+    document.getElementById('ndComment').addEventListener('input',e=>{ nd.comment=e.target.value; });
+    document.getElementById('ndCancel').addEventListener('click',closeModal);
+    document.getElementById('ndSubmit').addEventListener('click',async()=>{
+      const start=document.getElementById('ndStart').value;
+      const end=document.getElementById('ndEnd').value || start;
+      const code=document.getElementById('ndCode').value;
+      const comment=document.getElementById('ndComment').value.trim();
+      const err=document.getElementById('ndError');
+      if(!start){ err.textContent='Merci de choisir au moins une date de début.'; err.style.display='block'; return; }
+      if(end<start){ err.textContent='La date de fin doit être postérieure ou égale à la date de début.'; err.style.display='block'; return; }
+      await createDesiderata(state.currentUser.username, state.currentUser.name, start, end, code, comment);
+      toast('Demande envoyée à l\u2019administrateur.');
+      state.desidFilterStatus='pending';
+      closeModal();
+    });
+  }
+
+  if(state.modal.type==='new-exchange'){
+    const nx=state.modal.data;
+    const colleagues=state.modal.colleagues||[];
+    const username=state.currentUser.username;
+    const myCodeA=nx.dateA?getDayCodeByKey(username,nx.dateA):null;
+    const theirCodeB=nx.dateB?getDayCodeByKey(nx.targetUsername,nx.dateB):null;
+    const colleagueOptions=colleagues.map(c=>`<option value="${c.username}" ${nx.targetUsername===c.username?'selected':''}>${escapeHtml(c.name)}</option>`).join('');
+    overlay.innerHTML=`
+    <div class="modal" style="max-width:460px;">
+      <h3>Proposer un échange de journée</h3>
+      <div class="field"><label>Collègue</label>
+        <select id="nxTarget" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14.5px;background:#FBFCFE;">${colleagueOptions}</select>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Ma journée</label><input type="date" id="nxDateA" value="${nx.dateA}"></div>
+        <div class="field"><label>Sa journée</label><input type="date" id="nxDateB" value="${nx.dateB}"></div>
+      </div>
+      <div id="nxPreview" style="font-size:12.5px;color:var(--ink-soft);margin:-8px 0 12px;">
+        ${nx.dateA?('Votre code actuel le '+fmtDateKeyFr(nx.dateA)+' : <b>'+(myCodeA||'Vide')+'</b>'):''}
+        ${nx.dateA&&nx.dateB?' · ':''}
+        ${nx.dateB?('Son code actuel le '+fmtDateKeyFr(nx.dateB)+' : <b>'+(theirCodeB||'Vide')+'</b>'):''}
+      </div>
+      <div class="field"><label>Message (optionnel)</label>
+        <textarea id="nxComment" rows="3" placeholder="Ex : besoin d'échanger pour un rendez-vous" style="width:100%;border:1.5px solid var(--border);border-radius:9px;padding:10px 12px;font-family:inherit;font-size:13.5px;resize:vertical;">${escapeHtml(nx.comment)}</textarea>
+      </div>
+      <div class="helper" style="margin:-8px 0 14px;">Une fois validé par l'administrateur, votre journée et celle de votre collègue seront échangées.</div>
+      <div id="nxError" style="color:var(--danger);font-size:12.5px;font-weight:600;display:none;margin-bottom:6px;"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="nxCancel">Annuler</button>
+        <button class="btn btn-primary" id="nxSubmit">Envoyer la demande</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('nxTarget').addEventListener('change',e=>{ nx.targetUsername=e.target.value; render(); });
+    document.getElementById('nxDateA').addEventListener('change',e=>{ nx.dateA=e.target.value; render(); });
+    document.getElementById('nxDateB').addEventListener('change',e=>{ nx.dateB=e.target.value; render(); });
+    document.getElementById('nxComment').addEventListener('input',e=>{ nx.comment=e.target.value; });
+    document.getElementById('nxCancel').addEventListener('click',closeModal);
+    document.getElementById('nxSubmit').addEventListener('click',async()=>{
+      const err=document.getElementById('nxError');
+      const target=document.getElementById('nxTarget').value;
+      const dateA=document.getElementById('nxDateA').value;
+      const dateB=document.getElementById('nxDateB').value;
+      if(!target){ err.textContent='Merci de choisir un·e collègue.'; err.style.display='block'; return; }
+      if(!dateA || !dateB){ err.textContent='Merci de renseigner les deux dates.'; err.style.display='block'; return; }
+      const targetUser=state.users.find(u=>u.username===target);
+      await createExchange(state.currentUser.username, state.currentUser.name, target, targetUser?targetUser.name:target, dateA, dateB, document.getElementById('nxComment').value.trim());
+      toast('Demande d\u2019échange envoyée à l\u2019administrateur.');
+      state.exchFilterStatus='all';
+      closeModal();
+    });
+  }
+
+  overlay.addEventListener('click',(e)=>{ if(e.target===overlay) closeModal(); });
+}
+function closeModal(){ state.modal=null; render(); }
+
+/* ============================================================
+   RENDU PRINCIPAL
+   ============================================================ */
+function render(){
+  if(state.screen==='loading'){
+    document.getElementById('app').innerHTML=`<div class="login-wrap"><div style="color:#fff;font-family:'Manrope';font-weight:700;">Chargement…</div></div>`;
+    return;
+  }
+  if(state.screen==='login' || !state.currentUser){
+    renderLogin();
+    return;
+  }
+  if(isMobileDevice()){
+    const allowed=navItems().map(it=>it.id);
+    if(!allowed.includes(state.tab)) state.tab=allowed[0];
+  }
+  if(state.currentUser.role==='admin'){
+    if(state.tab==='salaries') renderGestionSalaries();
+    else if(state.tab==='codes') renderGestionCodes();
+    else if(state.tab==='desideratas') renderAdminDesiderata();
+    else if(state.tab==='echanges') renderAdminEchanges();
+    else if(state.tab==='alertes') renderAlertes();
+    else if(state.tab==='fonctionnalites') renderFonctionnalites();
+    else renderCalendrierAdmin();
+  } else {
+    if(state.tab==='equipe') renderPlanningEquipe();
+    else if(state.tab==='individuel') renderPlanningIndividuel();
+    else if(state.tab==='mesdesid') renderMesDesiderata();
+    else if(state.tab==='echanges') renderMesEchanges();
+    else if(state.tab==='annuel') renderMonPlanningAnnuel();
+    else renderPlanningEmploye();
+  }
+  renderModal();
+  updateRotateBanner();
+}
+
+window.addEventListener('error', function(){
+  const app=document.getElementById('app');
+  if(app && !app.innerHTML.trim()){
+    app.innerHTML="<div class='login-wrap'><div class='login-card'><h1>Un problème est survenu</h1><p class='sub'>L'application n'a pas pu se charger correctement. Essayez de recharger la page.</p></div></div>";
+  }
 });
 
-// Au clic sur la notification, ramène l'utilisateur sur l'appli (ou en ouvre
-// un nouvel onglet si aucun n'est déjà ouvert).
-self.addEventListener("notificationclick", (event) => {
-  event.notification.close();
-  event.waitUntil(
-    clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
-        if ("focus" in client) return client.focus();
-      }
-      if (clients.openWindow) return clients.openWindow("/");
-    })
-  );
+/* ============================================================
+   RESPONSIVE — bandeau d'invitation à la rotation (mobile)
+   ============================================================ */
+let rotateBannerDismissed=false;
+function updateRotateBanner(){
+  const banner=document.getElementById('rotateBanner');
+  if(!banner) return;
+  const isNarrow=window.innerWidth<=760;
+  const isPortrait=window.innerHeight>window.innerWidth;
+  const shouldShow = isNarrow && isPortrait && !rotateBannerDismissed && state.screen==='app';
+  banner.classList.toggle('show', shouldShow);
+}
+window.addEventListener('resize', updateRotateBanner);
+window.addEventListener('orientationchange', ()=>{ updateRotateBanner(); if(state.screen==='app') render(); });
+(function bindRotateBannerControls(){
+  const dismissBtn=document.getElementById('rotateDismiss');
+  const rotateBtn=document.getElementById('rotateBtn');
+  if(dismissBtn) dismissBtn.addEventListener('click', ()=>{ rotateBannerDismissed=true; updateRotateBanner(); });
+  if(rotateBtn) rotateBtn.addEventListener('click', async ()=>{
+    try{
+      if(document.documentElement.requestFullscreen){ await document.documentElement.requestFullscreen(); }
+      if(screen.orientation && screen.orientation.lock){ await screen.orientation.lock('landscape'); }
+    }catch(e){
+      toast("Votre navigateur ne permet pas de forcer la rotation — tournez votre téléphone manuellement.", true);
+    }
+  });
+})();
+
+ensureFirebaseAuth().then(loadAll).then(startRealtimeSync).catch(function(e){
+  console.error(e);
+  const app=document.getElementById('app');
+  app.innerHTML="<div class='login-wrap'><div class='login-card'><h1>Un problème est survenu</h1><p class='sub'>L'application n'a pas pu se charger correctement. Essayez de recharger la page.</p></div></div>";
 });
+</script>
+</body>
+</html>
