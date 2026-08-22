@@ -67,7 +67,7 @@
 
   /* ---------- Shell ---------- */
   .shell{display:flex;min-height:100vh;}
-  .sidebar{width:222px;background:var(--primary-dark);color:#fff;display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;}
+  .sidebar{width:222px;background:var(--primary-dark);color:#fff;display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;position:sticky;top:0;height:100vh;align-self:flex-start;}
   .sidebar-brand{padding:22px 20px 18px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,.08);}
   .sidebar-brand .mark{width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;}
   .sidebar-brand span{font-weight:800;font-size:15px;}
