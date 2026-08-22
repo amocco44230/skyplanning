@@ -189,6 +189,10 @@
   .emp-row:last-child{border-bottom:none;}
   .emp-avatar{width:36px;height:36px;border-radius:9px;background:var(--primary-light);color:var(--primary);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0;overflow:hidden;}
   .emp-avatar img{width:100%;height:100%;object-fit:cover;display:block;}
+  .emp-avatar-above{width:46px;height:46px;border-radius:10px;overflow:hidden;margin-bottom:6px;box-shadow:0 1px 3px rgba(20,25,40,.15);}
+  .emp-avatar-above img{width:100%;height:100%;object-fit:cover;display:block;}
+  .grid-emp-avatar{display:inline-flex;width:18px;height:18px;border-radius:50%;overflow:hidden;vertical-align:middle;margin-right:6px;background:var(--primary-light);color:var(--primary);align-items:center;justify-content:center;font-size:8px;font-weight:800;flex-shrink:0;}
+  .grid-emp-avatar img{width:100%;height:100%;object-fit:cover;display:block;}
   .emp-info{flex:1;min-width:0;}
   .emp-info .name{font-weight:700;font-size:14px;}
   .emp-info .meta{font-size:12px;color:var(--ink-soft);margin-top:2px;}
@@ -242,6 +246,15 @@
   .cal-day .d-comment{margin-top:6px;font-size:10px;color:var(--ink-soft);background:var(--bg);border-radius:6px;padding:4px 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .cal-day .d-desid{margin-top:6px;font-size:9.5px;font-weight:700;border-radius:6px;padding:4px 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .cal-day.desid-pending-card{animation:desidPulse 1.8s ease-in-out infinite;}
+  .cal-day.selectable-day{cursor:pointer;}
+  .cal-day.selectable-day:active{border-color:var(--primary);}
+  .cal-day-compact{min-height:0;padding:6px 5px;}
+  .cal-day-compact .d-head{margin-bottom:4px;}
+  .cal-day-compact .d-num{font-size:11px;}
+  .cal-day-compact .d-dow{font-size:8px;}
+  .cal-day-compact .d-fer{font-size:7px;padding:1px 4px;}
+  .cal-day-compact .d-code{font-size:9.5px;padding:4px 3px;border-radius:6px;}
+  .cal-day-compact .indiv-draft{margin-top:3px;font-size:8px;font-weight:800;text-align:center;border-radius:5px;padding:2px 3px;}
 
   .cal-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(108px,1fr));gap:10px;}
   .cal-stat{background:#EAF0EC;border-radius:10px;padding:15px 10px;text-align:center;}
@@ -471,6 +484,15 @@
     table.grid td.day-cell{min-width:40px;height:44px;}
     table.grid th{min-width:40px;}
     table.grid th.emp-col, table.grid td.emp-col{min-width:120px;font-size:12px;}
+    /* Planning équipe (lecture seule) : pas besoin de grandes zones tactiles
+       comme sur la grille éditable de l'admin — on réduit d'environ 15% pour
+       que davantage de jours tiennent à l'écran sans trop de défilement. */
+    table.grid.readonly td.day-cell{min-width:34px;height:37px;}
+    table.grid.readonly th{min-width:34px;font-size:8px;}
+    table.grid.readonly th .dow{font-size:8px;}
+    table.grid.readonly th.week-head{font-size:9px;}
+    table.grid.readonly th.emp-col, table.grid.readonly td.emp-col{min-width:102px;font-size:10.5px;padding:7px 11px;}
+    table.grid.readonly td.day-cell .code-badge{font-size:9.5px;}
     .month-nav .month-label{font-size:15px;min-width:auto;}
     .legend{gap:6px;}
     .chip{font-size:11px;padding:5px 9px 5px 6px;}
@@ -710,6 +732,7 @@ let state={
   annualYear:new Date().getFullYear(),
   annualSelectedDay:null,
   annualGenMode:false,
+  indivSelectedCode:null,
   employeeDrafts:{},
   desidFilterStatus:'pending',
   desidFilterYear:'all',
@@ -771,6 +794,11 @@ async function loadAll(){
     ];
     await storageSet('users', JSON.stringify(state.users), true);
   }
+  // Les salariés dont l'affectation (service/fonction) change à une date donnée
+  // ont leur team/fonction "affichés" resynchronisés sur l'affectation en cours
+  // aujourd'hui — le reste de l'app (qui lit u.team/u.fonction directement)
+  // reflète donc toujours l'affectation courante sans modification ailleurs.
+  state.users.forEach(syncCurrentAffectation);
   try{
     const c=await storageGet('codes', true);
     state.codes = (c && JSON.parse(c.value).length) ? JSON.parse(c.value) : DEFAULT_CODES;
@@ -1307,12 +1335,19 @@ function computeExchangeAlertImpact(ex){
 function ymdKey(y,m,d){ return y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0'); }
 function computeDailyGroupAlerts(rule,year,month){
   const nDays=daysInMonth(year,month);
-  const employees=state.users.filter(u=>!isSuperAdmin(u) && u.team===rule.service && rule.fonctions.includes(u.fonction));
+  // Un salarié ne compte dans l'effectif de ce service/fonction QUE les jours où
+  // son affectation (historique service/fonction) correspond réellement à la
+  // règle — un changement de service en cours de mois est donc pris en compte
+  // jour par jour, pas sur la base d'un service figé pour tout le mois.
+  const candidates=state.users.filter(u=>!isSuperAdmin(u));
   const results=[];
   for(let d=1; d<=nDays; d++){
     const key=ymdKey(year,month,d);
     let count=0; const names=[];
-    employees.forEach(e=>{
+    candidates.forEach(e=>{
+      if(!isEmployeeValidForMonth(e,year,month)) return;
+      const aff=affectationAt(e,key);
+      if(aff.team!==rule.service || !rule.fonctions.includes(aff.fonction)) return;
       const code=state.schedules[e.username] && state.schedules[e.username][key];
       if(code && rule.codes.includes(code)){ count++; names.push(e.name); }
     });
@@ -1326,7 +1361,7 @@ function computeDailyGroupAlerts(rule,year,month){
   return results;
 }
 function computeWeeklyPersonAlerts(rule,year,month){
-  const employees=state.users.filter(u=>!isSuperAdmin(u) && u.team===rule.service && rule.fonctions.includes(u.fonction));
+  const candidates=state.users.filter(u=>!isSuperAdmin(u) && isEmployeeValidForMonth(u,year,month));
   const nDays=daysInMonth(year,month);
   const seenWeeks=new Set();
   const results=[];
@@ -1339,14 +1374,18 @@ function computeWeeklyPersonAlerts(rule,year,month){
     const dow=(date.getDay()+6)%7;
     const monday=addDays(date,-dow);
     const weekDates=Array.from({length:7},(_,i)=>dkey(addDays(monday,i)));
-    employees.forEach(e=>{
-      let count=0, hasExcluded=false;
+    candidates.forEach(e=>{
+      let count=0, hasExcluded=false, matchedAnyDay=false;
       const excludeCodes=rule.excludeCodes||[];
       weekDates.forEach(k=>{
+        const aff=affectationAt(e,k);
+        if(aff.team!==rule.service || !rule.fonctions.includes(aff.fonction)) return;
+        matchedAnyDay=true;
         const code=state.schedules[e.username] && state.schedules[e.username][k];
         if(code && rule.codes.includes(code)) count++;
         if(code && excludeCodes.includes(code)) hasExcluded=true;
       });
+      if(!matchedAnyDay) return; // pas dans ce service/fonction cette semaine-là
       if(hasExcluded) return; // semaine avec congé/absence : on ne pénalise pas le salarié pour cette règle
       if(rule.min!=null && count<rule.min){
         results.push({rule, kind:'min', weekNum:wn, weekStart:weekDates[0], weekEnd:weekDates[6], employee:e, count, target:rule.min});
@@ -1542,9 +1581,78 @@ function isEmployeeValidForMonth(emp,year,month){
   if(end && monthStart > end) return false;
   return true;
 }
-function isDayWithinValidity(emp, dateKey){
+/* ============================================================
+   HISTORIQUE SERVICE / FONCTION D'UN SALARIÉ
+   Un salarié peut changer de service et/ou de fonction à une date donnée
+   (ex : Agent-REGULPN jusqu'au 28/08, puis Technicien-CCO dès le 29/08).
+   u.affectations = [{id, startDate:'YYYY-MM-DD', team, fonction}, ...]
+   triés par date croissante. Les salariés sans historique (anciens comptes)
+   se comportent exactement comme avant, via un historique "virtuel" à une
+   seule entrée basée sur u.team/u.fonction — donc aucune régression.
+   ============================================================ */
+function getAffectations(u){
+  if(u.affectations && u.affectations.length){
+    return [...u.affectations].sort((a,b)=>a.startDate.localeCompare(b.startDate));
+  }
+  return [{id:'base', startDate:u.startDate||'2000-01-01', team:u.team||'', fonction:u.fonction||''}];
+}
+function affectationAt(u, dateKey){
+  const list=getAffectations(u);
+  let current=list[0];
+  for(const a of list){ if(a.startDate<=dateKey) current=a; else break; }
+  return current;
+}
+function affectationsForMonth(u, year, month){
+  // Renvoie les tranches d'affectation qui recouvrent le mois demandé, avec
+  // leur jour de début/fin DANS ce mois (1..nDays) — utile pour griser les
+  // jours d'un service où le salarié n'était pas encore/plus affecté.
+  const nDays=daysInMonth(year,month);
+  const monthStart=ymdKey(year,month,1), monthEnd=ymdKey(year,month,nDays);
+  const list=getAffectations(u);
+  const segments=[];
+  for(let i=0;i<list.length;i++){
+    const a=list[i];
+    const nextStart = list[i+1] ? list[i+1].startDate : null;
+    if(nextStart && nextStart<=monthStart) continue;
+    if(a.startDate>monthEnd) continue;
+    const segStartDay = a.startDate>monthStart ? Number(a.startDate.slice(8,10)) : 1;
+    const segEndDay = (nextStart && nextStart<=monthEnd) ? Number(nextStart.slice(8,10))-1 : nDays;
+    if(segEndDay<segStartDay) continue;
+    segments.push({team:a.team, fonction:a.fonction, startDay:segStartDay, endDay:segEndDay});
+  }
+  return segments;
+}
+function employeeActiveInServiceDuringMonth(u, service, year, month){
+  if((u.extraTeams||[]).includes(service)) return true;
+  return affectationsForMonth(u, year, month).some(s=>s.team===service);
+}
+function resolveFonctionForService(e, service){
+  const matches=getAffectations(e).filter(a=>a.team===service);
+  if(!matches.length) return e.fonction||'';
+  return matches[matches.length-1].fonction||'';
+}
+function syncCurrentAffectation(u){
+  const today=dkey(new Date());
+  const cur=affectationAt(u, today);
+  if(cur){ u.team=cur.team||''; u.fonction=cur.fonction||''; }
+}
+function setImmediateAffectation(u, team, fonction){
+  // Utilisé quand l'admin change directement le Service/Fonction depuis la
+  // fiche salarié (effet immédiat, à la date du jour) plutôt que de
+  // programmer un changement futur.
+  const today=dkey(new Date());
+  const list=getAffectations(u).filter(a=>a.startDate!==today);
+  list.push({id:genId(), startDate:today, team, fonction});
+  u.affectations=list.sort((a,b)=>a.startDate.localeCompare(b.startDate));
+  u.team=team; u.fonction=fonction;
+}
+function isDayWithinValidity(emp, dateKey, serviceContext){
   if(emp.startDate && dateKey<emp.startDate) return false;
   if(emp.endDate && dateKey>emp.endDate) return false;
+  if(serviceContext){
+    const aff=affectationAt(emp, dateKey);
+    if(aff.team!==serviceContext && !(emp.extraTeams||[]).includes(serviceContext)) return false;
+  }
   return true;
 }
 function codeInfo(code){ return state.codes.find(c=>c.code===code); }
@@ -1637,7 +1745,7 @@ function navItems(){
   if(isMobileDevice()){
     return state.currentUser.role==='admin'
       ? [{id:'calendrier', label:'Calendrier annuel', icon:'▦'}]
-      : [{id:'equipe', label:'Planning équipe', icon:'👥'}];
+      : [{id:'individuel', label:'Planning individuel', icon:'🗓️'}, {id:'equipe', label:'Planning équipe', icon:'👥'}];
   }
   if(state.currentUser.role==='admin'){
     return [
@@ -1844,7 +1952,7 @@ function bindLegend(){
 /* ============================================================
    RENDU — GRILLE (mois) pour un ou plusieurs employés
    ============================================================ */
-function gridHtml({employees, readonly, alerts, changes}){
+function gridHtml({employees, readonly, alerts, changes, serviceContext}){
   alerts = alerts || [];
   changes = changes || [];
   const changesMap={};
@@ -1879,7 +1987,7 @@ function gridHtml({employees, readonly, alerts, changes}){
   head+='</tr>';
 
   let bodyRows='';
-  const svcGroups=groupByServiceThenFonction(employees, false);
+  const svcGroups=groupByServiceThenFonction(employees, false, serviceContext);
   const showServiceBar = svcGroups.length>1;
   svcGroups.forEach(svcGroup=>{
     if(showServiceBar){
@@ -1897,14 +2005,14 @@ function gridHtml({employees, readonly, alerts, changes}){
       group.list.forEach(emp=>{
     const empWeeklyAlerts = alerts.filter(a=>a.rule.type==='weekly_person' && a.employee && a.employee.username===emp.username);
     const empAlertBadge = empWeeklyAlerts.length ? `<span class="alert-badge-dot" title="${escapeHtml(formatWeeklyAlertTooltip(empWeeklyAlerts))}">⚠</span>` : '';
-    let row=`<tr data-user="${emp.username}"><td class="emp-col">${emp.name}${empAlertBadge}</td>`;
+    let row=`<tr data-user="${emp.username}"><td class="emp-col">${emp.photoUrl?`<span class="grid-emp-avatar"><img src="${emp.photoUrl}" alt=""></span>`:''}${emp.name}${empAlertBadge}</td>`;
     for(let d=1; d<=nDays; d++){
       const date=new Date(y,m,d);
       const dow=date.getDay();
       const isWeekend = dow===0 || dow===6;
       const holidayName=holidays[dkey(date)];
       const dateKeyStr=y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
-      const dayValid=isDayWithinValidity(emp, dateKeyStr);
+      const dayValid=isDayWithinValidity(emp, dateKeyStr, serviceContext);
       const code=getDayCode(emp.username,y,m,d);
       const info=code?codeInfo(code):null;
       const style=info?`background:${info.color};color:${info.text};`:'';
@@ -1917,7 +2025,12 @@ function gridHtml({employees, readonly, alerts, changes}){
       let desidStripHtml='', cellClass='', desidTitle='', alertMarkHtml='';
       const dateKeyForAlert=ymdKey(y,m,d);
       if(!dayValid){
-        desidTitle+=' — Hors période de validité du salarié';
+        if(serviceContext && emp.startDate && dateKeyStr>=emp.startDate && (!emp.endDate || dateKeyStr<=emp.endDate)){
+          const aff=affectationAt(emp, dateKeyStr);
+          desidTitle+=' — Rattaché à un autre service ce jour-là'+(aff.team?' ('+aff.team+(aff.fonction?' · '+aff.fonction:'')+')':'');
+        } else {
+          desidTitle+=' — Hors période de validité du salarié';
+        }
       }
       if(groupAlertDays.has(dateKeyForAlert+'|min') || groupAlertDays.has(dateKeyForAlert+'|max')){
         alertMarkHtml='<span class="alert-day-mark" title="Alerte effectif"></span>';
@@ -2102,6 +2215,91 @@ document.addEventListener('touchend',endPaintDrag);
 document.addEventListener('touchcancel',endPaintDrag);
 
 /* ============================================================
+   ÉCRAN — PLANNING INDIVIDUEL (mobile, écran d'accueil par défaut)
+   Calendrier mensuel compact pensé pour tenir sur un écran de téléphone :
+   grand code = planning officiel validé par l'administration (comme
+   « Mon planning »), petit badge = brouillon personnel éditable, exactement
+   comme sur « Mon planning annuel » mais un seul mois à la fois.
+   ============================================================ */
+function renderPlanningIndividuel(){
+  const y=state.viewDate.getFullYear(), m=state.viewDate.getMonth();
+  const nDays=daysInMonth(y,m);
+  const holidays=frenchHolidays(y);
+  const firstDow=(new Date(y,m,1).getDay()+6)%7;
+  const todayKey=dkey(new Date());
+  const username=state.currentUser.username;
+  const meRec=state.users.find(u=>u.username===username);
+  const myService=meRec?meRec.team:'';
+  const monthOk=isMonthValidated(myService,y,m);
+  const selectedCode=state.indivSelectedCode;
+
+  function dayCellHtml(d){
+    const date=new Date(y,m,d);
+    const dateKeyStr=ymdKey(y,m,d);
+    const holidayName=holidays[dkey(date)];
+    let officialCode = monthOk ? getDayCode(username,y,m,d) : undefined;
+    if(monthOk && !officialCode) officialCode = holidayName ? 'FER' : 'O';
+    const info=officialCode?codeInfo(officialCode):null;
+    const isToday = dkey(date)===todayKey;
+    const draftCode=getDraftCode(username,y,m,d);
+    const draftInfo=draftCode?codeInfo(draftCode):null;
+    const dayValid = meRec ? isDayWithinValidity(meRec, dateKeyStr) : true;
+    return `<div class="cal-day cal-day-compact ${isToday?'today':''} ${dayValid?'selectable-day':''}" ${dayValid?`data-date="${dateKeyStr}"`:''} title="${dateKeyStr}${draftCode?' — brouillon : '+draftCode:''}">
+      <div class="d-head">
+        <span><span class="d-num">${d}</span><span class="d-dow">${DOW_SHORT[(date.getDay()+6)%7]}</span></span>
+        ${holidayName?'<span class="d-fer" title="'+escapeHtml(holidayName)+'">FÉR</span>':''}
+      </div>
+      <div class="d-code" style="background:${info?info.color:'#F4F5F7'};color:${info?info.text:'#B7BEC9'};">${officialCode||'—'}</div>
+      ${draftCode?`<div class="indiv-draft" style="background:${draftInfo?draftInfo.color:'#DDD'};color:${draftInfo?draftInfo.text:'#333'};">${draftCode}</div>`:''}
+    </div>`;
+  }
+
+  let weekRows='';
+  let dayCounter=1-firstDow;
+  while(dayCounter<=nDays){
+    const weekDays=[];
+    for(let i=0;i<7;i++){
+      const dnum=dayCounter+i;
+      weekDays.push(dnum>=1 && dnum<=nDays ? dayCellHtml(dnum) : '<div class="cal-day blank"></div>');
+    }
+    weekRows+=`<div class="cal-week-days">${weekDays.join('')}</div>`;
+    dayCounter+=7;
+  }
+
+  const legendChipsHtml=state.codes.map(c=>`
+    <div class="chip selectable ${selectedCode===c.code?'active':''}" data-indiv-code="${c.code}">
+      <span class="dot ${c.code==='VIDE'?'dot-outline':''}" style="background:${c.color}"></span>${c.code}
+    </div>`).join('');
+
+  const inner=`
+    ${monthNavHtml()}
+    <div class="legend-hint" style="margin:8px 0 10px;">Le grand code est votre planning <b>officiel</b> validé par l'administration. Sélectionnez un code ci-dessous puis touchez un jour pour poser votre <b>brouillon personnel</b> (identique à « Mon planning annuel », mois par mois) — un second appui l'efface.</div>
+    <div class="legend" style="margin-bottom:10px;">${legendChipsHtml}</div>
+    <div style="display:flex;gap:8px;margin-bottom:6px;">
+      ${DOW_SHORT.map(d=>`<div style="flex:1;text-align:center;font-size:9px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;">${d}</div>`).join('')}
+    </div>
+    ${weekRows}
+    ${!monthOk ? `<div class="helper" style="margin-top:10px;text-align:center;">🔒 Le planning officiel de ${MOIS[m]} ${y} n'est pas encore validé — vous pouvez déjà préparer votre brouillon.</div>` : ''}
+  `;
+  renderShell(inner,'Planning individuel');
+  bindMonthNav(render);
+  document.querySelectorAll('.selectable-day').forEach(el=>{
+    el.addEventListener('click', async()=>{
+      if(!selectedCode){ toast('Sélectionnez d\u2019abord un code ci-dessus.', true); return; }
+      await paintOwnDayWithQuotaCheck(username, el.dataset.date, selectedCode);
+      render();
+    });
+  });
+  document.querySelectorAll('[data-indiv-code]').forEach(ch=>{
+    ch.addEventListener('click', ()=>{
+      const code=ch.dataset.indivCode;
+      state.indivSelectedCode = state.indivSelectedCode===code ? null : code;
+      render();
+    });
+  });
+}
+
+/* ============================================================
    ÉCRAN — PLANNING (salarié, lecture seule)
    ============================================================ */
 function renderPlanningEmploye(){
@@ -2238,9 +2436,10 @@ function renderPlanningEquipe(){
   const me=state.users.find(u=>u.username===state.currentUser.username);
   const myTeam=(me&&me.team)?me.team:'';
   // Un salarié peut être rattaché à un service supplémentaire (extraTeams, géré par
-  // l'admin dans « Gestion des salariés ») : il apparaît alors aussi sur le planning
-  // équipe de ce service (ex : un responsable qui supervise plusieurs services).
-  const belongsToTeam=u=>u.team===myTeam || (u.extraTeams||[]).includes(myTeam);
+  // l'admin dans « Gestion des salariés ») ou avoir un collègue dont l'affectation
+  // change en cours de mois (« Historique service / fonction ») : il apparaît alors
+  // aussi sur le planning équipe de ce service, avec les jours hors période grisés.
+  const belongsToTeam=u=>employeeActiveInServiceDuringMonth(u, myTeam, y, m);
   const teamEmployees = myTeam
     ? state.users.filter(u=>!isSuperAdmin(u) && belongsToTeam(u) && isEmployeeValidForMonth(u,y,m))
     : state.users.filter(u=>!isSuperAdmin(u) && u.username===state.currentUser.username && isEmployeeValidForMonth(u,y,m));
@@ -2254,13 +2453,14 @@ function renderPlanningEquipe(){
     <div class="toolbar" style="flex-wrap:wrap;gap:10px;margin-bottom:2px;">
       <div>${myTeam?`<div class="legend-hint" style="margin:0;">Planning en lecture seule de l'équipe <b>${escapeHtml(myTeam)}</b>.</div>`:`<div class="legend-hint" style="margin:0;">Aucune équipe ne vous a été assignée pour le moment — seul votre planning est affiché ici.</div>`}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        ${(monthOk && myTeam) ? `<button class="icon-btn" id="peqPrintBtn">🖨️ Imprimer le planning</button>` : ''}
         <button class="btn btn-primary" id="peqNewDesidBtn" style="width:auto;margin:0;">🖐️ Demande de désidérata</button>
         <button class="btn btn-primary" id="peqNewExchBtn" style="width:auto;margin:0;">🔄 Proposer un échange</button>
       </div>
     </div>
     ${monthOk ? `
     ${legendHtml(false)}
-    ${gridHtml({employees:teamEmployees, readonly:true, alerts:[]})}
+    ${gridHtml({employees:teamEmployees, readonly:true, alerts:[], serviceContext: myTeam||null})}
     ${commentsRecapHtml(y,m,teamUsernames,false)}
     ` : `
     <div class="not-validated-card">
@@ -2275,6 +2475,8 @@ function renderPlanningEquipe(){
   `;
   renderShell(inner,'Planning équipe'+(myTeam?' — '+myTeam:''));
   bindMonthNav(render);
+  const peqPrintBtn=document.getElementById('peqPrintBtn');
+  if(peqPrintBtn) peqPrintBtn.addEventListener('click', ()=>{ printMonthlyPlanning(myTeam, y, m); });
   document.getElementById('peqNewDesidBtn').addEventListener('click',()=>{
     state.modal={type:'new-desiderata', data:{dateStart:'',dateEnd:'',code:state.codes[0]?state.codes[0].code:'',comment:''}};
     render();
@@ -2331,7 +2533,7 @@ function changesLogHtml(changes){
    ============================================================ */
 function printMonthlyPlanning(service, year, month){
   const employees = state.users
-    .filter(u=>!isSuperAdmin(u) && isEmployeeValidForMonth(u,year,month) && (u.team===service || (u.extraTeams||[]).includes(service)))
+    .filter(u=>!isSuperAdmin(u) && isEmployeeValidForMonth(u,year,month) && employeeActiveInServiceDuringMonth(u,service,year,month))
     .sort((a,b)=> (a.fonction||'').localeCompare(b.fonction||'') || a.name.localeCompare(b.name));
   const nDays = daysInMonth(year,month);
   const holidays = frenchHolidays(year);
@@ -3088,7 +3290,7 @@ function renderAlertes(){
   const alertCardHtml=(a)=>{
     const kindColor = a.kind==='min' ? {bg:'#FBEAE9',fg:'#C0392B',label:'Sous-effectif'} : {bg:'#FDF2E3',fg:'#B5690A',label:'Sur-effectif'};
     if(a.rule.type==='daily_group'){
-      const groupEmployees=state.users.filter(u=>!isSuperAdmin(u) && u.team===a.rule.service && a.rule.fonctions.includes(u.fonction));
+      const groupEmployees=state.users.filter(u=>!isSuperAdmin(u) && affectationAt(u,a.date).team===a.rule.service && a.rule.fonctions.includes(affectationAt(u,a.date).fonction));
       const namesForFilter=(groupEmployees.map(e=>e.name).join(' ')+' '+a.names.join(' ')).toLowerCase();
       return `
       <div class="alert-card" data-names="${escapeHtml(namesForFilter)}">
@@ -3214,8 +3416,10 @@ function renderCalendrierAdmin(){
   }
   const svcFilter=state.calendarServiceFilter;
   // Un salarié rattaché en service supplémentaire (extraTeams, "Gestion des salariés")
-  // doit aussi apparaître ici quand on filtre sur ce service supplémentaire.
-  const belongsToService=(u,svc)=> u.team===svc || (u.extraTeams||[]).includes(svc);
+  // apparaît aussi ici, tout comme un salarié dont l'affectation change en cours
+  // de mois (voir « Historique service / fonction » dans sa fiche) : il apparaît
+  // dans les deux services concernés, avec les jours hors période grisés.
+  const belongsToService=(u,svc)=> employeeActiveInServiceDuringMonth(u,svc,y,m);
   const employees=state.users.filter(u=>
     !isSuperAdmin(u) &&
     isEmployeeValidForMonth(u,y,m) &&
@@ -3257,7 +3461,7 @@ function renderCalendrierAdmin(){
     ${pendingChanges.length?`<div class="legend-hint change-hint">✎ <b>${pendingChanges.length} modification${pendingChanges.length>1?'s':''}</b> apportée${pendingChanges.length>1?'s':''} depuis la validation du mois — cases encadrées en orange, détail tout en bas de page.</div>`:''}
     <div class="legend-hint">Cliquez d'abord sur un <b>code</b> ci-dessous, puis sur les cases du planning pour l'appliquer — ou cliquez-glissez (maintenez et passez sur plusieurs jours) pour remplir plusieurs cases d'un coup. Un second clic sur une case déjà remplie l'efface. Double-cliquez sur une case pour ajouter un commentaire. Avant validation du mois, chaque modification notifie aussitôt le salarié ; une fois le mois validé, la notification ne part que lorsque vous validez la modification ci-dessous.</div>
     ${legendHtml(true)}
-    ${gridHtml({employees, readonly:false, alerts, changes:allChangesThisMonth})}
+    ${gridHtml({employees, readonly:false, alerts, changes:allChangesThisMonth, serviceContext: svcFilter!=='ALL'?svcFilter:null})}
     ${commentsRecapHtml(y,m, (svcFilter==='ALL' && !scope)?null:employees.map(e=>e.username))}
     ${changesLogHtml(changes)}
   `;
@@ -3348,7 +3552,16 @@ function groupByFonction(employees, service, includeEmpty){
   if(includeEmpty || groups['__none__'].length) result.push({fonction:'__none__', list:groups['__none__']});
   return result;
 }
-function groupByServiceThenFonction(employees, includeEmpty){
+function groupByServiceThenFonction(employees, includeEmpty, serviceContext){
+  if(serviceContext){
+    // Vue centrée sur UN service précis (filtre admin, ou planning équipe) :
+    // on affiche un seul groupe pour ce service, et la fonction de chaque
+    // salarié est résolue par rapport à CE service (utile si son affectation
+    // change en cours de mois — voir « Historique service / fonction »).
+    const list=employees.map(e=>({...e, fonction: resolveFonctionForService(e, serviceContext)}));
+    const sub=groupByFonction(list, serviceContext, includeEmpty);
+    return [{service:serviceContext, list, sub}];
+  }
   const byService={};
   employees.forEach(e=>{
     const svc=e.team||'__none_service__';
@@ -3376,13 +3589,16 @@ function renderGestionSalaries(){
     const start=emp.startDate?new Date(emp.startDate):null;
     const end=emp.endDate?new Date(emp.endDate):null;
     const inactive=(start && today<start) || (end && today>end);
+    const todayKey=dkey(new Date());
+    const nextAffect=getAffectations(emp).filter(a=>a.startDate>todayKey)[0];
     return `
     <div class="emp-row" draggable="true" data-drag-user="${emp.username}">
       <span class="drag-handle" title="Glisser pour changer de service/fonction">⠿</span>
-      <div class="emp-avatar">${emp.photoUrl?`<img src="${emp.photoUrl}" alt="">`:initials(emp.name)}</div>
       <div class="emp-info">
+        ${emp.photoUrl ? `<div class="emp-avatar-above"><img src="${emp.photoUrl}" alt=""></div>` : ''}
         <div class="name">${escapeHtml(emp.name)} ${emp.role==='admin'?'<span class="badge-admin">'+(isSuperAdmin(emp)?'Grand admin':'Admin — '+escapeHtml((emp.adminServices||[]).join(', ')))+'</span>':''} ${inactive?'<span class="badge-inactive">Hors période</span>':''}</div>
         <div class="meta">Identifiant : ${emp.username} ${emp.email?'· '+escapeHtml(emp.email)+' ':''}${emp.phone?'· 📞 '+escapeHtml(emp.phone)+' ':''}${emp.team?'· Service : '+escapeHtml(emp.team)+' ':''}${(emp.extraTeams&&emp.extraTeams.length)?'· Aussi visible sur : '+escapeHtml(emp.extraTeams.join(', '))+' ':''}· Validité : ${fmtDate(emp.startDate)} → ${emp.endDate?fmtDate(emp.endDate):'toujours'}</div>
+        ${nextAffect ? `<div class="meta" style="color:var(--primary);font-weight:700;">→ Changement programmé le ${fmtDate(nextAffect.startDate)} : ${escapeHtml(nextAffect.team||'Aucun service')}${nextAffect.fonction?' · '+escapeHtml(nextAffect.fonction):''}</div>` : ''}
       </div>
       <div class="emp-actions">
         <button class="icon-btn" data-move="${emp.username}" title="Alternative tactile au glisser-déposer">↔ Déplacer</button>
@@ -3501,8 +3717,7 @@ function renderGestionSalaries(){
       if(!username) return;
       const emp=state.users.find(u=>u.username===username);
       if(!emp) return;
-      emp.team=zone.dataset.serviceZone||'';
-      emp.fonction=zone.dataset.fonctionZone||'';
+      setImmediateAffectation(emp, zone.dataset.serviceZone||'', zone.dataset.fonctionZone||'');
       state.dragUser=null;
       await persistUsers();
       toast('Salarié déplacé.');
@@ -3698,6 +3913,31 @@ function renderModal(){
         </div>
         <div class="helper">Cochez un service pour que ce salarié apparaisse aussi sur le « Planning équipe » consulté par ce service (ex : un responsable qui supervise plusieurs services). Décochez pour masquer son planning à ce service.</div>
       </div>
+      <div class="field admin-rights-field">
+        <label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:6px;">Historique service / fonction</label>
+        <div id="mAffectList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:${state.modal.isNew?'0':'8px'};">
+          ${getAffectations(d).map(a=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;background:#FBFCFE;border:1px solid var(--border);border-radius:7px;padding:7px 10px;">
+            <span>À partir du <b>${fmtDate(a.startDate)}</b> : ${escapeHtml(a.team||'Aucun service')}${a.fonction?' · '+escapeHtml(a.fonction):''}${a.startDate>dkey(new Date())?' <span style="color:var(--primary);font-weight:700;">(à venir)</span>':''}</span>
+            ${(!state.modal.isNew && a.startDate>dkey(new Date())) ? `<button type="button" class="icon-btn" data-del-affect="${a.id||a.startDate}" style="color:var(--danger);padding:2px 8px;flex-shrink:0;">✕</button>` : ''}
+          </div>`).join('')}
+        </div>
+        ${!state.modal.isNew ? `
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:end;">
+          <div class="field" style="flex:1;min-width:126px;margin:0;"><label style="font-size:11px;">Date d'effet</label><input type="date" id="mAffectDate"></div>
+          <div class="field" style="flex:1;min-width:120px;margin:0;"><label style="font-size:11px;">Nouveau service</label>
+            <select id="mAffectTeam" style="width:100%;padding:9px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;background:#FBFCFE;">
+              <option value="">Aucun</option>
+              ${(getAdminScope(state.currentUser)||state.services).map(s=>`<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field" style="flex:1;min-width:120px;margin:0;"><label style="font-size:11px;">Nouvelle fonction</label>
+            <select id="mAffectFonction" style="width:100%;padding:9px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;background:#FBFCFE;"><option value="">Aucune</option></select>
+          </div>
+          <button type="button" class="icon-btn" id="mAffectAdd" style="height:38px;">+ Programmer</button>
+        </div>
+        <div class="helper">Le changement s'appliquera automatiquement à la date choisie, sur le planning, les alertes et les filtres par service — pas besoin de revenir modifier la fiche ce jour-là.</div>
+        ` : `<div class="helper">Vous pourrez programmer un changement de service/fonction futur une fois le salarié créé.</div>`}
+      </div>
       ${isSuperAdmin(state.currentUser) ? `
       <div class="field admin-rights-field">
         <label class="admin-rights-toggle"><input type="checkbox" id="mIsAdmin" ${d.role==='admin'?'checked':''}> <b>Droits administrateur</b></label>
@@ -3746,6 +3986,44 @@ function renderModal(){
       const opts=getFonctionsForService(d.team);
       fSel.innerHTML='<option value="">Aucune</option>'+opts.map(f=>`<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join('');
     });
+    const mAffectTeamSel=document.getElementById('mAffectTeam');
+    const mAffectFonctionSel=document.getElementById('mAffectFonction');
+    if(mAffectTeamSel){
+      const refreshAffectFonctions=()=>{
+        const opts=getFonctionsForService(mAffectTeamSel.value);
+        mAffectFonctionSel.innerHTML='<option value="">Aucune</option>'+opts.map(f=>`<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join('');
+      };
+      refreshAffectFonctions();
+      mAffectTeamSel.addEventListener('change', refreshAffectFonctions);
+      document.getElementById('mAffectAdd').addEventListener('click', async()=>{
+        const emp=state.users.find(u=>u.username===d.username);
+        if(!emp) return;
+        const date=document.getElementById('mAffectDate').value;
+        const team=mAffectTeamSel.value;
+        const fonction=mAffectFonctionSel.value;
+        if(!date){ toast("Merci de choisir une date d'effet.", true); return; }
+        const list=getAffectations(emp).filter(a=>a.startDate!==date);
+        list.push({id:genId(), startDate:date, team, fonction});
+        emp.affectations=list.sort((a,b)=>a.startDate.localeCompare(b.startDate));
+        syncCurrentAffectation(emp);
+        await persistUsers();
+        toast('Changement programmé pour le '+fmtDate(date)+'.');
+        state.modal={type:'employee', data:{...emp}, isNew:false};
+        render();
+      });
+    }
+    document.querySelectorAll('[data-del-affect]').forEach(btn=>{
+      btn.addEventListener('click', async()=>{
+        const emp=state.users.find(u=>u.username===d.username);
+        if(!emp) return;
+        emp.affectations=getAffectations(emp).filter(a=>(a.id||a.startDate)!==btn.dataset.delAffect);
+        syncCurrentAffectation(emp);
+        await persistUsers();
+        toast('Changement programmé supprimé.');
+        state.modal={type:'employee', data:{...emp}, isNew:false};
+        render();
+      });
+    });
     document.getElementById('mSave').addEventListener('click',async()=>{
       const name=document.getElementById('mName').value.trim();
       const username=document.getElementById('mUser').value.trim();
@@ -3776,11 +4054,18 @@ function renderModal(){
         role=d.role; adminServices=d.adminServices||[];
       }
       if(state.modal.isNew){
-        state.users.push({username,password,name,role,startDate,endDate,team,fonction,email,adminServices,extraTeams});
+        const newEmp={username,password,name,role,startDate,endDate,team,fonction,email,adminServices,extraTeams};
+        newEmp.affectations=[{id:genId(), startDate: startDate||dkey(new Date()), team, fonction}];
+        state.users.push(newEmp);
       } else {
         const emp=state.users.find(u=>u.username===d.username);
-        emp.name=name; emp.password=password; emp.startDate=startDate; emp.endDate=endDate; emp.team=team; emp.fonction=fonction; emp.email=email;
+        emp.name=name; emp.password=password; emp.startDate=startDate; emp.endDate=endDate; emp.email=email;
         emp.role=role; emp.adminServices=adminServices; emp.extraTeams=extraTeams;
+        if(team!==(d.team||'') || fonction!==(d.fonction||'')){
+          setImmediateAffectation(emp, team, fonction);
+        } else {
+          emp.team=team; emp.fonction=fonction;
+        }
       }
       await persistUsers();
       toast('Salarié enregistré.');
@@ -3993,7 +4278,7 @@ function renderModal(){
     document.getElementById('valModalConfirm').addEventListener('click', async()=>{
       await setMonthValidated(service,year,month,!nowValidated);
       if(!nowValidated){
-        const svcEmployees=state.users.filter(u=>!isSuperAdmin(u) && (u.team===service || (u.extraTeams||[]).includes(service)));
+        const svcEmployees=state.users.filter(u=>!isSuperAdmin(u) && employeeActiveInServiceDuringMonth(u,service,year,month));
         for(const emp of svcEmployees){
           await pushNotification(emp.username, 'Votre planning de '+MOIS[month]+' '+year+' a été validé et est maintenant disponible.');
         }
@@ -4189,8 +4474,7 @@ function renderModal(){
     });
     document.getElementById('mvConfirm').addEventListener('click', async()=>{
       const emp=state.users.find(u=>u.username===mv.username);
-      emp.team=document.getElementById('mvService').value;
-      emp.fonction=document.getElementById('mvFonction').value;
+      setImmediateAffectation(emp, document.getElementById('mvService').value, document.getElementById('mvFonction').value);
       await persistUsers();
       toast('Salarié déplacé.');
       closeModal();
@@ -4248,7 +4532,12 @@ function renderModal(){
           const removed=state.fonctions[svc][idx];
           if(!confirm('Supprimer la fonction « '+removed+' » ? Les salariés concernés basculeront sur « Sans fonction ».')) return;
           state.fonctions[svc].splice(idx,1);
-          state.users.forEach(u=>{ if(u.team===svc && u.fonction===removed) u.fonction=''; });
+          state.users.forEach(u=>{
+            if(u.team===svc && u.fonction===removed) u.fonction='';
+            // Purge aussi la fonction dans l'historique d'affectations, sinon elle
+            // reviendrait au prochain chargement (resynchronisation automatique).
+            if(u.affectations) u.affectations.forEach(a=>{ if(a.team===svc && a.fonction===removed) a.fonction=''; });
+          });
           await Promise.all([persistFonctions(), persistUsers()]);
           toast('Fonction supprimée.');
           render();
@@ -4293,7 +4582,13 @@ function renderModal(){
           if(!confirm('Supprimer le service « '+removed+' » ? Les salariés concernés basculeront sur « Sans service » et perdront leur fonction associée.')) return;
           state.services.splice(idx,1);
           delete state.fonctions[removed];
-          state.users.forEach(u=>{ if(u.team===removed){ u.team=''; u.fonction=''; } });
+          state.users.forEach(u=>{
+            if(u.team===removed){ u.team=''; u.fonction=''; }
+            (u.extraTeams||[]).includes(removed) && (u.extraTeams=u.extraTeams.filter(s=>s!==removed));
+            // Purge aussi l'historique d'affectations, sinon le service supprimé
+            // reviendrait au prochain chargement (resynchronisation automatique).
+            if(u.affectations) u.affectations.forEach(a=>{ if(a.team===removed){ a.team=''; a.fonction=''; } });
+          });
           await Promise.all([persistServices(), persistFonctions(), persistUsers()]);
           toast('Service supprimé.');
           render();
@@ -4479,6 +4774,7 @@ function render(){
     else renderCalendrierAdmin();
   } else {
     if(state.tab==='equipe') renderPlanningEquipe();
+    else if(state.tab==='individuel') renderPlanningIndividuel();
     else if(state.tab==='mesdesid') renderMesDesiderata();
     else if(state.tab==='echanges') renderMesEchanges();
     else if(state.tab==='annuel') renderMonPlanningAnnuel();
