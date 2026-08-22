@@ -99,7 +99,8 @@
   .bell-panel-head{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
   .bell-panel-head h4{margin:0;font-size:13.5px;font-weight:800;}
   .bell-panel-head button{background:none;border:none;color:var(--primary);font-size:12px;font-weight:700;}
-  .notif-item{padding:12px 16px;border-bottom:1px solid #F0F2F6;font-size:12.5px;}
+  .notif-item{padding:12px 16px;border-bottom:1px solid #F0F2F6;font-size:12.5px;cursor:pointer;transition:background .12s;}
+  .notif-item:hover{background:#F7F8FB;}
   .notif-item:last-child{border-bottom:none;}
   .notif-item.unread{background:var(--primary-light);}
   .notif-item .msg{font-weight:600;color:var(--ink);line-height:1.45;}
@@ -1549,6 +1550,17 @@ function myNotifs(){
 }
 function unreadCount(){ return myNotifs().filter(n=>!n.read).length; }
 
+async function dismissNotif(id){
+  if(!state.currentUser) return;
+  const mine=state.notifications[state.currentUser.username]||[];
+  state.notifications[state.currentUser.username]=mine.filter(n=>n.id!==id);
+  await persistNotifications();
+}
+async function dismissAllNotifs(){
+  if(!state.currentUser) return;
+  state.notifications[state.currentUser.username]=[];
+  await persistNotifications();
+}
 async function pushNotification(username, message){
   if(!state.notifications[username]) state.notifications[username]=[];
   const notif={id:Date.now()+'-'+Math.random().toString(36).slice(2,7), date:new Date().toISOString(), message, read:false};
@@ -1947,7 +1959,7 @@ function bellHtml(){
         ${notifs.length?'<button id="markAllRead">Tout marquer lu</button>':''}
       </div>
       ${notifs.length? notifs.map(n=>`
-        <div class="notif-item ${n.read?'':'unread'}">
+        <div class="notif-item ${n.read?'':'unread'}" data-notif-id="${n.id}" title="Cliquer pour marquer comme lue">
           <div class="msg">${n.message}</div>
           <div class="date">${timeAgo(n.date)}</div>
         </div>`).join('') : `<div class="notif-empty">Aucune notification pour le moment.</div>`}
@@ -1957,24 +1969,26 @@ function bellHtml(){
 function bindBell(){
   const btn=document.getElementById('bellBtn');
   if(!btn) return;
-  btn.addEventListener('click',async(e)=>{
+  btn.addEventListener('click',(e)=>{
     e.stopPropagation();
     state.bellOpen=!state.bellOpen;
     render();
-    if(state.bellOpen){
-      const mine=myNotifs();
-      if(mine.some(n=>!n.read)){
-        mine.forEach(n=>n.read=true);
-        await persistNotifications();
-      }
-    }
   });
   const markBtn=document.getElementById('markAllRead');
   if(markBtn) markBtn.addEventListener('click',async(e)=>{
     e.stopPropagation();
-    myNotifs().forEach(n=>n.read=true);
-    await persistNotifications();
+    // Une fois lues, les notifications disparaissent de la liste (elles ne
+    // sont pas juste grisées) — conformément au principe "après avoir lu,
+    // elles disparaissent".
+    await dismissAllNotifs();
     render();
+  });
+  document.querySelectorAll('.notif-item[data-notif-id]').forEach(item=>{
+    item.addEventListener('click', async(e)=>{
+      e.stopPropagation();
+      await dismissNotif(item.dataset.notifId);
+      render();
+    });
   });
   document.addEventListener('click',function closeBell(){ if(state.bellOpen){ state.bellOpen=false; render(); } document.removeEventListener('click',closeBell); }, {once:true});
 }
@@ -3338,10 +3352,21 @@ function renderMonPlanningAnnuel(){
       <span class="dot ${c.code==='VIDE'?'dot-outline':''}" style="background:${c.color}"></span>${c.code} · ${c.label}
     </div>`).join('');
 
-  const modeToggleHtml = genMode
+  const modeToggleHtml = !isFeatureEnabled('genAuto') ? '' : (genMode
     ? `<button class="btn-gen active" id="annModeToggle">🪄 Mode génération activé — cliquer pour repasser en peinture</button>`
-    : `<button class="btn-gen" id="annModeToggle">🪄 Passer en mode génération (choisir le jour de départ)</button>`;
+    : `<button class="btn-gen" id="annModeToggle">🪄 Passer en mode génération (choisir le jour de départ)</button>`);
 
+  const sideCodesHtml = genMode ? '' : `
+    <div class="sidebar-extra-title">Codes</div>
+    <div class="legend">${legendChipsHtml}</div>
+  `;
+  const sideActionsHtml = `
+    <div class="sidebar-extra-title" style="margin-top:16px;">Actions</div>
+    ${modeToggleHtml}
+    <button class="btn" style="width:100%;background:#FBEAE9;color:var(--danger);margin-bottom:8px;" id="annClearBtn">🗑 Vider mon brouillon ${year}</button>
+    ${isFeatureEnabled('desideratas', emp?emp.team:'') ? `<button class="btn" style="width:100%;background:var(--primary-light);color:var(--primary-dark);" id="annDesidBtn">🖐️ Demande de désidérata${state.annualSelectedDay?' — '+fmtDateKeyFr(state.annualSelectedDay):''}</button>` : ''}
+  `;
+  const mobile=isMobileDevice();
   const inner=`
     <div class="legend-hint annual-legend-hint">
       Le grand code affiché est votre <b>planning validé</b> par l'administration. Le petit badge en bas de case est <b>votre brouillon personnel</b> — il n'écrase jamais le planning officiel.
@@ -3352,17 +3377,18 @@ function renderMonPlanningAnnuel(){
       <button class="nav-arrow" id="annNextYear">›</button>
       <button class="today-btn" id="annTodayYear">Année en cours</button>
     </div>
-
+    ${mobile ? `
     <div style="margin-bottom:14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
       ${modeToggleHtml}
       <button class="btn" style="width:auto;background:#FBEAE9;color:var(--danger);" id="annClearBtn">🗑 Vider mon brouillon ${year}</button>
-      <button class="btn" style="width:auto;background:var(--primary-light);color:var(--primary-dark);" id="annDesidBtn">🖐️ Demande de désidérata${state.annualSelectedDay?' — '+fmtDateKeyFr(state.annualSelectedDay):''}</button>
+      ${isFeatureEnabled('desideratas', emp?emp.team:'') ? `<button class="btn" style="width:auto;background:var(--primary-light);color:var(--primary-dark);" id="annDesidBtn">🖐️ Demande de désidérata${state.annualSelectedDay?' — '+fmtDateKeyFr(state.annualSelectedDay):''}</button>` : ''}
     </div>
+    ` : ''}
     ${genMode
       ? `<div class="legend-hint gen-hint">🪄 Cliquez sur un jour du planning ci-dessous pour le choisir comme <b>jour de départ</b> de la génération automatique. Une fenêtre vous demandera si vous démarrez en M ou en S, et le cycle (4 jours travaillés / 4 jours OFF) se génère aussitôt jusqu'au 31 décembre ${year}.</div>`
-      : `<div class="legend-hint">Sélectionnez d'abord un <b>code</b> ci-dessous, puis cliquez sur les jours de votre brouillon pour les marquer (ex : poser un CP). Un second clic efface la marque.</div>`
+      : `<div class="legend-hint">Sélectionnez d'abord un <b>code</b> ${mobile?'ci-dessus':'dans le bandeau de gauche'}, puis cliquez sur les jours de votre brouillon pour les marquer (ex : poser un CP). Un second clic efface la marque.</div>`
     }
-    ${genMode ? '' : `<div class="legend">${legendChipsHtml}</div>`}
+    ${mobile && !genMode ? `<div class="legend">${legendChipsHtml}</div>` : ''}
 
     ${monthBlocks}
 
@@ -3397,13 +3423,15 @@ function renderMonPlanningAnnuel(){
       ${statChips}
     </div>
   `;
-  renderShell(inner,'Mon planning annuel');
+  renderShell(inner,'Mon planning annuel', mobile?null:(sideCodesHtml+sideActionsHtml));
 
   document.getElementById('annPrevYear').addEventListener('click',()=>{ state.annualYear--; render(); });
   document.getElementById('annNextYear').addEventListener('click',()=>{ state.annualYear++; render(); });
   document.getElementById('annTodayYear').addEventListener('click',()=>{ state.annualYear=new Date().getFullYear(); render(); });
-  document.getElementById('annModeToggle').addEventListener('click',()=>{ state.annualGenMode=!state.annualGenMode; render(); });
-  document.getElementById('annDesidBtn').addEventListener('click',()=>{
+  const annModeToggle=document.getElementById('annModeToggle');
+  if(annModeToggle) annModeToggle.addEventListener('click',()=>{ state.annualGenMode=!state.annualGenMode; render(); });
+  const annDesidBtn=document.getElementById('annDesidBtn');
+  if(annDesidBtn) annDesidBtn.addEventListener('click',()=>{
     const startDate=state.annualSelectedDay || ymdKey(year,0,1);
     state.modal={type:'new-desiderata', data:{dateStart:startDate, dateEnd:startDate, code:state.codes[0]?state.codes[0].code:'', comment:''}};
     render();
