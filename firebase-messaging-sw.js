@@ -67,7 +67,8 @@
 
   /* ---------- Shell ---------- */
   .shell{display:flex;min-height:100vh;}
-  .sidebar{width:222px;background:var(--primary-dark);color:#fff;display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;position:sticky;top:0;height:100vh;align-self:flex-start;}
+  .sidebar{width:222px;background:var(--primary-dark);color:#fff;display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;position:fixed;top:0;left:0;height:100vh;z-index:15;}
+  .main{flex:1;min-width:0;display:flex;flex-direction:column;margin-left:222px;}
   .sidebar-brand{padding:22px 20px 18px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,.08);}
   .sidebar-brand .mark{width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;}
   .sidebar-brand span{font-weight:800;font-size:15px;}
@@ -83,7 +84,6 @@
   .sidebar-foot button{width:100%;background:rgba(255,255,255,.08);color:#fff;border:none;padding:9px;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:8px;}
   .sidebar-foot button:hover{background:rgba(255,255,255,.16);}
 
-  .main{flex:1;min-width:0;display:flex;flex-direction:column;}
   .topbar{height:60px;flex-shrink:0;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 26px;position:relative;}
   .topbar h2{font-size:16.5px;margin:0;font-weight:800;}
   .content{flex:1;padding:24px 28px 40px;overflow:auto;}
@@ -504,6 +504,7 @@
   /* ---------- Responsive général (tous mobiles) ---------- */
   @media(max-width:760px){
     .sidebar{width:64px;}
+    .main{margin-left:64px;}
     .sidebar-nav button span.label, .sidebar-user, .sidebar-foot button span.label{display:none;}
     .sidebar-skyplanning{font-size:11px;letter-spacing:0;}
     .sidebar-nav button{justify-content:center;}
@@ -555,6 +556,7 @@
   /* ---------- Responsive : mobile paysage (maximiser l'espace vertical) ---------- */
   @media(max-width:900px) and (orientation:landscape) and (max-height:500px){
     .sidebar{width:52px;padding-top:0;}
+    .main{margin-left:52px;}
     .sidebar-brand{padding:10px 8px;}
     .sidebar-brand span, .sidebar-skyplanning{display:none;}
     .sidebar-nav{padding:6px;}
