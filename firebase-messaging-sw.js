@@ -73,12 +73,12 @@
   .sidebar-brand .mark{width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;}
   .sidebar-brand span{font-weight:800;font-size:15px;}
   .sidebar-skyplanning{font-family:'Manrope',sans-serif;font-weight:800;font-size:17px;letter-spacing:.01em;color:#E8342A;}
-  .sidebar-nav{padding:14px 10px;flex:1;}
+  .sidebar-nav{padding:14px 10px;}
   .sidebar-nav button{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:transparent;border:none;color:rgba(255,255,255,.72);padding:10px 12px;border-radius:8px;font-size:13.5px;font-weight:600;margin-bottom:3px;}
   .sidebar-nav button:hover{background:rgba(255,255,255,.06);color:#fff;}
   .sidebar-nav button.active{background:rgba(255,255,255,.14);color:#fff;}
   .nav-badge{margin-left:auto;background:var(--danger);color:#fff;font-size:10.5px;font-weight:800;min-width:18px;height:18px;border-radius:20px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px;}
-  .sidebar-foot{padding:14px;border-top:1px solid rgba(255,255,255,.08);}
+  .sidebar-foot{padding:14px;border-top:1px solid rgba(255,255,255,.08);margin-top:auto;}
   .sidebar-user{font-size:12.5px;color:rgba(255,255,255,.55);padding:0 6px 10px;}
   .sidebar-user b{color:#fff;display:block;font-size:13.5px;}
   .sidebar-foot button{width:100%;background:rgba(255,255,255,.08);color:#fff;border:none;padding:9px;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:8px;}
