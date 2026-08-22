@@ -528,6 +528,14 @@
     table.grid.readonly th.emp-col, table.grid.readonly td.emp-col{min-width:102px;font-size:9.5px;padding:7px 11px;}
     table.grid.readonly td.day-cell .code-badge{font-size:9.5px;}
     .month-nav .month-label{font-size:15px;min-width:auto;}
+    /* Boutons d'action (imprimer, désidérata, échange...) en ligne compacte
+       plutôt qu'en gros boutons empilés qui prennent tout l'écran. */
+    .mobile-action-row{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 12px;}
+    .mobile-action-row .btn, .mobile-action-row .icon-btn, .mobile-action-row .btn-gen{width:auto;flex:1 1 auto;min-width:0;padding:8px 8px;font-size:11.5px;margin:0;white-space:nowrap;}
+    /* Puces de codes plus compactes là où elles restent nécessaires (Mon
+       planning annuel / Planning individuel — sélection d'un code à poser) */
+    .legend .chip{padding:5px 10px 5px 7px;font-size:11px;gap:5px;}
+    .legend .chip .dot{width:13px;height:13px;}
     .legend{gap:6px;}
     .chip{font-size:11px;padding:5px 9px 5px 6px;}
     .modal{padding:20px;max-width:94vw;}
@@ -616,7 +624,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v1.4';
+const APP_VERSION = 'v1.6';
 const APP_VERSION_DATE = '22/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -2205,28 +2213,29 @@ function gridHtml({employees, readonly, alerts, changes, serviceContext}){
       if(cm && cm.public) marks+='<span class="cmt-dot pub" title="Commentaire"></span>';
       if(cm && cm.private) marks+='<span class="cmt-dot priv" title="Commentaire privé"></span>';
       const desid=desiderataForCell(emp.username,dateKeyStr);
-      let desidStripHtml='', cellClass='', desidTitle='', alertMarkHtml='';
+      let desidStripHtml='', cellClass='', alertMarkHtml='';
+      const titleParts=[];
       const dateKeyForAlert=ymdKey(y,m,d);
       if(!dayValid){
         if(serviceContext && emp.startDate && dateKeyStr>=emp.startDate && (!emp.endDate || dateKeyStr<=emp.endDate)){
           const aff=affectationAt(emp, dateKeyStr);
-          desidTitle+=' — Rattaché à un autre service ce jour-là'+(aff.team?' ('+aff.team+(aff.fonction?' · '+aff.fonction:'')+')':'');
+          titleParts.push('Rattaché à un autre service ce jour-là'+(aff.team?' ('+aff.team+(aff.fonction?' · '+aff.fonction:'')+')':''));
         } else {
-          desidTitle+=' — Hors période de validité du salarié';
+          titleParts.push('Hors période de validité du salarié');
         }
       }
       if(groupAlertDays.has(dateKeyForAlert+'|min') || groupAlertDays.has(dateKeyForAlert+'|max')){
         alertMarkHtml='<span class="alert-day-mark" title="Alerte effectif"></span>';
-        desidTitle+=(groupAlertDays.has(dateKeyForAlert+'|min')?' — ⚠ Effectif insuffisant ce jour':' — ⚠ Effectif en surnombre ce jour');
+        titleParts.push(groupAlertDays.has(dateKeyForAlert+'|min')?'⚠ Effectif insuffisant ce jour':'⚠ Effectif en surnombre ce jour');
       }
       if(state.genMode && state.genSelections[emp.username] && state.genSelections[emp.username].date===dateKeyForAlert){
         cellClass+=' gen-selected';
-        desidTitle+=' — ★ Dernier jour sélectionné pour la génération automatique';
+        titleParts.push('★ Dernier jour sélectionné pour la génération automatique');
       }
       if(desid){
         const dinfo=codeInfo(desid.code);
         const dLabel=dinfo?dinfo.label:desid.code;
-        desidTitle+=' — Désidérata ('+desidStatusLabel(desid.status)+') : '+dLabel+(desid.comment?' — "'+desid.comment.replace(/"/g,'')+'"':'');
+        titleParts.push('Désidérata ('+desidStatusLabel(desid.status)+') : '+dLabel+(desid.comment?' — "'+desid.comment.replace(/"/g,'')+'"':''));
         const stripStyle=dinfo?`background:${dinfo.color};color:${dinfo.text};`:'background:#EDEFF2;color:#7A8393;';
         const icon = desid.status==='pending' ? '⏳' : desid.status==='validated' ? '✓' : '✕';
         cellClass+=' desid-'+desid.status;
@@ -2246,9 +2255,12 @@ function gridHtml({employees, readonly, alerts, changes, serviceContext}){
             ? oldLbl+' → '+newLbl+' — validé le '+new Date(c.acknowledgedAt||c.changedAt).toLocaleDateString('fr-FR')+' par '+(c.acknowledgedBy||c.changedBy)
             : oldLbl+' → '+newLbl+' — en attente de validation (modifié le '+new Date(c.changedAt).toLocaleDateString('fr-FR')+' par '+c.changedBy+')';
         });
-        desidTitle+=' — ✎ '+tooltipLines.join(' | ');
+        // Chaque modification sur sa propre ligne, plutôt que toutes bout à bout
+        // sur une seule ligne — beaucoup plus lisible dès qu'il y en a plusieurs.
+        titleParts.push('✎ Modifications :\n'+tooltipLines.map(l=>'  '+l).join('\n'));
         changePastilleHtml=`<span class="change-pastille ${hasPending?'pending':'acked'}" title="${escapeHtml(tooltipLines.join('\n'))}"></span>`;
       }
+      const desidTitle = titleParts.length ? '\n'+titleParts.join('\n') : '';
       row+=`<td class="day-cell ${isWeekend?'weekend':''} ${cellClass}" data-day="${d}" data-user="${emp.username}" data-invalid="${!dayValid}" title="${(holidayName||'')+desidTitle}">
         ${marks}
         ${alertMarkHtml}
@@ -2653,11 +2665,10 @@ function renderPlanningEquipe(){
     ${monthNavHtml()}
     <div class="legend-hint" style="margin:6px 0 12px;">${myTeam?`Planning en lecture seule de l'équipe <b>${escapeHtml(myTeam)}</b>.`:`Aucune équipe ne vous a été assignée pour le moment — seul votre planning est affiché ici.`}</div>
     ${mobile ? `
-    ${legendHtml(false)}
-    <div style="margin:10px 0 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
-      ${(monthOk && myTeam && isFeatureEnabled('impression')) ? `<button class="icon-btn" id="peqPrintBtn">🖨️ Imprimer le planning</button>` : ''}
-      ${isFeatureEnabled('desideratas', myTeam) ? `<button class="btn btn-primary" id="peqNewDesidBtn" style="width:auto;margin:0;">🖐️ Demande de désidérata</button>` : ''}
-      ${isFeatureEnabled('echanges', myTeam) ? `<button class="btn btn-primary" id="peqNewExchBtn" style="width:auto;margin:0;">🔄 Proposer un échange</button>` : ''}
+    <div class="mobile-action-row">
+      ${(monthOk && myTeam && isFeatureEnabled('impression')) ? `<button class="icon-btn" id="peqPrintBtn">🖨️ Imprimer</button>` : ''}
+      ${isFeatureEnabled('desideratas', myTeam) ? `<button class="btn btn-primary" id="peqNewDesidBtn">🖐️ Désidérata</button>` : ''}
+      ${isFeatureEnabled('echanges', myTeam) ? `<button class="btn btn-primary" id="peqNewExchBtn">🔄 Échange</button>` : ''}
     </div>
     ` : ''}
     ${monthOk ? `
@@ -3384,10 +3395,10 @@ function renderMonPlanningAnnuel(){
       <button class="today-btn" id="annTodayYear">Année en cours</button>
     </div>
     ${mobile ? `
-    <div style="margin-bottom:14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+    <div class="mobile-action-row">
       ${modeToggleHtml}
-      <button class="btn" style="width:auto;background:#FBEAE9;color:var(--danger);" id="annClearBtn">🗑 Vider mon brouillon ${year}</button>
-      ${isFeatureEnabled('desideratas', emp?emp.team:'') ? `<button class="btn" style="width:auto;background:var(--primary-light);color:var(--primary-dark);" id="annDesidBtn">🖐️ Demande de désidérata${state.annualSelectedDay?' — '+fmtDateKeyFr(state.annualSelectedDay):''}</button>` : ''}
+      <button class="btn" style="background:#FBEAE9;color:var(--danger);" id="annClearBtn">🗑 Vider</button>
+      ${isFeatureEnabled('desideratas', emp?emp.team:'') ? `<button class="btn" style="background:var(--primary-light);color:var(--primary-dark);" id="annDesidBtn">🖐️ Désidérata</button>` : ''}
     </div>
     ` : ''}
     ${genMode
