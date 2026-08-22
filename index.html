@@ -624,7 +624,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v1.6';
+const APP_VERSION = 'v1.7';
 const APP_VERSION_DATE = '22/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -1636,8 +1636,11 @@ try{
   if('serviceWorker' in navigator && typeof Notification!=='undefined'){
     const fgMessaging = firebase.messaging();
     fgMessaging.onMessage(async(payload)=>{
-      const title = (payload.notification && payload.notification.title) || 'SKYPLANNING';
-      const body = (payload.notification && payload.notification.body) || '';
+      // La Cloud Function envoie un message "data" pur (pas "notification"),
+      // plus fiable pour réveiller Android en arrière-plan — donc on lit ici
+      // aussi payload.data, cohérent avec firebase-messaging-sw.js.
+      const title = (payload.data && payload.data.title) || 'SKYPLANNING';
+      const body = (payload.data && payload.data.body) || '';
       await showLocalNotification(title, body);
     });
   }
