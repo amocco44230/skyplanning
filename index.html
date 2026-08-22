@@ -157,7 +157,7 @@
   .grid-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:auto;box-shadow:0 1px 3px rgba(15,23,42,.05);}
   table.grid{border-collapse:separate;border-spacing:0;width:100%;}
   table.grid th, table.grid td{border-bottom:1px solid var(--border);border-right:1px solid var(--border);}
-  table.grid th.emp-col, table.grid td.emp-col{position:sticky;left:0;background:#fff;z-index:2;text-align:left;padding:9px 14px;font-size:13px;font-weight:700;min-width:150px;box-shadow:2px 0 4px rgba(15,23,42,.04);}
+  table.grid th.emp-col, table.grid td.emp-col{position:sticky;left:0;background:#fff;z-index:2;text-align:left;padding:9px 14px;font-size:12px;font-weight:700;min-width:150px;box-shadow:2px 0 4px rgba(15,23,42,.04);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   table.grid thead th{position:sticky;top:0;background:#fbfcfe;z-index:1;font-size:11px;color:var(--ink-soft);font-weight:700;padding:8px 2px;text-align:center;min-width:34px;}
   table.grid thead th.emp-col{z-index:3;background:#fbfcfe;}
   table.grid thead th .dow{display:block;font-size:9.5px;font-weight:600;color:#A7AFBC;text-transform:uppercase;}
@@ -189,12 +189,10 @@
   .emp-row:last-child{border-bottom:none;}
   .emp-avatar{width:36px;height:36px;border-radius:9px;background:var(--primary-light);color:var(--primary);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0;overflow:hidden;}
   .emp-avatar img{width:100%;height:100%;object-fit:cover;display:block;}
-  .emp-avatar-above{width:46px;height:46px;border-radius:10px;overflow:hidden;margin-bottom:6px;box-shadow:0 1px 3px rgba(20,25,40,.15);}
-  .emp-avatar-above img{width:100%;height:100%;object-fit:cover;display:block;}
   .grid-emp-avatar{display:inline-flex;width:18px;height:18px;border-radius:50%;overflow:hidden;vertical-align:middle;margin-right:6px;background:var(--primary-light);color:var(--primary);align-items:center;justify-content:center;font-size:8px;font-weight:800;flex-shrink:0;}
   .grid-emp-avatar img{width:100%;height:100%;object-fit:cover;display:block;}
   .emp-info{flex:1;min-width:0;}
-  .emp-info .name{font-weight:700;font-size:14px;}
+  .emp-info .name{font-weight:700;font-size:13px;}
   .emp-info .meta{font-size:12px;color:var(--ink-soft);margin-top:2px;}
   .badge-inactive{background:#FBEAE9;color:var(--danger);font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;margin-left:8px;}
   .badge-admin{background:var(--danger);color:#fff;font-size:11px;font-weight:800;padding:2px 9px;border-radius:20px;margin-left:8px;}
@@ -483,7 +481,7 @@
     .grid-card{-webkit-overflow-scrolling:touch;border-radius:10px;}
     table.grid td.day-cell{min-width:40px;height:44px;}
     table.grid th{min-width:40px;}
-    table.grid th.emp-col, table.grid td.emp-col{min-width:120px;font-size:12px;}
+    table.grid th.emp-col, table.grid td.emp-col{min-width:120px;font-size:11px;}
     /* Planning équipe (lecture seule) : pas besoin de grandes zones tactiles
        comme sur la grille éditable de l'admin — on réduit d'environ 15% pour
        que davantage de jours tiennent à l'écran sans trop de défilement. */
@@ -491,7 +489,7 @@
     table.grid.readonly th{min-width:34px;font-size:8px;}
     table.grid.readonly th .dow{font-size:8px;}
     table.grid.readonly th.week-head{font-size:9px;}
-    table.grid.readonly th.emp-col, table.grid.readonly td.emp-col{min-width:102px;font-size:10.5px;padding:7px 11px;}
+    table.grid.readonly th.emp-col, table.grid.readonly td.emp-col{min-width:102px;font-size:9.5px;padding:7px 11px;}
     table.grid.readonly td.day-cell .code-badge{font-size:9.5px;}
     .month-nav .month-label{font-size:15px;min-width:auto;}
     .legend{gap:6px;}
@@ -2273,6 +2271,9 @@ function renderPlanningIndividuel(){
 
   const inner=`
     ${monthNavHtml()}
+    <div style="display:flex;justify-content:flex-end;margin:-4px 0 4px;">
+      ${monthOk ? `<button class="icon-btn" id="indivPrintBtn">🖨️ Imprimer</button>` : ''}
+    </div>
     <div class="legend-hint" style="margin:8px 0 10px;">Le grand code est votre planning <b>officiel</b> validé par l'administration. Sélectionnez un code ci-dessous puis touchez un jour pour poser votre <b>brouillon personnel</b> (identique à « Mon planning annuel », mois par mois) — un second appui l'efface.</div>
     <div class="legend" style="margin-bottom:10px;">${legendChipsHtml}</div>
     <div style="display:flex;gap:8px;margin-bottom:6px;">
@@ -2283,6 +2284,8 @@ function renderPlanningIndividuel(){
   `;
   renderShell(inner,'Planning individuel');
   bindMonthNav(render);
+  const indivPrintBtn=document.getElementById('indivPrintBtn');
+  if(indivPrintBtn) indivPrintBtn.addEventListener('click', ()=>{ printMonthlyPlanning(myService, y, m); });
   document.querySelectorAll('.selectable-day').forEach(el=>{
     el.addEventListener('click', async()=>{
       if(!selectedCode){ toast('Sélectionnez d\u2019abord un code ci-dessus.', true); return; }
@@ -2537,6 +2540,12 @@ function printMonthlyPlanning(service, year, month){
     .sort((a,b)=> (a.fonction||'').localeCompare(b.fonction||'') || a.name.localeCompare(b.name));
   const nDays = daysInMonth(year,month);
   const holidays = frenchHolidays(year);
+  // Colonne salarié assez large pour afficher nom + prénom en entier, quitte à
+  // ce que la ligne passe sur 2 lignes pour les noms les plus longs — les
+  // colonnes des jours se répartissent le reste de la largeur de la page.
+  const empColPct = 10;
+  const dayColPct = (100-empColPct)/nDays;
+  const colgroup = `<col style="width:${empColPct}%">` + Array.from({length:nDays}).map(()=>`<col style="width:${dayColPct}%">`).join('');
 
   let daysHead='';
   for(let d=1; d<=nDays; d++){
@@ -2595,19 +2604,19 @@ function printMonthlyPlanning(service, year, month){
     --c-ADM:#9AA5B1; --t-ADM:#1E2433; --c-FOR:#4FADA3; --t-FOR:#FFFFFF; --c-CP:#6FCF7C; --t-CP:#173A1D;
     --c-CPA:#BBE7A9; --t-CPA:#1E3A22; --c-FER:#E8615A; --t-FER:#FFFFFF; --c-O:#EDEFF2; --t-O:#7A8393;
   }
-  @page{ size: A4 landscape; margin: 8mm; }
-  *{box-sizing:border-box;}
+  @page{ size: A4 landscape; margin: 7mm; }
+  *{box-sizing:border-box; -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; color-adjust:exact !important;}
   body{font-family:Arial,Helvetica,sans-serif;margin:0;color:#1E2433;}
   h1{font-size:14px;margin:0 0 2px;}
   .sub{font-size:10px;color:#626B7A;margin:0 0 8px;}
   table{width:100%;border-collapse:collapse;table-layout:fixed;}
-  th,td{border:1px solid #D8DCE4;text-align:center;padding:1px;font-size:7.5px;overflow:hidden;white-space:nowrap;}
-  th{background:#F3F5F8;font-weight:700;font-size:7px;padding:2px 1px;}
-  th .dow{display:block;font-weight:400;font-size:6px;color:#626B7A;}
+  th,td{border:1px solid #D8DCE4;text-align:center;padding:1px;font-size:7px;overflow:hidden;white-space:nowrap;}
+  th{background:#F3F5F8;font-weight:700;font-size:6.5px;padding:2px 1px;}
+  th .dow{display:block;font-weight:400;font-size:5.5px;color:#626B7A;}
   th.we{background:#E9EDF7;}
   th.ho{color:#D8544A;}
-  td.emp{text-align:left;font-weight:700;font-size:7.5px;padding:2px 4px;white-space:nowrap;max-width:0;width:90px;}
-  td.emp .fx{display:block;font-weight:400;font-size:6px;color:#626B7A;}
+  td.emp{text-align:left;font-weight:700;font-size:7px;padding:2px 4px;white-space:normal;overflow:visible;word-break:break-word;line-height:1.15;}
+  td.emp .fx{display:block;font-weight:400;font-size:5.8px;color:#626B7A;}
   td{position:relative;height:14px;}
   .pcmt{position:absolute;top:0;right:1px;color:#D8544A;font-weight:900;font-size:9px;}
   .pcmts{margin-top:8px;font-size:7.5px;line-height:1.6;}
@@ -2624,6 +2633,7 @@ function printMonthlyPlanning(service, year, month){
   <h1>Planning — ${escapeHtml(service)} — ${MOIS[month]} ${year}</h1>
   <div class="sub">${employees.length} salarié${employees.length>1?'s':''} · Édité le ${new Date().toLocaleDateString('fr-FR')}</div>
   <table>
+    <colgroup>${colgroup}</colgroup>
     <thead><tr><th></th>${daysHead}</tr></thead>
     <tbody>${rows}</tbody>
   </table>
@@ -3594,8 +3604,8 @@ function renderGestionSalaries(){
     return `
     <div class="emp-row" draggable="true" data-drag-user="${emp.username}">
       <span class="drag-handle" title="Glisser pour changer de service/fonction">⠿</span>
+      <div class="emp-avatar">${emp.photoUrl?`<img src="${emp.photoUrl}" alt="">`:initials(emp.name)}</div>
       <div class="emp-info">
-        ${emp.photoUrl ? `<div class="emp-avatar-above"><img src="${emp.photoUrl}" alt=""></div>` : ''}
         <div class="name">${escapeHtml(emp.name)} ${emp.role==='admin'?'<span class="badge-admin">'+(isSuperAdmin(emp)?'Grand admin':'Admin — '+escapeHtml((emp.adminServices||[]).join(', ')))+'</span>':''} ${inactive?'<span class="badge-inactive">Hors période</span>':''}</div>
         <div class="meta">Identifiant : ${emp.username} ${emp.email?'· '+escapeHtml(emp.email)+' ':''}${emp.phone?'· 📞 '+escapeHtml(emp.phone)+' ':''}${emp.team?'· Service : '+escapeHtml(emp.team)+' ':''}${(emp.extraTeams&&emp.extraTeams.length)?'· Aussi visible sur : '+escapeHtml(emp.extraTeams.join(', '))+' ':''}· Validité : ${fmtDate(emp.startDate)} → ${emp.endDate?fmtDate(emp.endDate):'toujours'}</div>
         ${nextAffect ? `<div class="meta" style="color:var(--primary);font-weight:700;">→ Changement programmé le ${fmtDate(nextAffect.startDate)} : ${escapeHtml(nextAffect.team||'Aucun service')}${nextAffect.fonction?' · '+escapeHtml(nextAffect.fonction):''}</div>` : ''}
