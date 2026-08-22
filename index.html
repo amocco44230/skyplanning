@@ -624,7 +624,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v1.7';
+const APP_VERSION = 'v1.8';
 const APP_VERSION_DATE = '22/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -1042,6 +1042,22 @@ async function persistServices(){ await storageSet('services', JSON.stringify(st
 async function persistDesideratas(){ await storageSet('desideratas', JSON.stringify(state.desideratas), true); }
 async function persistExchanges(){ await storageSet('exchanges', JSON.stringify(state.exchanges), true); }
 async function persistFeatureFlags(){ await storageSet('featureFlags', JSON.stringify(state.featureFlags), true); }
+async function resetTestData(){
+  state.desideratas=[];
+  state.exchanges=[];
+  state.schedules={};
+  state.employeeDrafts={};
+  state.postValidationChanges=[];
+  state.monthValidations={};
+  await Promise.all([
+    persistDesideratas(),
+    persistExchanges(),
+    persistSchedules(),
+    persistEmployeeDrafts(),
+    persistPostValidationChanges(),
+    persistMonthValidations(),
+  ]);
+}
 /**
  * Une fonctionnalité est active si : (1) elle n'est pas désactivée
  * globalement par le grand admin dans « Fonctionnalités », ET (2) — pour les
@@ -1858,8 +1874,34 @@ function renderFonctionnalites(){
         <tbody>${perServiceRows}</tbody>
       </table>` : `<div class="empty-state">Aucun service créé pour l'instant.</div>`}
     </div>
+    <div class="feat-card">
+      <h3>🛠️ Outils avancés</h3>
+      <div class="helper" style="margin:-4px 0 14px;">Réservé au grand admin — utile pour tester ou reprendre un planning existant.</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--border);">
+        <div>
+          <div style="font-weight:700;font-size:13.5px;">Vider les données de test</div>
+          <div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">Efface désidératas, échanges, planning de <b>tous les mois</b> et brouillons personnels de <b>tous les salariés</b>. Les comptes, services, codes et réglages ne sont pas touchés.</div>
+        </div>
+        <button class="icon-btn" id="resetTestDataBtn" style="color:var(--danger);border-color:var(--danger);flex-shrink:0;">🗑️ Vider</button>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;padding:12px 0 0;">
+        <div>
+          <div style="font-weight:700;font-size:13.5px;">Importer un planning (CSV/Excel)</div>
+          <div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">Reprendre un planning déjà existant (ex : un mois déjà fait sur Excel) sans tout ressaisir à la main.</div>
+        </div>
+        <button class="icon-btn" id="openImportBtn" style="flex-shrink:0;">📥 Importer</button>
+      </div>
+    </div>
   `;
   renderShell(inner,'Fonctionnalités');
+  document.getElementById('resetTestDataBtn').addEventListener('click',()=>{
+    state.modal={type:'confirm-reset-test-data'};
+    render();
+  });
+  document.getElementById('openImportBtn').addEventListener('click',()=>{
+    state.modal={type:'import-planning', data:{service:state.services[0]||'', year:new Date().getFullYear(), month:new Date().getMonth()+1, csv:'', result:null}};
+    render();
+  });
   document.querySelectorAll('[data-feat-global]').forEach(chk=>{
     chk.addEventListener('change', async()=>{
       state.featureFlags[chk.dataset.featGlobal]=chk.checked;
@@ -3785,6 +3827,54 @@ function renderCalendrierAdmin(){
 /* ============================================================
    ÉCRAN — GESTION DES SALARIÉS (admin)
    ============================================================ */
+/* ============================================================
+   IMPORT DE PLANNING (CSV/Excel) — grand admin
+   Format attendu (export Excel classique) :
+     Salarié,1,2,3,4,...,31
+     NING,CPA,CPA,CPA,,,S,S,...
+   1ʳᵉ colonne = nom exact du salarié (comme dans « Gestion des salariés »),
+   colonnes suivantes = un jour du mois choisi, case vide = pas de code ce
+   jour-là. Séparateur virgule OU point-virgule, accepté indifféremment.
+   ============================================================ */
+function parsePlanningCsv(csvText, year, month){
+  const lines=csvText.split(/\r?\n/).map(l=>l.trim()).filter(l=>l.length);
+  if(!lines.length) return {matched:[], unmatchedNames:[], unknownCodes:new Set(), totalCells:0, rows:[]};
+  const sep = lines[0].includes(';') ? ';' : ',';
+  const nDays=daysInMonth(year, month-1);
+  const knownCodes=new Set(state.codes.map(c=>c.code));
+  const unmatchedNames=[];
+  const unknownCodes=new Set();
+  const rows=[]; // {username, name, cells:[{day, code}]}
+  let totalCells=0;
+  // Ligne 1 = en-tête (numéros de jour) — on l'ignore, on se base sur la position de colonne.
+  for(let i=1;i<lines.length;i++){
+    const cols=lines[i].split(sep).map(c=>c.trim());
+    if(!cols.length || !cols[0]) continue;
+    const name=cols[0];
+    const user=state.users.find(u=>!isSuperAdmin(u) && u.name.toLowerCase()===name.toLowerCase());
+    if(!user){ unmatchedNames.push(name); continue; }
+    const cells=[];
+    for(let day=1; day<=nDays; day++){
+      const raw=(cols[day]||'').trim().toUpperCase();
+      if(!raw) continue;
+      if(!knownCodes.has(raw)){ unknownCodes.add(raw); continue; }
+      cells.push({day, code:raw});
+      totalCells++;
+    }
+    rows.push({username:user.username, name:user.name, cells});
+  }
+  return {rows, unmatchedNames, unknownCodes, totalCells};
+}
+async function applyPlanningImport(parsed, year, month){
+  parsed.rows.forEach(r=>{
+    if(!state.schedules[r.username]) state.schedules[r.username]={};
+    r.cells.forEach(({day,code})=>{
+      state.schedules[r.username][ymdKey(year, month-1, day)]=code;
+    });
+  });
+  await persistSchedules();
+}
+
 function getFonctionsForService(service){
   const key=service||'';
   return state.fonctions[key] || [];
@@ -5005,6 +5095,100 @@ function renderModal(){
       await createExchange(state.currentUser.username, state.currentUser.name, target, targetUser?targetUser.name:target, dateA, dateB, document.getElementById('nxComment').value.trim());
       toast('Demande d\u2019échange envoyée à l\u2019administrateur.');
       state.exchFilterStatus='all';
+      closeModal();
+    });
+  }
+
+  if(state.modal.type==='confirm-reset-test-data'){
+    overlay.innerHTML=`
+    <div class="modal" style="max-width:440px;">
+      <h3>⚠️ Vider les données de test ?</h3>
+      <p>Cette action efface <b>définitivement</b>, pour tous les salariés :</p>
+      <ul style="margin:0 0 14px;padding-left:20px;font-size:13.5px;color:var(--ink-soft);line-height:1.7;">
+        <li>Toutes les demandes de désidératas</li>
+        <li>Toutes les demandes d'échange de service</li>
+        <li>Le planning validé, <b>tous les mois confondus</b></li>
+        <li>Tous les brouillons personnels ("Mon planning annuel")</li>
+        <li>Les validations de mois et le journal des modifications</li>
+      </ul>
+      <p class="helper" style="margin:-6px 0 14px;">Les comptes, services, fonctions, codes et réglages de « Fonctionnalités » ne sont pas touchés.</p>
+      <div class="field"><label>Tapez <b>VIDER</b> pour confirmer</label><input id="resetConfirmInput" placeholder="VIDER"></div>
+      <div id="resetConfirmError" style="color:var(--danger);font-size:12.5px;font-weight:600;display:none;margin-bottom:6px;"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="resetCancel">Annuler</button>
+        <button class="btn btn-primary" id="resetConfirmBtn" style="background:var(--danger);">Tout vider</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('resetCancel').addEventListener('click',closeModal);
+    document.getElementById('resetConfirmBtn').addEventListener('click',async()=>{
+      const val=document.getElementById('resetConfirmInput').value.trim().toUpperCase();
+      if(val!=='VIDER'){
+        const err=document.getElementById('resetConfirmError');
+        err.textContent='Merci de taper exactement VIDER pour confirmer.';
+        err.style.display='block';
+        return;
+      }
+      await resetTestData();
+      toast('Données de test effacées.');
+      closeModal();
+    });
+  }
+
+  if(state.modal.type==='import-planning'){
+    const imp=state.modal.data;
+    const result=imp.result;
+    overlay.innerHTML=`
+    <div class="modal" style="max-width:560px;">
+      <h3>📥 Importer un planning</h3>
+      <div class="helper" style="margin:-6px 0 14px;">Format CSV/Excel : 1ʳᵉ colonne = nom exact du salarié (comme dans « Gestion des salariés »), colonnes suivantes = un jour du mois par colonne, séparateur virgule ou point-virgule. Case vide = pas de code ce jour-là.</div>
+      <div class="row2">
+        <div class="field"><label>Service concerné</label>
+          <select id="impService" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14.5px;background:#FBFCFE;">
+            ${state.services.map(s=>`<option value="${escapeHtml(s)}" ${imp.service===s?'selected':''}>${escapeHtml(s)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"><label>Mois</label>
+          <select id="impMonth" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14.5px;background:#FBFCFE;">
+            ${MOIS.map((mLabel,i)=>`<option value="${i+1}" ${imp.month===i+1?'selected':''}>${mLabel.charAt(0).toUpperCase()+mLabel.slice(1)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="field"><label>Année</label><input type="number" id="impYear" value="${imp.year}" style="max-width:140px;"></div>
+      <div class="field"><label>Contenu CSV</label>
+        <textarea id="impCsv" rows="8" placeholder="Salarié,1,2,3,4,5...
+NING,CPA,CPA,CPA,,,S,S
+Richard CORVISIER,M,M,S,S,,M,M" style="width:100%;border:1.5px solid var(--border);border-radius:9px;padding:10px 12px;font-family:monospace;font-size:12.5px;resize:vertical;">${escapeHtml(imp.csv)}</textarea>
+      </div>
+      ${result ? `
+      <div class="legend-hint" style="margin-bottom:14px;">
+        <b>${result.rows.length}</b> salarié(s) reconnu(s), <b>${result.totalCells}</b> case(s) prête(s) à importer sur ${MOIS[imp.month-1]} ${imp.year}.
+        ${result.unmatchedNames.length ? `<br>⚠ Nom(s) non reconnu(s), ignoré(s) : ${result.unmatchedNames.map(escapeHtml).join(', ')}` : ''}
+        ${result.unknownCodes.size ? `<br>⚠ Code(s) inconnu(s), ignoré(s) : ${[...result.unknownCodes].map(escapeHtml).join(', ')}` : ''}
+      </div>` : ''}
+      <div id="impError" style="color:var(--danger);font-size:12.5px;font-weight:600;display:none;margin-bottom:6px;"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="impCancel">Fermer</button>
+        <button class="btn btn-primary" id="impPreviewBtn">Analyser</button>
+        ${result && result.totalCells ? `<button class="btn btn-primary" id="impConfirmBtn" style="background:var(--ok);">Importer ${result.totalCells} case(s)</button>` : ''}
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('impCancel').addEventListener('click',closeModal);
+    document.getElementById('impService').addEventListener('change',e=>{ imp.service=e.target.value; });
+    document.getElementById('impMonth').addEventListener('change',e=>{ imp.month=Number(e.target.value); });
+    document.getElementById('impYear').addEventListener('change',e=>{ imp.year=Number(e.target.value); });
+    document.getElementById('impCsv').addEventListener('input',e=>{ imp.csv=e.target.value; });
+    document.getElementById('impPreviewBtn').addEventListener('click',()=>{
+      const err=document.getElementById('impError');
+      if(!imp.csv.trim()){ err.textContent='Collez d\u2019abord le contenu CSV.'; err.style.display='block'; return; }
+      imp.result=parsePlanningCsv(imp.csv, imp.year, imp.month);
+      render();
+    });
+    const impConfirmBtn=document.getElementById('impConfirmBtn');
+    if(impConfirmBtn) impConfirmBtn.addEventListener('click',async()=>{
+      await applyPlanningImport(imp.result, imp.year, imp.month);
+      toast(imp.result.totalCells+' case(s) importée(s) pour '+MOIS[imp.month-1]+' '+imp.year+'.');
       closeModal();
     });
   }
