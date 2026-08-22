@@ -23,13 +23,19 @@ const messaging = firebase.messaging();
 
 // Affiche la notification système quand un push FCM arrive alors que
 // l'appli n'est PAS au premier plan (onglet fermé, téléphone verrouillé...).
+// On lit payload.data (et non payload.notification) : côté serveur, la
+// Cloud Function envoie désormais un message "data" pur, plus fiable pour
+// réveiller Chrome sur Android quand le système applique une gestion
+// d'énergie agressive (Samsung/Xiaomi/Huawei) — voir functions/index.js.
 messaging.onBackgroundMessage((payload) => {
-  const title = (payload.notification && payload.notification.title) || "SKYPLANNING";
-  const body = (payload.notification && payload.notification.body) || "";
+  const title = (payload.data && payload.data.title) || "SKYPLANNING";
+  const body = (payload.data && payload.data.body) || "Nouvelle notification disponible.";
+  const url = (payload.data && payload.data.url) || "/";
   self.registration.showNotification(title, {
     body,
     icon: "/icon-192.png",
     badge: "/icon-192.png",
+    data: { url },
   });
 });
 
@@ -37,12 +43,13 @@ messaging.onBackgroundMessage((payload) => {
 // un nouvel onglet si aucun n'est déjà ouvert).
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || "/";
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
         if ("focus" in client) return client.focus();
       }
-      if (clients.openWindow) return clients.openWindow("/");
+      if (clients.openWindow) return clients.openWindow(url);
     })
   );
 });
