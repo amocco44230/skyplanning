@@ -67,7 +67,8 @@
 
   /* ---------- Shell ---------- */
   .shell{display:flex;min-height:100vh;}
-  .sidebar{width:222px;background:var(--primary-dark);color:#fff;display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;position:fixed;top:0;left:0;height:100vh;z-index:15;}
+  .sidebar{width:222px;background:var(--primary-dark);color:#fff;display:flex;flex-direction:column;flex-shrink:0;position:fixed;top:0;left:0;height:100vh;z-index:15;}
+  .sidebar-scroll{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;}
   .main{flex:1;min-width:0;display:flex;flex-direction:column;margin-left:222px;}
   .sidebar-brand{padding:22px 20px 18px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,.08);}
   .sidebar-brand .mark{width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;}
@@ -614,7 +615,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v1.2';
+const APP_VERSION = 'v1.3';
 const APP_VERSION_DATE = '22/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -2019,6 +2020,7 @@ function renderShell(innerHtml,title,sidebarExtraHtml){
   <div class="shell">
     <div class="sidebar">
       <div class="sidebar-brand"><span class="sidebar-skyplanning">SKYPLANNING</span></div>
+      <div class="sidebar-scroll">
       <div class="sidebar-nav">
         ${items.map(it=>{
           const badge = it.id==='desideratas'
@@ -2047,6 +2049,7 @@ function renderShell(innerHtml,title,sidebarExtraHtml){
         }).join('')}
       </div>
       ${sidebarExtraHtml ? `<div class="sidebar-extra">${sidebarExtraHtml}</div>` : ''}
+      </div>
       <div class="sidebar-foot">
         <div class="sidebar-user"><b>${state.currentUser.name}</b>${state.currentUser.role==='admin'?(isSuperAdmin(state.currentUser)?'Administrateur':'Admin · '+(getAdminScope(state.currentUser)||[]).join(', ')):'Salarié·e'}</div>
         <button id="btnAccount">⚙ <span class="label">Mon compte</span></button>
