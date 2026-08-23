@@ -368,12 +368,19 @@
   .peq-week-unavailable{grid-column:2 / -1;font-size:10.5px;font-style:italic;color:var(--ink-soft);background:#F4F5F7;border-radius:6px;padding:7px 8px;text-align:center;}
   /* ---------- Grille restreinte (consultation d'un autre service) ---------- */
   .restricted-grid-card{padding:4px;}
-  .restricted-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border);}
+  .restricted-scroll{overflow-x:auto;}
+  .restricted-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border);min-width:max-content;}
   .restricted-row:last-child{border-bottom:none;}
-  .restricted-name{width:150px;flex-shrink:0;font-weight:700;font-size:13px;}
-  .restricted-cells{flex:1;display:flex;flex-wrap:wrap;gap:2px;overflow-x:auto;}
-  .restricted-cell{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:26px;border-radius:5px;background:#F4F5F7;color:#B7BEC9;font-size:9px;font-weight:800;flex-shrink:0;}
+  .restricted-name{width:150px;flex-shrink:0;font-weight:700;font-size:13px;position:sticky;left:0;background:var(--surface);z-index:1;}
+  .restricted-cells{flex:1;display:flex;flex-wrap:nowrap;gap:2px;}
+  .restricted-cell{display:inline-flex;align-items:center;justify-content:center;min-width:26px;width:26px;height:26px;border-radius:5px;background:#F4F5F7;color:#B7BEC9;font-size:9px;font-weight:800;flex-shrink:0;}
   .restricted-unavailable{flex:1;font-size:12.5px;font-style:italic;color:var(--ink-soft);}
+  .restricted-head-row{padding:4px 10px;border-bottom:1.5px solid var(--border);}
+  .restricted-head-cells{gap:2px;}
+  .restricted-week-group{flex-shrink:0;text-align:center;font-size:9.5px;font-weight:800;color:var(--primary-dark);background:#EAF0F6;border-radius:5px;padding:3px 0;}
+  .restricted-daylabel{background:transparent;color:var(--ink-soft);font-size:9px;font-weight:700;}
+  .restricted-daylabel.weekend{color:#8A6FE0;}
+  .restricted-daylabel.holiday{color:var(--danger);}
   .indiv-today-card{border-radius:14px;padding:14px 16px;margin-top:4px;box-shadow:0 2px 6px rgba(0,0,0,.08);}
   .indiv-today-card-label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;opacity:.75;margin-bottom:3px;}
   .indiv-today-card-value{font-size:14px;font-weight:800;}
@@ -725,7 +732,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v4.9';
+const APP_VERSION = 'v5.1';
 const APP_VERSION_DATE = '23/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -895,6 +902,7 @@ let state={
   annualGenMode:false,
   indivSelectedCode:null,
   peqWeekDate:new Date(),
+  previousTab:null,
   peqMobileView:'week',
   employeeDrafts:{},
   desidFilterStatus:'pending',
@@ -3343,6 +3351,30 @@ function teamWeekViewHtml(teamEmployees, weekDates, myTeam, todayKeyStr, restric
  */
 function restrictedTeamGridHtml(employees, viewedTeam, viewerTeam, y, m){
   const nDays=daysInMonth(y,m);
+  const holidays=frenchHolidays(y);
+  // En-tête semaines (regroupées, comme le planning standard) + jours,
+  // pour se repérer — ça manquait complètement avant.
+  let weekHeadHtml='<div class="restricted-name"></div><div class="restricted-cells restricted-head-cells">';
+  let dd=1;
+  while(dd<=nDays){
+    const wn=isoWeekNumber(new Date(y,m,dd));
+    let span=1;
+    while(dd+span<=nDays && isoWeekNumber(new Date(y,m,dd+span))===wn) span++;
+    weekHeadHtml+=`<span class="restricted-week-group" style="flex-basis:${span*28-2}px;">S${wn}</span>`;
+    dd+=span;
+  }
+  weekHeadHtml+='</div>';
+  let dayHeadHtml='<div class="restricted-name"></div><div class="restricted-cells restricted-head-cells">';
+  for(let d=1; d<=nDays; d++){
+    const date=new Date(y,m,d);
+    const dow=date.getDay();
+    const isWeekend=dow===0||dow===6;
+    const isHol=!!holidays[dkey(date)];
+    dayHeadHtml+=`<span class="restricted-cell restricted-daylabel ${isWeekend?'weekend':''} ${isHol?'holiday':''}">${d}</span>`;
+  }
+  dayHeadHtml+='</div>';
+  const headHtml=`<div class="restricted-row restricted-head-row">${weekHeadHtml}</div><div class="restricted-row restricted-head-row">${dayHeadHtml}</div>`;
+
   const groups=groupByFonction(employees, viewedTeam, false);
   const rows=groups.map(g=>{
     const label = g.fonction==='__none__' ? 'Sans fonction' : (g.fonction||'');
@@ -3361,7 +3393,7 @@ function restrictedTeamGridHtml(employees, viewedTeam, viewerTeam, y, m){
     }).join('');
     return `${label?`<div class="peq-week-fonction-label">${escapeHtml(label)}</div>`:''}${empRows}`;
   }).join('');
-  return `<div class="grid-card restricted-grid-card">${rows||'<div class="empty-state">Aucun salarié dans ce service.</div>'}</div>`;
+  return `<div class="grid-card restricted-grid-card"><div class="restricted-scroll">${employees.length?headHtml:''}${rows||'<div class="empty-state">Aucun salarié dans ce service.</div>'}</div></div>`;
 }
 
 function renderPlanningEquipe(){
@@ -6017,6 +6049,17 @@ function render(){
     const allowed=navItems().map(it=>it.id);
     if(!allowed.includes(state.tab)) state.tab=allowed[0];
   }
+  // Si on VIENT d'arriver sur ces écrans (pas juste un re-rendu pendant qu'on
+  // y est déjà), on repart sur le service de la personne par défaut plutôt
+  // que de se souvenir du dernier service consulté — sauf pour le grand
+  // admin, qui garde sa dernière sélection / vue « Tous les services ».
+  if(state.previousTab!=='equipe' && state.tab==='equipe'){
+    state.peqViewedService=null;
+  }
+  if(state.previousTab!=='calendrier' && state.tab==='calendrier' && state.currentUser.role==='admin' && !isSuperAdmin(state.currentUser)){
+    state.calendarServiceFilter=undefined;
+  }
+  state.previousTab=state.tab;
   if(state.currentUser.role==='admin'){
     if(state.tab==='salaries') renderGestionSalaries();
     else if(state.tab==='codes') renderGestionCodes();
