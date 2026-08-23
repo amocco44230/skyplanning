@@ -213,6 +213,7 @@
   table.grid td.day-cell .code-badge{flex:1;}
   table.grid td.day-cell.weekend{background:#FAF9FD;}
   table.grid td.day-cell .code-badge{display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:10.5px;font-weight:800;}
+  table.grid td.day-cell .code-badge[data-longcode]{font-size:7.5px;letter-spacing:-.02em;}
   table.grid td.day-cell:hover .code-badge{outline:2px solid var(--primary);outline-offset:-2px;}
   table.grid td.day-cell.painted{animation:flash .28s ease;}
   table.grid td.day-cell.invalid-day{background:repeating-linear-gradient(45deg,#EDEFF2,#EDEFF2 6px,#E2E5EB 6px,#E2E5EB 12px);cursor:not-allowed;}
@@ -347,8 +348,12 @@
   .indiv-day-tile{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#F4F5F7;color:#AEB4BE;border-radius:11px;border:2px solid transparent;gap:1px;}
   .indiv-day-tile .indiv-day-num{font-size:13.5px;font-weight:800;line-height:1;}
   .indiv-day-tile .indiv-day-code{font-size:8px;font-weight:800;opacity:.9;text-transform:uppercase;letter-spacing:.02em;}
+  .indiv-day-tile .indiv-day-code[data-longcode]{font-size:6px;letter-spacing:-.02em;}
   .indiv-day-tile.today{border-color:var(--primary-dark);box-shadow:0 0 0 2px rgba(32,43,73,.18);}
   .indiv-today-dot{position:absolute;top:4px;right:4px;width:5px;height:5px;border-radius:50%;background:currentColor;}
+  .indiv-day-tile .cmt-dot{top:3px;}
+  .indiv-day-tile .cmt-dot.pub{left:3px;right:auto;}
+  .indiv-day-tile .cmt-dot.priv{left:11px;right:auto;}
   .indiv-day-tile .d-fer{position:absolute;top:2px;left:3px;font-size:6px;font-weight:900;padding:0;background:none;color:inherit;opacity:.85;}
   .indiv-day-tile .indiv-draft{position:absolute;bottom:1px;right:1px;width:15px;height:15px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:6.5px;font-weight:900;box-shadow:0 0 0 1.5px #fff,0 1px 2px rgba(0,0,0,.25);margin:0;padding:0;}
   .indiv-top-row{display:flex;align-items:center;gap:6px;margin-bottom:2px;}
@@ -725,6 +730,10 @@ const DEFAULT_CODES = [
   {code:'CPA', label:'CPA',            color:'var(--c-CPA)', text:'var(--t-CPA)', startTime:'', endTime:'', description:'Congé payé anticipé', isWork:false},
   {code:'FER', label:'Férié',          color:'var(--c-FER)', text:'var(--t-FER)', startTime:'', endTime:'', description:'Jour férié', isWork:false},
   {code:'O',   label:'Repos',          color:'var(--c-O)',   text:'var(--t-O)',   startTime:'', endTime:'', description:'Jour de repos', isWork:false},
+  {code:'M+CP',  label:'½ Matin + ½ CP',  color:'linear-gradient(135deg, var(--c-M) 50%, var(--c-CP) 50%)',  text:'var(--t-M)', startTime:'05:00', endTime:'09:45', description:'Demi-journée travaillée le matin + demi-journée de congé payé', isWork:true, isHalfDay:true},
+  {code:'S+CP',  label:'½ Soir + ½ CP',   color:'linear-gradient(135deg, var(--c-S) 50%, var(--c-CP) 50%)',  text:'var(--t-S)', startTime:'19:15', endTime:'23:30', description:'Demi-journée travaillée le soir + demi-journée de congé payé', isWork:true, isHalfDay:true},
+  {code:'M+CPA', label:'½ Matin + ½ CPA', color:'linear-gradient(135deg, var(--c-M) 50%, var(--c-CPA) 50%)', text:'var(--t-M)', startTime:'05:00', endTime:'09:45', description:'Demi-journée travaillée le matin + demi-journée de congé payé anticipé', isWork:true, isHalfDay:true},
+  {code:'S+CPA', label:'½ Soir + ½ CPA',  color:'linear-gradient(135deg, var(--c-S) 50%, var(--c-CPA) 50%)', text:'var(--t-S)', startTime:'19:15', endTime:'23:30', description:'Demi-journée travaillée le soir + demi-journée de congé payé anticipé', isWork:true, isHalfDay:true},
   {code:'VIDE',label:'Case vide',      color:'#FFFFFF',      text:'#B0B4BC',      startTime:'', endTime:'', description:'Efface toute activité — case complètement blanche', isWork:false},
 ];
 const DOW = ['L','M','M','J','V','S','D'];
@@ -1122,6 +1131,22 @@ async function loadAll(){
     }
   }catch(e){ /* import silencieux */ }
 
+  // Ajout ponctuel : codes demi-journée travaillée + demi-journée CP/CPA (M+CP, S+CP, M+CPA, S+CPA)
+  try{
+    const halfDayFlag=await storageGet('importHalfDayCpCodesDone', true);
+    if(!halfDayFlag){
+      let changed=false;
+      DEFAULT_CODES.filter(c=>c.isHalfDay).forEach(dc=>{
+        if(!state.codes.some(c=>c.code===dc.code)){
+          state.codes.push(JSON.parse(JSON.stringify(dc)));
+          changed=true;
+        }
+      });
+      if(changed) await persistCodes();
+      await storageSet('importHalfDayCpCodesDone', 'true', true);
+    }
+  }catch(e){ /* import silencieux */ }
+
   // Ajout ponctuel : génération des e-mails par défaut pour les salariés qui n'en ont pas
   try{
     const emailFlag=await storageGet('importEmailsDone', true);
@@ -1409,7 +1434,12 @@ async function clearOwnYearPlanning(username, year){
 function countCodeUsedInYear(username, year, code){
   const dr=state.employeeDrafts[username]||{};
   let count=0;
-  Object.keys(dr).forEach(k=>{ if(k.startsWith(year+'-') && dr[k]===code) count++; });
+  Object.keys(dr).forEach(k=>{
+    if(!k.startsWith(year+'-')) return;
+    const v=dr[k];
+    if(v===code) count+=1;
+    else if((code==='CP'||code==='CPA') && (v==='M+'+code || v==='S+'+code)) count+=0.5;
+  });
   return count;
 }
 function cpAllowanceKey(username,year){ return username+':'+year; }
@@ -1426,18 +1456,24 @@ async function paintOwnDay(username, dateKey, code){
 async function paintOwnDayWithQuotaCheck(username, dateKey, code) {
   const year = new Date(dateKey + 'T00:00:00').getFullYear();
 
-  // Si le code appliqué est un congé payé (CP ou CPA)
-  if (code === 'CP' || code === 'CPA') {
+  // Code plein (CP/CPA) ou demi-journée (M+CP, S+CP, M+CPA, S+CPA) : dans les deux
+  // cas on vérifie le quota du congé concerné, en comptant 1 jour ou 0,5 jour.
+  const isFullLeave = (code==='CP' || code==='CPA');
+  const isHalfLeave = (code==='M+CP' || code==='S+CP') ? 'CP' : (code==='M+CPA' || code==='S+CPA') ? 'CPA' : null;
+  const leaveCode = isFullLeave ? code : isHalfLeave;
+  const increment = isFullLeave ? 1 : (isHalfLeave ? 0.5 : 0);
+
+  if (leaveCode) {
     const allowanceKey = cpAllowanceKey(username, year);
     const maxAllowed = state.cpAllowances[allowanceKey] || 0;
 
     // Compte les jours déjà posés sur l'année pour ce code dans le brouillon
-    const currentUsed = countCodeUsedInYear(username, year, code);
+    const currentUsed = countCodeUsedInYear(username, year, leaveCode);
     const existingCodeOnDay = getDraftCode(username, year, new Date(dateKey).getMonth(), new Date(dateKey).getDate());
 
     // Si la case n'avait pas déjà ce code et qu'on dépasse le quota accordé
-    if (existingCodeOnDay !== code && (currentUsed + 1) > maxAllowed) {
-      toast(`Quota dépassé ! Vous avez un droit de ${maxAllowed} jour(s) de ${code} pour ${year}.`, true);
+    if (existingCodeOnDay !== code && (currentUsed + increment) > maxAllowed) {
+      toast(`Quota dépassé ! Vous avez un droit de ${maxAllowed} jour(s) de ${leaveCode} pour ${year}.`, true);
       return false;
     }
   }
@@ -2858,7 +2894,7 @@ function gridHtml({employees, readonly, alerts, changes, serviceContext}){
         ${changePastilleHtml}
         ${dayValid?holidayMarkHtml:''}
         <div class="day-cell-inner">
-          <div class="code-badge" style="${dayValid?style:''}">${dayValid?(code||''):''}</div>
+          <div class="code-badge" ${dayValid && code && code.length>3 ? 'data-longcode="1"' : ''} style="${dayValid?style:''}">${dayValid?(code||''):''}</div>
           ${dayValid?desidStripHtml:''}
         </div>
       </td>`;
@@ -3041,10 +3077,15 @@ function renderPlanningIndividuel(){
     const draftInfo=draftCode?codeInfo(draftCode):null;
     const dayValid = meRec ? isDayWithinValidity(meRec, dateKeyStr) : true;
     const cellBg = info ? `background:${info.color};color:${info.text};` : '';
+    const cm=state.comments[commentKey(username,y,m,d)];
+    let cmtMarks='';
+    if(cm && cm.public) cmtMarks+=`<span class="cmt-dot pub" title="💬 ${escapeHtml(cm.public)}"></span>`;
+    if(cm && cm.private) cmtMarks+=`<span class="cmt-dot priv" title="🔒 ${escapeHtml(cm.private)}"></span>`;
     return `<div class="cal-day cal-day-compact indiv-day-tile ${isToday?'today':''} ${dayValid?'selectable-day':''}" ${dayValid?`data-date="${dateKeyStr}"`:''} style="${cellBg}" title="${dateKeyStr}${draftCode?' — brouillon : '+draftCode:''}">
       ${isToday?'<span class="indiv-today-dot"></span>':''}
+      ${cmtMarks}
       <span class="indiv-day-num">${d}</span>
-      ${officialCode?`<span class="indiv-day-code">${officialCode}</span>`:''}
+      ${officialCode?`<span class="indiv-day-code" ${officialCode.length>3?'data-longcode="1"':''}>${officialCode}</span>`:''}
       ${holidayName?'<span class="d-fer" title="'+escapeHtml(holidayName)+'">FÉR</span>':''}
       ${draftCode?`<span class="indiv-draft" style="background:${draftInfo?draftInfo.color:'#DDD'};color:${draftInfo?draftInfo.text:'#333'};" title="Brouillon : ${escapeHtml(draftCode)}">${draftCode}</span>`:''}
     </div>`;
