@@ -161,7 +161,7 @@
   .sidebar-extra .icon-btn{background:transparent;color:#fff;border:1.5px solid rgba(255,255,255,.35);}
   .sidebar-extra .icon-btn:hover{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.5);color:#fff;}
   .sidebar-extra .helper{color:rgba(255,255,255,.55);}
-  .svc-select-hint{background:rgba(245,166,35,.15);border:1.5px solid rgba(245,166,35,.4);color:#F5A623;font-size:12px;font-weight:700;padding:10px 12px;border-radius:10px;line-height:1.4;}
+  .svc-select-hint{background:rgba(245,166,35,.15);border:1.5px solid rgba(245,166,35,.4);color:#F5A623;font-size:12px;font-weight:700;padding:10px 12px;border-radius:10px;line-height:1.4;margin-bottom:16px;}
   .sidebar-extra .field{margin-bottom:14px;}
   .sidebar-extra .field label{color:rgba(255,255,255,.55);font-size:10px;text-transform:uppercase;letter-spacing:.03em;}
   .chip{display:flex;align-items:center;gap:7px;border-radius:20px;padding:6px 12px 6px 8px;border:2px solid transparent;font-size:12.5px;font-weight:700;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.06);}
@@ -731,7 +731,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v5.3';
+const APP_VERSION = 'v5.6';
 const APP_VERSION_DATE = '23/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -3507,12 +3507,13 @@ function renderPlanningEquipe(){
     ${weekMode ? `
     <div id="peqSwipeArea">${teamEmployees.length ? teamWeekViewHtml(teamEmployees, weekDates, viewedTeam, todayKeyStr, !isOwnTeam, myTeam) : `<div class="empty-state">Aucun salarié dans ce service.</div>`}</div>
     <button class="icon-btn" id="peqMonthViewBtn" style="width:100%;margin-top:12px;">📅 Vue mois complet</button>
+    ${isOwnTeam && hasCommentsForMonth(refYear,refMonth,teamUsernames) ? commentsRecapHtml(refYear,refMonth,teamUsernames,false) : ''}
     ` : (monthOk ? `
     <div id="peqSwipeArea">${isOwnTeam
         ? gridHtml({employees:teamEmployees, readonly:true, alerts:[], serviceContext: viewedTeam||null})
         : restrictedTeamGridHtml(teamEmployees, viewedTeam, myTeam, y, m)}</div>
     ${mobile ? `<button class="icon-btn" id="peqWeekViewBtn" style="width:100%;margin-top:12px;">🗓️ Vue semaine</button>` : ''}
-    ${isOwnTeam ? commentsRecapHtml(y,m,teamUsernames,false) : ''}
+    ${isOwnTeam && hasCommentsForMonth(y,m,teamUsernames) ? commentsRecapHtml(y,m,teamUsernames,false) : ''}
     ` : `
     <div class="not-validated-card">
       <div class="not-validated-icon">🔒</div>
@@ -4527,8 +4528,12 @@ function renderCalendrierAdmin(){
       .map(u=>u.team)
   )] : [];
   if(state.calendarServiceFilter===undefined || (scope && !scope.includes(state.calendarServiceFilter) && !foreignAuthorizedServices.includes(state.calendarServiceFilter) && state.calendarServiceFilter!=='ALL')){
-    // Le grand admin doit voir tous les services par défaut sur son calendrier.
-    state.calendarServiceFilter = scope ? (availableServices.includes('CCO') ? 'CCO' : (availableServices[0] || 'ALL')) : 'ALL';
+    // Grand admin comme admin scopé : on démarre sur CCO par défaut (ou le
+    // premier service disponible) plutôt que sur « Tous les services », qui
+    // n'affiche que le message « sélectionnez un service » sans rien
+    // d'exploitable directement. Le grand admin peut toujours repasser sur
+    // « Tous les services » manuellement via le menu déroulant.
+    state.calendarServiceFilter = availableServices.includes('CCO') ? 'CCO' : (availableServices[0] || 'ALL');
   }
   const svcFilter=state.calendarServiceFilter;
   const isForeignView = scope && foreignAuthorizedServices.includes(svcFilter);
