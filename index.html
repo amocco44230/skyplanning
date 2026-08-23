@@ -132,14 +132,25 @@
   .sidebar-extra .legend .chip.active{border-color:#fff;background:rgba(255,255,255,.18);}
   .sidebar-extra .legend .chip .dot.dot-outline{border-color:rgba(255,255,255,.5);}
   .sidebar-extra .legend .chip.add-code{background:transparent;border:1.5px dashed rgba(255,255,255,.3);color:rgba(255,255,255,.7);justify-content:center;grid-column:1 / -1;}
-  .sidebar-extra .btn-validate, .sidebar-extra .btn-gen, .sidebar-extra .icon-btn, .sidebar-extra .btn-primary{width:100%;text-align:center;margin-bottom:5px;font-size:10.5px;padding:6px 6px;white-space:normal;line-height:1.25;}
+  /* ---------- Badges de codes « couleur pleine » (bandeau bleu) ---------- */
+  /* Sélecteur volontairement très spécifique pour l'emporter sur la règle
+     générique .sidebar-extra .legend .chip ci-dessus (chips en liste). */
+  .sidebar-extra .legend.sidebar-code-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
+  .sidebar-extra .legend.sidebar-code-grid .chip.sidebar-code-chip{display:flex;align-items:center;justify-content:center;text-align:center;border-radius:9px;padding:9px 4px;font-size:11.5px;font-weight:800;letter-spacing:.01em;box-shadow:0 1px 3px rgba(0,0,0,.18);border:2px solid transparent;min-height:34px;white-space:normal;overflow:visible;}
+  .sidebar-extra .legend.sidebar-code-grid .chip.sidebar-code-chip.selectable{cursor:pointer;}
+  .sidebar-extra .legend.sidebar-code-grid .chip.sidebar-code-chip.selectable:hover{filter:brightness(1.08);transform:translateY(-1px);}
+  .sidebar-extra .legend.sidebar-code-grid .chip.sidebar-code-chip.active{border-color:#fff;box-shadow:0 0 0 2px rgba(255,255,255,.35);}
+  .sidebar-extra .legend.sidebar-code-grid .chip.sidebar-code-chip.add-code{background:rgba(255,255,255,.06) !important;border:1.5px dashed rgba(255,255,255,.35);color:rgba(255,255,255,.75) !important;grid-column:auto;}
+  .sidebar-extra .btn-validate, .sidebar-extra .btn-gen, .sidebar-extra .icon-btn, .sidebar-extra .btn-primary{width:100%;text-align:center;margin-bottom:7px;font-size:11.5px;padding:11px 10px;white-space:normal;line-height:1.3;border-radius:20px;}
   .sidebar-extra .btn-validate:last-child, .sidebar-extra .btn-gen:last-child, .sidebar-extra .icon-btn:last-child, .sidebar-extra .btn-primary:last-child{margin-bottom:0;}
+  .sidebar-extra .btn-validate{background:#F5A623;border:none;}
+  .sidebar-extra .btn-validate.validated{background:var(--ok);}
   .sidebar-extra .btn-primary{background:#fff;color:var(--primary-dark);margin-top:0;}
   .sidebar-extra .btn-primary:hover{background:rgba(255,255,255,.85);}
-  .sidebar-extra .btn-gen{background:rgba(255,255,255,.08);color:#fff;border-color:rgba(255,255,255,.2);}
-  .sidebar-extra .btn-gen.active{background:#fff;color:var(--primary-dark);}
-  .sidebar-extra .icon-btn{background:rgba(255,255,255,.08);color:#fff;border-color:rgba(255,255,255,.2);}
-  .sidebar-extra .icon-btn:hover{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.35);color:#fff;}
+  .sidebar-extra .btn-gen{background:rgba(255,255,255,.1);color:#fff;border:1.5px solid rgba(255,255,255,.16);}
+  .sidebar-extra .btn-gen.active{background:#8B6FE0;border-color:#8B6FE0;color:#fff;}
+  .sidebar-extra .icon-btn{background:transparent;color:#fff;border:1.5px solid rgba(255,255,255,.35);}
+  .sidebar-extra .icon-btn:hover{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.5);color:#fff;}
   .sidebar-extra .helper{color:rgba(255,255,255,.55);}
   .chip{display:flex;align-items:center;gap:7px;border-radius:20px;padding:6px 12px 6px 8px;border:2px solid transparent;font-size:12.5px;font-weight:700;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.06);}
   .chip .dot{width:16px;height:16px;border-radius:5px;flex-shrink:0;}
@@ -339,6 +350,11 @@
   .change-pastille.acked{background:#8A94A6;}
   .grid-holiday-mark{position:absolute;top:1px;left:2px;font-size:11px;font-weight:900;color:var(--danger);line-height:1;z-index:3;pointer-events:none;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 2px #fff,0 0 2px #fff;}
   .cmt-dot{position:absolute;top:3px;width:7px;height:7px;border-radius:50%;z-index:2;}
+  /* ---------- Infobulles personnalisées (remplacent les bulles grises natives) ---------- */
+  .app-tooltip{position:fixed;z-index:300;background:var(--ink);color:#fff;padding:9px 12px;border-radius:9px;font-size:12.5px;line-height:1.55;max-width:280px;box-shadow:0 8px 24px rgba(15,23,42,.28);pointer-events:none;opacity:0;transform:translateY(4px) scale(.97);transition:opacity .1s ease, transform .1s ease;white-space:normal;}
+  .app-tooltip.visible{opacity:1;transform:translateY(0) scale(1);}
+  .app-tooltip b{color:#fff;font-weight:800;}
+  .app-tooltip .tip-title{font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:rgba(255,255,255,.6);margin-bottom:4px;}
   .cmt-dot.pub{right:3px;background:var(--danger);}
   .cmt-dot.priv{right:13px;background:var(--primary);}
   .tab-switch{display:flex;background:var(--bg);border-radius:9px;padding:3px;gap:3px;}
@@ -624,7 +640,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v1.8';
+const APP_VERSION = 'v2.2';
 const APP_VERSION_DATE = '22/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -1049,6 +1065,7 @@ async function resetTestData(){
   state.employeeDrafts={};
   state.postValidationChanges=[];
   state.monthValidations={};
+  state.comments={};
   await Promise.all([
     persistDesideratas(),
     persistExchanges(),
@@ -1056,6 +1073,7 @@ async function resetTestData(){
     persistEmployeeDrafts(),
     persistPostValidationChanges(),
     persistMonthValidations(),
+    persistComments(),
   ]);
 }
 /**
@@ -1246,6 +1264,68 @@ async function persistCpAllowances(){ await storageSet('cpAllowances', JSON.stri
 function escapeHtml(str){
   return String(str==null?'':str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
+/* ============================================================
+   INFOBULLES PERSONNALISÉES
+   Remplace les bulles grises natives du navigateur (attribut title) par une
+   info-bulle stylée qui suit la souris. Utilisation : mettre l'attribut
+   data-tip="..." (déjà échappé, \n autorisé) sur n'importe quel élément —
+   aucun JS supplémentaire à écrire par écran, tout est géré ici une fois.
+   ============================================================ */
+function tipContent(str){
+  return escapeHtml(str).replace(/\n/g,'<br>');
+}
+let appTooltipEl=null;
+function ensureTooltipEl(){
+  if(!appTooltipEl){
+    appTooltipEl=document.createElement('div');
+    appTooltipEl.className='app-tooltip';
+    document.body.appendChild(appTooltipEl);
+  }
+  return appTooltipEl;
+}
+function positionAppTooltip(x,y){
+  const el=appTooltipEl;
+  const pad=14;
+  let left=x+pad, top=y+pad;
+  const rect=el.getBoundingClientRect();
+  if(left+rect.width>window.innerWidth-8) left=x-rect.width-pad;
+  if(left<8) left=8;
+  if(top+rect.height>window.innerHeight-8) top=y-rect.height-pad;
+  if(top<8) top=8;
+  el.style.left=left+'px';
+  el.style.top=top+'px';
+}
+function showAppTooltip(html,x,y){
+  if(!html) return;
+  const el=ensureTooltipEl();
+  el.innerHTML=html;
+  el.classList.add('visible');
+  positionAppTooltip(x,y);
+}
+function hideAppTooltip(){
+  if(appTooltipEl) appTooltipEl.classList.remove('visible');
+}
+document.addEventListener('mouseover',(e)=>{
+  const el=e.target.closest('[data-tip]');
+  if(el) showAppTooltip(el.dataset.tip, e.clientX, e.clientY);
+});
+document.addEventListener('mousemove',(e)=>{
+  if(appTooltipEl && appTooltipEl.classList.contains('visible')){
+    if(e.target.closest('[data-tip]')) positionAppTooltip(e.clientX, e.clientY);
+  }
+});
+document.addEventListener('mouseout',(e)=>{
+  const el=e.target.closest('[data-tip]');
+  if(el && (!e.relatedTarget || !el.contains(e.relatedTarget))) hideAppTooltip();
+});
+document.addEventListener('touchstart',(e)=>{
+  const el=e.target.closest('[data-tip]');
+  if(el && e.touches[0]){
+    showAppTooltip(el.dataset.tip, e.touches[0].clientX, e.touches[0].clientY);
+    setTimeout(hideAppTooltip, 2600);
+  }
+},{passive:true});
+document.addEventListener('scroll', hideAppTooltip, true);
 function commentKey(username,y,m,d){ return username+'::'+y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0'); }
 function openCommentModal(username,name,y,m,d){
   const key=commentKey(username,y,m,d);
@@ -1880,7 +1960,7 @@ function renderFonctionnalites(){
       <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--border);">
         <div>
           <div style="font-weight:700;font-size:13.5px;">Vider les données de test</div>
-          <div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">Efface désidératas, échanges, planning de <b>tous les mois</b> et brouillons personnels de <b>tous les salariés</b>. Les comptes, services, codes et réglages ne sont pas touchés.</div>
+          <div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">Efface désidératas, échanges, planning de <b>tous les mois</b>, commentaires et brouillons personnels de <b>tous les salariés</b>. Les comptes, services, codes et réglages ne sont pas touchés.</div>
         </div>
         <button class="icon-btn" id="resetTestDataBtn" style="color:var(--danger);border-color:var(--danger);flex-shrink:0;">🗑️ Vider</button>
       </div>
@@ -2167,6 +2247,21 @@ function legendHtml(interactive){
   const addChip = interactive ? `<div class="chip add-code" id="addCodeChip">+ Ajouter un code</div>` : '';
   return `<div class="legend">${chips}${addChip}</div>`;
 }
+/**
+ * Variante « badge plein » des codes, réservée au bandeau bleu : toute la
+ * puce est remplie de la couleur du code (au lieu d'un simple point), pour
+ * un rendu plus visuel — comme des étiquettes de couleur. Garde les mêmes
+ * classes/attributs (chip, selectable, active, data-code, addCodeChip) que
+ * legendHtml() : bindLegend() fonctionne donc sans aucune modification.
+ */
+function sidebarLegendHtml(interactive){
+  const chips=state.codes.map(c=>`
+    <div class="chip sidebar-code-chip ${interactive?'selectable':''} ${state.selectedCode===c.code?'active':''}" data-code="${c.code}" data-tip="${tipContent(c.code+' · '+c.label)}" style="background:${c.color};color:${c.text};">
+      ${c.code}
+    </div>`).join('');
+  const addChip = interactive ? `<div class="chip sidebar-code-chip add-code" id="addCodeChip">+</div>` : '';
+  return `<div class="legend sidebar-code-grid">${chips}${addChip}</div>`;
+}
 function bindLegend(){
   document.querySelectorAll('.legend .chip.selectable').forEach(chip=>{
     chip.addEventListener('click',()=>{
@@ -2252,11 +2347,11 @@ function gridHtml({employees, readonly, alerts, changes, serviceContext}){
       const code=getDayCode(emp.username,y,m,d);
       const info=code?codeInfo(code):null;
       const style=info?`background:${info.color};color:${info.text};`:'';
-      const holidayMarkHtml=holidayName?`<span class="grid-holiday-mark" title="${escapeHtml(holidayName)}">F</span>`:'';
+      const holidayMarkHtml=holidayName?`<span class="grid-holiday-mark">F</span>`:'';
       const cm=state.comments[commentKey(emp.username,y,m,d)];
       let marks='';
-      if(cm && cm.public) marks+='<span class="cmt-dot pub" title="Commentaire"></span>';
-      if(cm && cm.private) marks+='<span class="cmt-dot priv" title="Commentaire privé"></span>';
+      if(cm && cm.public) marks+=`<span class="cmt-dot pub" data-tip="${tipContent('💬 Commentaire\n'+cm.public)}"></span>`;
+      if(cm && cm.private) marks+=`<span class="cmt-dot priv" data-tip="${tipContent('🔒 Commentaire privé\n'+cm.private)}"></span>`;
       const desid=desiderataForCell(emp.username,dateKeyStr);
       let desidStripHtml='', cellClass='', alertMarkHtml='';
       const titleParts=[];
@@ -2270,8 +2365,9 @@ function gridHtml({employees, readonly, alerts, changes, serviceContext}){
         }
       }
       if(groupAlertDays.has(dateKeyForAlert+'|min') || groupAlertDays.has(dateKeyForAlert+'|max')){
-        alertMarkHtml='<span class="alert-day-mark" title="Alerte effectif"></span>';
-        titleParts.push(groupAlertDays.has(dateKeyForAlert+'|min')?'⚠ Effectif insuffisant ce jour':'⚠ Effectif en surnombre ce jour');
+        const alertMsg=groupAlertDays.has(dateKeyForAlert+'|min')?'⚠ Effectif insuffisant ce jour':'⚠ Effectif en surnombre ce jour';
+        alertMarkHtml=`<span class="alert-day-mark" data-tip="${tipContent(alertMsg)}"></span>`;
+        titleParts.push(alertMsg);
       }
       if(state.genMode && state.genSelections[emp.username] && state.genSelections[emp.username].date===dateKeyForAlert){
         cellClass+=' gen-selected';
@@ -2284,7 +2380,7 @@ function gridHtml({employees, readonly, alerts, changes, serviceContext}){
         const stripStyle=dinfo?`background:${dinfo.color};color:${dinfo.text};`:'background:#EDEFF2;color:#7A8393;';
         const icon = desid.status==='pending' ? '⏳' : desid.status==='validated' ? '✓' : '✕';
         cellClass+=' desid-'+desid.status;
-        desidStripHtml=`<div class="desid-strip ${desid.status}" style="${stripStyle}" title="Demande : ${escapeHtml(desid.code)} · ${escapeHtml(dLabel)}${desid.comment?' — '+escapeHtml(desid.comment):''}">${desid.code}<span class="desid-strip-icon">${icon}</span></div>`;
+        desidStripHtml=`<div class="desid-strip ${desid.status}" style="${stripStyle}" data-tip="${tipContent('Demande : '+desid.code+' · '+dLabel+(desid.comment?'\n« '+desid.comment+' »':''))}">${desid.code}<span class="desid-strip-icon">${icon}</span></div>`;
       }
       if(!dayValid) cellClass+=' invalid-day';
       const changeKey=emp.username+'::'+dateKeyStr;
@@ -2303,10 +2399,13 @@ function gridHtml({employees, readonly, alerts, changes, serviceContext}){
         // Chaque modification sur sa propre ligne, plutôt que toutes bout à bout
         // sur une seule ligne — beaucoup plus lisible dès qu'il y en a plusieurs.
         titleParts.push('✎ Modifications :\n'+tooltipLines.map(l=>'  '+l).join('\n'));
-        changePastilleHtml=`<span class="change-pastille ${hasPending?'pending':'acked'}" title="${escapeHtml(tooltipLines.join('\n'))}"></span>`;
+        changePastilleHtml=`<span class="change-pastille ${hasPending?'pending':'acked'}" data-tip="${tipContent(tooltipLines.join('\n'))}"></span>`;
       }
-      const desidTitle = titleParts.length ? '\n'+titleParts.join('\n') : '';
-      row+=`<td class="day-cell ${isWeekend?'weekend':''} ${cellClass}" data-day="${d}" data-user="${emp.username}" data-invalid="${!dayValid}" title="${(holidayName||'')+desidTitle}">
+      const cellTipParts=[];
+      if(holidayName) cellTipParts.push('📅 '+holidayName);
+      cellTipParts.push(...titleParts);
+      const cellTip = cellTipParts.length ? tipContent(cellTipParts.join('\n')) : '';
+      row+=`<td class="day-cell ${isWeekend?'weekend':''} ${cellClass}" data-day="${d}" data-user="${emp.username}" data-invalid="${!dayValid}" ${cellTip?`data-tip="${cellTip}"`:''}>
         ${marks}
         ${alertMarkHtml}
         ${changePastilleHtml}
@@ -2698,7 +2797,7 @@ function renderPlanningEquipe(){
   const mobile=isMobileDevice();
   const sideCodesHtml = `
     <div class="sidebar-extra-title">Codes</div>
-    ${legendHtml(false)}
+    ${sidebarLegendHtml(false)}
   `;
   const sideActionsHtml = `
     <div class="sidebar-extra-title" style="margin-top:8px;">Actions</div>
@@ -3413,6 +3512,10 @@ function renderMonPlanningAnnuel(){
     <div class="chip selectable ${state.annualSelectedCode===c.code?'active':''}" data-code="${c.code}" title="${escapeHtml(c.code+' · '+c.label)}">
       <span class="dot ${c.code==='VIDE'?'dot-outline':''}" style="background:${c.color}"></span>${c.code} · ${c.label}
     </div>`).join('');
+  const sidebarLegendChipsHtml=state.codes.map(c=>`
+    <div class="chip sidebar-code-chip selectable ${state.annualSelectedCode===c.code?'active':''}" data-code="${c.code}" data-tip="${tipContent(c.code+' · '+c.label)}" style="background:${c.color};color:${c.text};">
+      ${c.code}
+    </div>`).join('');
 
   const modeToggleHtml = !isFeatureEnabled('genAuto') ? '' : (genMode
     ? `<button class="btn-gen active" id="annModeToggle">🪄 Mode génération activé — cliquer pour repasser en peinture</button>`
@@ -3420,7 +3523,7 @@ function renderMonPlanningAnnuel(){
 
   const sideCodesHtml = genMode ? '' : `
     <div class="sidebar-extra-title">Codes</div>
-    <div class="legend">${legendChipsHtml}</div>
+    <div class="legend sidebar-code-grid">${sidebarLegendChipsHtml}</div>
   `;
   const sideActionsHtml = `
     <div class="sidebar-extra-title" style="margin-top:8px;">Actions</div>
@@ -3738,7 +3841,7 @@ function renderCalendrierAdmin(){
     </div>` : '';
   const sideCodesHtml = `
     <div class="sidebar-extra-title">Codes</div>
-    ${legendHtml(true)}
+    ${sidebarLegendHtml(true)}
   `;
   const sideActionsHtml = `
     <div class="sidebar-extra-title" style="margin-top:8px;">Actions</div>
@@ -5108,6 +5211,7 @@ function renderModal(){
         <li>Toutes les demandes de désidératas</li>
         <li>Toutes les demandes d'échange de service</li>
         <li>Le planning validé, <b>tous les mois confondus</b></li>
+        <li>Tous les commentaires (publics et privés) sur le planning</li>
         <li>Tous les brouillons personnels ("Mon planning annuel")</li>
         <li>Les validations de mois et le journal des modifications</li>
       </ul>
