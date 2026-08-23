@@ -679,7 +679,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v3.2';
+const APP_VERSION = 'v3.3';
 const APP_VERSION_DATE = '22/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -2834,8 +2834,10 @@ function renderPlanningIndividuel(){
 
   const inner=`
     <div class="indiv-mobile-wrap">
-    <div style="display:flex;align-items:center;gap:8px;">
+    <div style="display:flex;align-items:center;gap:6px;">
       <div style="flex:1;">${monthNavHtml()}</div>
+      ${isFeatureEnabled('desideratas', myService) ? `<button class="icon-btn" id="indivDesidBtn" style="flex-shrink:0;">🖐️</button>` : ''}
+      ${isFeatureEnabled('echanges', myService) ? `<button class="icon-btn" id="indivExchBtn" style="flex-shrink:0;">🔄</button>` : ''}
       ${(monthOk && isFeatureEnabled('impression')) ? `<button class="icon-btn" id="indivPrintBtn" style="flex-shrink:0;">🖨️</button>` : ''}
     </div>
     <div class="legend-hint indiv-hint" style="margin:6px 0 8px;">Touchez un <b>code</b> puis un <b>jour</b> pour poser votre brouillon (comme « Mon planning annuel », mois par mois).</div>
@@ -2851,6 +2853,18 @@ function renderPlanningIndividuel(){
   bindMonthNav(render);
   const indivPrintBtn=document.getElementById('indivPrintBtn');
   if(indivPrintBtn) indivPrintBtn.addEventListener('click', ()=>{ printMonthlyPlanning(myService, y, m); });
+  const indivDesidBtn=document.getElementById('indivDesidBtn');
+  if(indivDesidBtn) indivDesidBtn.addEventListener('click',()=>{
+    state.modal={type:'new-desiderata', data:{dateStart:'',dateEnd:'',code:state.codes[0]?state.codes[0].code:'',comment:''}};
+    render();
+  });
+  const indivExchBtn=document.getElementById('indivExchBtn');
+  if(indivExchBtn) indivExchBtn.addEventListener('click',()=>{
+    const colleagues=state.users.filter(u=>u.role==='employee' && u.username!==username && employeeActiveInServiceDuringMonth(u, myService, y, m));
+    if(!colleagues.length){ toast('Aucun collègue disponible dans votre service pour un échange.', true); return; }
+    state.modal={type:'new-exchange', data:{targetUsername:colleagues[0].username, dateA:'', dateB:'', comment:''}, colleagues};
+    render();
+  });
   document.querySelectorAll('.selectable-day').forEach(el=>{
     el.addEventListener('click', async()=>{
       if(!selectedCode){ toast('Sélectionnez d\u2019abord un code ci-dessus.', true); return; }
@@ -2953,6 +2967,12 @@ function renderPlanningEmploye(){
   }
   const statChips = state.codes.map(c=>`<div class="cal-stat"><b>${myCodes[c.code]||0}</b><span>${c.code}</span></div>`).join('');
 
+  const mobile=isMobileDevice();
+  const sideActionsHtml=`
+    <div class="sidebar-extra-title">Actions</div>
+    ${isFeatureEnabled('desideratas', myService) ? `<button class="btn btn-primary" id="planNewDesidBtn">🖐️ Désidératas</button>` : ''}
+    ${isFeatureEnabled('echanges', myService) ? `<button class="btn btn-primary" id="planNewExchBtn">🔄 Swap</button>` : ''}
+  `;
   const inner=`
     <div class="emp-cal-toolbar">
       <span>Mois :</span>
@@ -2966,6 +2986,12 @@ function renderPlanningEmploye(){
       <button class="btn-afficher" id="afficherBtn">Afficher</button>
       <button class="btn-today" id="todayBtn">📍 Aujourd'hui</button>
     </div>
+    ${mobile ? `
+    <div class="mobile-action-row">
+      ${isFeatureEnabled('desideratas', myService) ? `<button class="btn btn-primary" id="planNewDesidBtn">🖐️ Désidératas</button>` : ''}
+      ${isFeatureEnabled('echanges', myService) ? `<button class="btn btn-primary" id="planNewExchBtn">🔄 Swap</button>` : ''}
+    </div>
+    ` : ''}
     <div style="display:flex;gap:10px;">
       <div class="cal-week-num" style="visibility:hidden;">S00</div>
       <div class="cal-dow-row" style="flex:1;">${DOW_FULL.map(d=>`<div>${d}</div>`).join('')}</div>
@@ -2989,7 +3015,7 @@ function renderPlanningEmploye(){
     </div>
     `}
   `;
-  renderShell(inner,'Mon planning');
+  renderShell(inner,'Mon planning', mobile?null:sideActionsHtml);
   document.getElementById('prevMonth').addEventListener('click',()=>{ state.viewDate=new Date(y,m-1,1); render(); });
   document.getElementById('nextMonth').addEventListener('click',()=>{ state.viewDate=new Date(y,m+1,1); render(); });
   document.getElementById('prevYear').addEventListener('click',()=>{ state.viewDate=new Date(y-1,m,1); render(); });
@@ -2999,6 +3025,18 @@ function renderPlanningEmploye(){
     const mm=parseInt(document.getElementById('monthSelect').value,10);
     const yy=parseInt(document.getElementById('yearSelect').value,10);
     state.viewDate=new Date(yy,mm,1);
+    render();
+  });
+  const planNewDesidBtn=document.getElementById('planNewDesidBtn');
+  if(planNewDesidBtn) planNewDesidBtn.addEventListener('click',()=>{
+    state.modal={type:'new-desiderata', data:{dateStart:'',dateEnd:'',code:state.codes[0]?state.codes[0].code:'',comment:''}};
+    render();
+  });
+  const planNewExchBtn=document.getElementById('planNewExchBtn');
+  if(planNewExchBtn) planNewExchBtn.addEventListener('click',()=>{
+    const colleagues=state.users.filter(u=>u.role==='employee' && u.username!==username && employeeActiveInServiceDuringMonth(u, myService, y, m));
+    if(!colleagues.length){ toast('Aucun collègue disponible dans votre service pour un échange.', true); return; }
+    state.modal={type:'new-exchange', data:{targetUsername:colleagues[0].username, dateA:'', dateB:'', comment:''}, colleagues};
     render();
   });
 }
@@ -3742,7 +3780,8 @@ function renderMonPlanningAnnuel(){
     <div class="sidebar-extra-title" style="margin-top:22px;">Actions</div>
     ${modeToggleHtml}
     <button class="btn" style="width:100%;background:#FBEAE9;color:var(--danger);margin-bottom:8px;" id="annClearBtn">🗑 Vider mon brouillon ${year}</button>
-    ${isFeatureEnabled('desideratas', emp?emp.team:'') ? `<button class="btn" style="width:100%;background:var(--primary-light);color:var(--primary-dark);" id="annDesidBtn">🖐️ Demande de désidérata${state.annualSelectedDay?' — '+fmtDateKeyFr(state.annualSelectedDay):''}</button>` : ''}
+    ${isFeatureEnabled('desideratas', emp?emp.team:'') ? `<button class="btn btn-primary" id="annDesidBtn">🖐️ Désidératas${state.annualSelectedDay?' — '+fmtDateKeyFr(state.annualSelectedDay):''}</button>` : ''}
+    ${isFeatureEnabled('echanges', emp?emp.team:'') ? `<button class="btn btn-primary" id="annNewExchBtn">🔄 Swap</button>` : ''}
   `;
   const mobile=isMobileDevice();
   const inner=`
@@ -3759,7 +3798,8 @@ function renderMonPlanningAnnuel(){
     <div class="mobile-action-row">
       ${modeToggleHtml}
       <button class="btn" style="background:#FBEAE9;color:var(--danger);" id="annClearBtn">🗑 Vider</button>
-      ${isFeatureEnabled('desideratas', emp?emp.team:'') ? `<button class="btn" style="background:var(--primary-light);color:var(--primary-dark);" id="annDesidBtn">🖐️ Désidérata</button>` : ''}
+      ${isFeatureEnabled('desideratas', emp?emp.team:'') ? `<button class="btn btn-primary" id="annDesidBtn">🖐️ Désidératas</button>` : ''}
+      ${isFeatureEnabled('echanges', emp?emp.team:'') ? `<button class="btn btn-primary" id="annNewExchBtn">🔄 Swap</button>` : ''}
     </div>
     ` : ''}
     ${genMode
@@ -3812,6 +3852,14 @@ function renderMonPlanningAnnuel(){
   if(annDesidBtn) annDesidBtn.addEventListener('click',()=>{
     const startDate=state.annualSelectedDay || ymdKey(year,0,1);
     state.modal={type:'new-desiderata', data:{dateStart:startDate, dateEnd:startDate, code:state.codes[0]?state.codes[0].code:'', comment:''}};
+    render();
+  });
+  const annNewExchBtn=document.getElementById('annNewExchBtn');
+  if(annNewExchBtn) annNewExchBtn.addEventListener('click',()=>{
+    const myTeamForExch=emp?emp.team:'';
+    const colleagues=state.users.filter(u=>u.role==='employee' && u.username!==username && employeeActiveInServiceDuringMonth(u, myTeamForExch, year, 0));
+    if(!colleagues.length){ toast('Aucun collègue disponible dans votre service pour un échange.', true); return; }
+    state.modal={type:'new-exchange', data:{targetUsername:colleagues[0].username, dateA:'', dateB:'', comment:''}, colleagues};
     render();
   });
 
