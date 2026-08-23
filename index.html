@@ -630,7 +630,9 @@
     .indiv-legend .chip{font-size:9.5px;padding:3px 7px 3px 5px;}
     .indiv-dow-row{flex-shrink:0;}
     .indiv-weeks{flex:1;min-height:0;display:flex;flex-direction:column;gap:3px;}
-    .indiv-week-row{flex:1;min-height:0;gap:3px;}
+    .indiv-week-row-wrap{flex:1;min-height:0;margin-bottom:0;gap:4px;}
+    .indiv-week-row-wrap .cal-week-num{width:20px;font-size:9px;padding:0;}
+    .indiv-week-row{flex:1;min-height:0;height:100%;gap:3px;}
     .indiv-week-row .cal-day-compact{height:100%;min-height:0;display:flex;flex-direction:column;justify-content:center;padding:3px 4px;}
     .indiv-week-row .cal-day-compact .d-head{margin-bottom:2px;}
     .indiv-week-row .cal-day-compact .d-code{padding:2px 2px;}
@@ -698,7 +700,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v3.7';
+const APP_VERSION = 'v3.8';
 const APP_VERSION_DATE = '23/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -2503,7 +2505,7 @@ function renderShell(innerHtml,title,sidebarExtraHtml){
         </div>
       </div>
       <div class="content">
-        ${isMobileDevice() ? `<div class="legend-hint mobile-restricted-hint">📱 Vue mobile simplifiée — seul « ${escapeHtml(items[0].label)} » est disponible ici. Pour la gestion complète (saisie, désidératas, alertes...), utilisez un ordinateur.</div>` : ''}
+
         ${notifBannerHtml()}
         ${innerHtml}
       </div>
@@ -2978,8 +2980,6 @@ function renderPlanningIndividuel(){
     <div class="indiv-top-row">
       <button class="icon-btn" id="indivTeamBtn" title="Voir le planning de mon équipe">👥 Équipe</button>
       <div style="flex:1;">${monthNavHtml()}</div>
-      ${isFeatureEnabled('desideratas', myService) ? `<button class="icon-btn" id="indivDesidBtn" style="flex-shrink:0;">🖐️</button>` : ''}
-      ${isFeatureEnabled('echanges', myService) ? `<button class="icon-btn" id="indivExchBtn" style="flex-shrink:0;">🔄</button>` : ''}
       ${(monthOk && isFeatureEnabled('impression')) ? `<button class="icon-btn" id="indivPrintBtn" style="flex-shrink:0;">🖨️</button>` : ''}
     </div>
     <div class="indiv-dow-row" style="display:flex;gap:4px;margin-bottom:6px;">
@@ -2989,11 +2989,18 @@ function renderPlanningIndividuel(){
       </div>
     </div>
     <div class="indiv-weeks" id="indivSwipeArea">${weekRows}</div>
+    </div>
+    ${(isFeatureEnabled('desideratas', myService) || isFeatureEnabled('echanges', myService)) ? `
+    <div class="mobile-action-row" style="margin-top:10px;">
+      ${isFeatureEnabled('desideratas', myService) ? `<button class="btn btn-primary" id="indivDesidBtn">🖐️ Désidératas</button>` : ''}
+      ${isFeatureEnabled('echanges', myService) ? `<button class="btn btn-primary" id="indivExchBtn">🔄 Swap</button>` : ''}
+    </div>
+    ` : ''}
     <div class="legend-hint indiv-hint" style="margin:10px 0 8px;">Touchez un <b>code</b> puis un <b>jour</b> pour poser votre brouillon.</div>
     <div class="legend indiv-legend" style="margin-bottom:8px;">${legendChipsHtml}</div>
     ${todayCardHtml}
+    ${hasCommentsForMonth(y,m,[username]) ? commentsRecapHtml(y,m,[username],false) : ''}
     ${!monthOk ? `<div class="helper" style="margin-top:8px;text-align:center;">🔒 Planning officiel de ${MOIS[m]} ${y} pas encore validé — vous pouvez déjà préparer votre brouillon.</div>` : ''}
-    </div>
   `;
   renderShell(inner,'Planning individuel');
   bindMonthNav(render);
@@ -3230,7 +3237,6 @@ function renderPlanningEquipe(){
     <div class="legend-hint" style="margin:6px 0 12px;">${myTeam?`Planning en lecture seule de l'équipe <b>${escapeHtml(myTeam)}</b>.`:`Aucune équipe ne vous a été assignée pour le moment — seul votre planning est affiché ici.`}</div>
     ${mobile ? `
     <div class="mobile-action-row">
-      ${(monthOk && myTeam && isFeatureEnabled('impression')) ? `<button class="icon-btn" id="peqPrintBtn">🖨️ Imprimer</button>` : ''}
       ${isFeatureEnabled('desideratas', myTeam) ? `<button class="btn btn-primary" id="peqNewDesidBtn">🖐️ Désidératas</button>` : ''}
       ${isFeatureEnabled('echanges', myTeam) ? `<button class="btn btn-primary" id="peqNewExchBtn">🔄 Swap</button>` : ''}
     </div>
@@ -3450,6 +3456,15 @@ function commentsRecapHtml(y,m,filterUsernames,clickable){
       ${items.length? rows : `<div class="empty-state" style="padding:24px;">Aucun commentaire public ce mois-ci.</div>`}
     </div>
   </div>`;
+}
+function hasCommentsForMonth(y,m,filterUsernames){
+  const prefix='::'+y+'-'+String(m+1).padStart(2,'0')+'-';
+  return Object.keys(state.comments).some(key=>{
+    if(!key.includes(prefix) || !state.comments[key].public) return false;
+    const idx=key.indexOf('::');
+    const username=key.slice(0,idx);
+    return !filterUsernames || filterUsernames.includes(username);
+  });
 }
 function bindCommentsRecap(){
   document.querySelectorAll('[data-recap-user]').forEach(row=>{
