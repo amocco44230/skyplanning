@@ -740,7 +740,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v5.8';
+const APP_VERSION = 'v6.1';
 const APP_VERSION_DATE = '23/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -778,7 +778,7 @@ const FIRESTORE_KEY_MAP = {
   comments:'comments', fonctions:'fonctions', services:'services', desideratas:'desideratas',
   alertRules:'alertRules', monthValidations:'monthValidations', postValidationChanges:'postValidationChanges',
   cpAllowances:'cpAllowances', employeeDrafts:'employeeDrafts', exchanges:'exchanges',
-  featureFlags:'featureFlags', cycleSettings:'cycleSettings'
+  featureFlags:'featureFlags', cycleSettings:'cycleSettings', genRules:'genRules'
 };
 // Enregistrement précoce et silencieux du service worker FCM (permet de recevoir
 // des notifications en arrière-plan même avant que l'utilisateur active les alertes).
@@ -904,6 +904,8 @@ let state={
   showAcknowledgedChanges:false,
   genMode:false,
   genSelections:{},
+  genRules:[],
+  genActiveRuleId:null,
   cpAllowances:{},
   annualYear:new Date().getFullYear(),
   annualSelectedDay:null,
@@ -1030,6 +1032,20 @@ async function loadAll(){
     const cs=await storageGet('cycleSettings', true);
     state.cycleSettings = cs ? JSON.parse(cs.value) : {};
   }catch(e){ state.cycleSettings={}; }
+  try{
+    const gr=await storageGet('genRules', true);
+    state.genRules = gr ? JSON.parse(gr.value) : null;
+  }catch(e){ state.genRules=null; }
+  if(!state.genRules || state.genRules.length===0){
+    // Règles par défaut au premier lancement : le cycle 4/4 déjà existant
+    // (comportement inchangé pour tout le monde), plus un exemple prêt à
+    // l'emploi pour le personnel administratif — modifiables/supprimables
+    // librement ensuite depuis Fonctionnalités → Règles de génération.
+    state.genRules=[
+      {id:genId(), name:'4 jours / 4 jours (alternance M/S)', type:'cycle', workDays:4, offDays:4, codeA:'M', codeB:'S'},
+      {id:genId(), name:'Administratif (5 jours ADM + week-end repos)', type:'weekly', weekPattern:['ADM','ADM','ADM','ADM','ADM','O','O']},
+    ];
+  }
   try{
     const ar=await storageGet('alertRules', true);
     state.alertRules = ar ? JSON.parse(ar.value) : null;
@@ -1204,6 +1220,7 @@ async function persistDesideratas(){ await storageSet('desideratas', JSON.string
 async function persistExchanges(){ await storageSet('exchanges', JSON.stringify(state.exchanges), true); }
 async function persistFeatureFlags(){ await storageSet('featureFlags', JSON.stringify(state.featureFlags), true); }
 async function persistCycleSettings(){ await storageSet('cycleSettings', JSON.stringify(state.cycleSettings), true); }
+async function persistGenRules(){ await storageSet('genRules', JSON.stringify(state.genRules), true); }
 /* ============================================================
    CYCLES DE RÉFÉRENCE (heures travaillées sur N jours glissants)
    ============================================================ */
@@ -1341,38 +1358,69 @@ function handleGenSelectClick(username, dateKey, code){
     render();
     return;
   }
-  if(code!=='M' && code!=='S'){
-    toast("Sélectionnez le dernier jour travaillé en code M ou S pour ce salarié.", true);
-    return;
-  }
+  // La validation du code se fait au moment de « Générer », une fois la
+  // règle choisie (un code de travail quelconque est accepté ici — utile
+  // pour une règle hebdomadaire fixe où le code cliqué n'a pas d'importance).
   state.genSelections[username]={date:dateKey, code};
   render();
 }
-async function generateAutoPlanning(months){
+async function generateAutoPlanning(months, ruleId){
+  const rule=state.genRules.find(r=>r.id===ruleId) || state.genRules[0];
   const entries=Object.entries(state.genSelections);
   let totalDays=0;
   for(const [username, sel] of entries){
     const lastDate=new Date(sel.date+'T00:00:00');
-    const inverse = sel.code==='M' ? 'S' : 'M';
     const endDate=new Date(lastDate.getFullYear(), lastDate.getMonth()+months, lastDate.getDate());
     if(!state.schedules[username]) state.schedules[username]={};
     let current=addDays(lastDate,1);
     let dayCounter=0;
-    while(current<=endDate){
-      const blockIndex=Math.floor(dayCounter/4);
-      const isOff=blockIndex%2===0;
-      const key=dkey(current);
-      if(isOff){
-        delete state.schedules[username][key];
-      } else {
-        const workBlockNumber=Math.floor((blockIndex-1)/2);
-        state.schedules[username][key] = workBlockNumber%2===0 ? inverse : sel.code;
+
+    if(rule.type==='weekly'){
+      // Motif fixe par jour de la semaine (ex : Administratif) : le code
+      // cliqué au départ ne sert qu'à ancrer la date de début, le motif ne
+      // dépend que du jour de la semaine et se répète à l'identique chaque
+      // semaine, sans fin.
+      while(current<=endDate){
+        const dow=(current.getDay()+6)%7; // 0=lundi
+        const code=rule.weekPattern[dow];
+        const key=dkey(current);
+        if(code) state.schedules[username][key]=code; else delete state.schedules[username][key];
+        totalDays++;
+        current=addDays(current,1);
       }
-      totalDays++;
-      current=addDays(current,1);
-      dayCounter++;
+    } else {
+      // Cycle par blocs (ex : 4 jours travaillés / 4 jours repos, en
+      // alternance entre deux codes) : généralisation du cycle 4/4 d'origine,
+      // avec durées de blocs et codes configurables dans la règle.
+      const workDays=rule.workDays||4, offDays=rule.offDays||4;
+      const cycleLen=workDays+offDays;
+      // Le code cliqué devient le code du DERNIER jour travaillé déjà en
+      // place ; l'alternance se fait avec l'autre code de la règle (si le
+      // code cliqué ne correspond à aucun des deux, on ne fait pas
+      // d'alternance et on répète simplement le même code à chaque bloc).
+      let inverse;
+      if(sel.code===rule.codeA) inverse=rule.codeB;
+      else if(sel.code===rule.codeB) inverse=rule.codeA;
+      else inverse=sel.code;
+      while(current<=endDate){
+        // Le repos commence toujours juste après le dernier jour travaillé
+        // sélectionné (comme l'ancien cycle 4/4) : chaque cycle complet =
+        // [offDays jours de repos] puis [workDays jours travaillés].
+        const posInCycle=dayCounter%cycleLen;
+        const isOff=posInCycle<offDays;
+        const blockIndex=Math.floor(dayCounter/cycleLen);
+        const key=dkey(current);
+        if(isOff){
+          delete state.schedules[username][key];
+        } else {
+          state.schedules[username][key] = blockIndex%2===0 ? inverse : sel.code;
+        }
+        totalDays++;
+        current=addDays(current,1);
+        dayCounter++;
+      }
     }
-    await pushNotification(username, 'Votre planning a été régénéré automatiquement à partir du '+fmtDateKeyFr(sel.date)+' (cycle 4 jours travaillés / 4 jours repos), pour les '+months+' prochain(s) mois.');
+    await pushNotification(username, 'Votre planning a été régénéré automatiquement à partir du '+fmtDateKeyFr(sel.date)+' (règle « '+rule.name+' »), pour les '+months+' prochain(s) mois.');
   }
   await persistSchedules();
   return {employees:entries.length, days:totalDays};
@@ -2220,7 +2268,7 @@ function renderCycles(){
   const service=state.cyclesServiceFilter;
   const settings=getCycleSettings(service);
 
-  const empList=service ? state.users.filter(u=>!isSuperAdmin(u) && (u.team===service || (u.extraTeams||[]).includes(service))) : [];
+  const empList=service ? state.users.filter(u=>!isSuperAdmin(u) && !u.isAdministratif && u.team===service) : [];
   const employeeCycles=empList.map(u=>{
     const startDate=getEmployeeCycleStart(settings, u.username);
     const cycles=computeCyclesForEmployee(u.username, startDate, settings);
@@ -2353,8 +2401,51 @@ function renderFonctionnalites(){
         <button class="icon-btn" id="openImportBtn" style="flex-shrink:0;">📥 Importer</button>
       </div>
     </div>
+    <div class="feat-card">
+      <h3>🪄 Règles de génération automatique</h3>
+      <div class="helper" style="margin:-4px 0 14px;">Ces règles sont proposées au choix chaque fois qu'un admin clique sur « Générer » dans le Calendrier Mensuel — pour des équipes en rotation (4/4...), pour le personnel administratif, ou tout autre motif récurrent.</div>
+      <div class="list-mgr">
+        ${state.genRules.map(r=>`
+        <div class="list-mgr-row">
+          <span>
+            <b>${escapeHtml(r.name)}</b>
+            <span style="font-size:12px;color:var(--ink-soft);font-weight:600;display:block;margin-top:2px;">
+              ${r.type==='weekly'
+                ? DOW_SHORT.map((d,i)=>`${d} ${r.weekPattern[i]||'—'}`).join(' · ')
+                : `${r.offDays}j repos / ${r.workDays}j travail — alternance ${r.codeA} ↔ ${r.codeB}`}
+            </span>
+          </span>
+          <span style="display:flex;gap:6px;flex-shrink:0;">
+            <button class="icon-btn" data-edit-genrule="${r.id}" title="Modifier">✎</button>
+            <button class="icon-btn" data-del-genrule="${r.id}" style="color:var(--danger);border-color:var(--danger);" title="Supprimer">🗑</button>
+          </span>
+        </div>`).join('') || '<div class="empty-state">Aucune règle définie.</div>'}
+      </div>
+      <button class="btn btn-primary" id="addGenRuleBtn" style="width:auto;margin-top:14px;">+ Nouvelle règle</button>
+    </div>
   `;
   renderShell(inner,'Fonctionnalités');
+  document.getElementById('addGenRuleBtn').addEventListener('click',()=>{
+    state.modal={type:'gen-rule', isNew:true, data:{name:'', type:'cycle', workDays:4, offDays:4, codeA:'M', codeB:'S', weekPattern:['','','','','','','']}};
+    render();
+  });
+  document.querySelectorAll('[data-edit-genrule]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const r=state.genRules.find(x=>x.id===btn.dataset.editGenrule);
+      state.modal={type:'gen-rule', isNew:false, data:Object.assign({weekPattern:['','','','','','','']}, JSON.parse(JSON.stringify(r)))};
+      render();
+    });
+  });
+  document.querySelectorAll('[data-del-genrule]').forEach(btn=>{
+    btn.addEventListener('click', async()=>{
+      if(state.genRules.length<=1){ toast('Il doit rester au moins une règle.', true); return; }
+      if(!confirm('Supprimer cette règle de génération ?')) return;
+      state.genRules=state.genRules.filter(r=>r.id!==btn.dataset.delGenrule);
+      await persistGenRules();
+      toast('Règle supprimée.');
+      render();
+    });
+  });
   document.getElementById('resetTestDataBtn').addEventListener('click',()=>{
     state.modal={type:'confirm-reset-test-data'};
     render();
@@ -4858,7 +4949,7 @@ function renderGestionSalaries(){
       <div class="emp-avatar">${emp.photoUrl?`<img src="${emp.photoUrl}" alt="">`:initials(emp.name)}</div>
       <div class="emp-info">
         <div class="name">${escapeHtml(emp.name)} ${emp.role==='admin'?'<span class="badge-admin">'+(isSuperAdmin(emp)?'Grand admin':'Admin — '+escapeHtml((emp.adminServices||[]).join(', ')))+'</span>':''} ${inactive?'<span class="badge-inactive">Hors période</span>':''}</div>
-        <div class="meta">Identifiant : ${emp.username} ${emp.email?'· '+escapeHtml(emp.email)+' ':''}${emp.phone?'· 📞 '+escapeHtml(emp.phone)+' ':''}${emp.team?'· Service : '+escapeHtml(emp.team)+' ':''}${(emp.alsoShowInServices&&emp.alsoShowInServices.length)?'· Apparaît aussi sur : '+escapeHtml(emp.alsoShowInServices.join(', '))+' ':''}${(emp.extraTeams&&emp.extraTeams.length)?'· Autorise la consultation par : '+escapeHtml(emp.extraTeams.join(', '))+' ':''}· Validité : ${fmtDate(emp.startDate)} → ${emp.endDate?fmtDate(emp.endDate):'toujours'}</div>
+        <div class="meta">Identifiant : ${emp.username} ${emp.email?'· '+escapeHtml(emp.email)+' ':''}${emp.phone?'· 📞 '+escapeHtml(emp.phone)+' ':''}${emp.team?'· Service : '+escapeHtml(emp.team)+' ':''}${emp.isAdministratif?'· 🗂️ Administratif ':''}${(emp.alsoShowInServices&&emp.alsoShowInServices.length)?'· Apparaît aussi sur : '+escapeHtml(emp.alsoShowInServices.join(', '))+' ':''}${(emp.extraTeams&&emp.extraTeams.length)?'· Autorise la consultation par : '+escapeHtml(emp.extraTeams.join(', '))+' ':''}· Validité : ${fmtDate(emp.startDate)} → ${emp.endDate?fmtDate(emp.endDate):'toujours'}</div>
         ${nextAffect ? `<div class="meta" style="color:var(--primary);font-weight:700;">→ Changement programmé le ${fmtDate(nextAffect.startDate)} : ${escapeHtml(nextAffect.team||'Aucun service')}${nextAffect.fonction?' · '+escapeHtml(nextAffect.fonction):''}</div>` : ''}
       </div>
       <div class="emp-actions">
@@ -5177,6 +5268,10 @@ function renderModal(){
       </div>
       <div class="helper" style="margin:-10px 0 14px;">Le service détermine qui voit qui sur « Planning équipe ». La liste des fonctions dépend du service choisi (gérée dans « Gestion des salariés »).</div>
       <div class="field admin-rights-field">
+        <label class="admin-rights-toggle"><input type="checkbox" id="mIsAdministratif" ${d.isAdministratif?'checked':''}> <b>Personnel administratif</b></label>
+        <div class="helper">Coché, ce salarié est proposé par défaut pour les règles de génération automatique de type « Administratif » (Fonctionnalités → Règles de génération). Purement informatif, ne change rien d'autre.</div>
+      </div>
+      <div class="field admin-rights-field">
         <label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:6px;">Apparaît directement sur le planning équipe de ces services</label>
         <div class="check-list" id="mAlsoShowIn">
           ${(getAdminScope(state.currentUser)||state.services).filter(s=>s!==d.team).map(s=>`<label class="check-item"><input type="checkbox" value="${escapeHtml(s)}" ${(d.alsoShowInServices||[]).includes(s)?'checked':''}> ${escapeHtml(s)}</label>`).join('') || '<div class="helper">Aucun autre service disponible.</div>'}
@@ -5320,6 +5415,7 @@ function renderModal(){
       }
       const extraTeams=[...document.querySelectorAll('#mExtraTeams input:checked')].map(i=>i.value).filter(s=>s!==team);
       const alsoShowInServices=[...document.querySelectorAll('#mAlsoShowIn input:checked')].map(i=>i.value).filter(s=>s!==team);
+      const isAdministratif=document.getElementById('mIsAdministratif').checked;
       let role='employee', adminServices=[];
       const mIsAdminChk=document.getElementById('mIsAdmin');
       if(mIsAdminChk){
@@ -5332,13 +5428,13 @@ function renderModal(){
         role=d.role; adminServices=d.adminServices||[];
       }
       if(state.modal.isNew){
-        const newEmp={username,password,name,role,startDate,endDate,team,fonction,email,adminServices,extraTeams,alsoShowInServices};
+        const newEmp={username,password,name,role,startDate,endDate,team,fonction,email,adminServices,extraTeams,alsoShowInServices,isAdministratif};
         newEmp.affectations=[{id:genId(), startDate: startDate||dkey(new Date()), team, fonction}];
         state.users.push(newEmp);
       } else {
         const emp=state.users.find(u=>u.username===d.username);
         emp.name=name; emp.password=password; emp.startDate=startDate; emp.endDate=endDate; emp.email=email;
-        emp.role=role; emp.adminServices=adminServices; emp.extraTeams=extraTeams; emp.alsoShowInServices=alsoShowInServices;
+        emp.role=role; emp.adminServices=adminServices; emp.extraTeams=extraTeams; emp.alsoShowInServices=alsoShowInServices; emp.isAdministratif=isAdministratif;
         if(team!==(d.team||'') || fonction!==(d.fonction||'')){
           setImmediateAffectation(emp, team, fonction);
         } else {
@@ -5457,6 +5553,97 @@ function renderModal(){
       }
       await persistCodes();
       toast(state.modal.isNew?'Code ajouté.':'Code mis à jour.');
+      closeModal();
+    });
+  }
+
+  if(state.modal.type==='gen-rule'){
+    const rd=state.modal.data;
+    const workCodesList=state.codes.filter(c=>c.isWork);
+    const allCodesList=state.codes;
+    overlay.innerHTML=`
+    <div class="modal" style="max-width:520px;">
+      <h3>${state.modal.isNew?'Nouvelle règle de génération':'Modifier la règle'}</h3>
+      <div class="field"><label>Nom de la règle</label><input id="grName" value="${escapeHtml(rd.name)}" placeholder="Ex : Administratif, 3/2/2/3..."></div>
+      <div class="field"><label>Type de règle</label>
+        <div class="type-toggle">
+          <label class="type-toggle-opt ${rd.type==='cycle'?'active':''}"><input type="radio" name="grType" value="cycle" ${rd.type==='cycle'?'checked':''}> 🔁 Cycle par blocs</label>
+          <label class="type-toggle-opt ${rd.type==='weekly'?'active':''}"><input type="radio" name="grType" value="weekly" ${rd.type==='weekly'?'checked':''}> 📅 Hebdomadaire fixe</label>
+        </div>
+      </div>
+      <div id="grCycleFields" style="${rd.type==='cycle'?'':'display:none;'}">
+        <div class="helper" style="margin:-6px 0 12px;">Ex : le 4/4 classique = 4 jours de repos puis 4 jours travaillés, en alternant deux codes à chaque bloc. Au moment de générer, l'admin clique le dernier jour travaillé de chaque salarié (avec l'un des deux codes ci-dessous) pour ancrer son cycle personnel.</div>
+        <div class="row2">
+          <div class="field"><label>Jours de repos par bloc</label><input type="number" id="grOffDays" value="${rd.offDays||4}" min="1" max="60"></div>
+          <div class="field"><label>Jours travaillés par bloc</label><input type="number" id="grWorkDays" value="${rd.workDays||4}" min="1" max="60"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>Code A</label>
+            <select id="grCodeA" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14.5px;background:#FBFCFE;">
+              ${workCodesList.map(c=>`<option value="${c.code}" ${rd.codeA===c.code?'selected':''}>${c.code} · ${escapeHtml(c.label)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field"><label>Code B (alterne avec A)</label>
+            <select id="grCodeB" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14.5px;background:#FBFCFE;">
+              ${workCodesList.map(c=>`<option value="${c.code}" ${rd.codeB===c.code?'selected':''}>${c.code} · ${escapeHtml(c.label)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+      </div>
+      <div id="grWeeklyFields" style="${rd.type==='weekly'?'':'display:none;'}">
+        <div class="helper" style="margin:-6px 0 12px;">Un code fixe par jour de la semaine, qui se répète à l'identique chaque semaine (utile pour le personnel administratif : ex. ADM du lundi au vendredi, repos le week-end). Laissez vide pour une case sans code.</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;">
+          ${DOW_SHORT.map((d,i)=>`
+          <div class="field" style="margin:0;"><label>${d}</label>
+            <select class="gr-week-day" data-dow="${i}" style="width:100%;padding:9px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13.5px;background:#FBFCFE;">
+              <option value="">— repos —</option>
+              ${allCodesList.map(c=>`<option value="${c.code}" ${(rd.weekPattern&&rd.weekPattern[i])===c.code?'selected':''}>${c.code}</option>`).join('')}
+            </select>
+          </div>`).join('')}
+        </div>
+      </div>
+      <div id="grError" style="color:var(--danger);font-size:12.5px;font-weight:600;display:none;margin:14px 0 6px;"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="grCancel">Annuler</button>
+        <button class="btn btn-primary" id="grSave">Enregistrer</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('grCancel').addEventListener('click',closeModal);
+    document.querySelectorAll('input[name="grType"]').forEach(r=>{
+      r.addEventListener('change',()=>{
+        r.closest('.type-toggle').querySelectorAll('.type-toggle-opt').forEach(opt=>opt.classList.remove('active'));
+        r.closest('.type-toggle-opt').classList.add('active');
+        document.getElementById('grCycleFields').style.display = r.value==='cycle' ? '' : 'none';
+        document.getElementById('grWeeklyFields').style.display = r.value==='weekly' ? '' : 'none';
+      });
+    });
+    document.getElementById('grSave').addEventListener('click', async()=>{
+      const name=document.getElementById('grName').value.trim();
+      const type=document.querySelector('input[name="grType"]:checked').value;
+      const err=document.getElementById('grError');
+      if(!name){ err.textContent='Merci de donner un nom à cette règle.'; err.style.display='block'; return; }
+      let ruleData;
+      if(type==='cycle'){
+        const offDays=Math.max(1, parseInt(document.getElementById('grOffDays').value,10)||4);
+        const workDays=Math.max(1, parseInt(document.getElementById('grWorkDays').value,10)||4);
+        const codeA=document.getElementById('grCodeA').value;
+        const codeB=document.getElementById('grCodeB').value;
+        if(!codeA || !codeB){ err.textContent='Merci de choisir les deux codes de travail.'; err.style.display='block'; return; }
+        ruleData={name, type, offDays, workDays, codeA, codeB};
+      } else {
+        const weekPattern=[...document.querySelectorAll('.gr-week-day')].sort((a,b)=>a.dataset.dow-b.dataset.dow).map(s=>s.value);
+        ruleData={name, type, weekPattern};
+      }
+      if(state.modal.isNew){
+        ruleData.id=genId();
+        state.genRules.push(ruleData);
+      } else {
+        const existing=state.genRules.find(r=>r.id===rd.id);
+        Object.assign(existing, ruleData);
+      }
+      await persistGenRules();
+      toast(state.modal.isNew?'Règle créée.':'Règle mise à jour.');
       closeModal();
     });
   }
@@ -5625,15 +5812,27 @@ function renderModal(){
 
   if(state.modal.type==='auto-generate'){
     const count=Object.keys(state.genSelections).length;
+    const rules=state.genRules;
+    const selectedRuleId = state.modal.ruleId || (rules[0] && rules[0].id);
+    const rule = rules.find(r=>r.id===selectedRuleId) || rules[0];
+    const ruleDescHtml = rule ? (rule.type==='weekly'
+      ? `Motif hebdomadaire fixe, se répète chaque semaine : ${DOW_SHORT.map((d,i)=>`<b>${d}</b> ${rule.weekPattern[i]||'—'}`).join(', ')}. Le code cliqué sur chaque salarié ne sert qu'à indiquer la date de départ.`
+      : `Cycle : <b>${rule.offDays}</b> jour${rule.offDays>1?'s':''} de repos, puis <b>${rule.workDays}</b> jour${rule.workDays>1?'s':''} travaillé${rule.workDays>1?'s':''} en alternance <b>${rule.codeA}</b> ↔ <b>${rule.codeB}</b>, à partir du lendemain du dernier jour sélectionné pour chaque salarié.`
+      ) : '';
     const listHtml=Object.entries(state.genSelections).map(([u,sel])=>{
       const emp=state.users.find(x=>x.username===u);
       const info=codeInfo(sel.code);
       return `<div class="list-mgr-row"><span>${escapeHtml(emp?emp.name:u)}</span><span style="font-size:12px;color:var(--ink-soft);font-weight:600;">Dernier jour : ${fmtDateKeyFr(sel.date)} · ${escapeHtml(sel.code)}${info?' ('+escapeHtml(info.label)+')':''}</span></div>`;
     }).join('');
     overlay.innerHTML=`
-    <div class="modal" style="max-width:460px;">
+    <div class="modal" style="max-width:480px;">
       <h3>Générer automatiquement le planning</h3>
-      <div class="helper" style="margin-bottom:12px;">Cycle : 4 jours <b>OFF</b> (cases vides), puis 4 jours travaillés en <b>alternance M/S</b>, à partir du lendemain du dernier jour sélectionné. Le cycle se répète en continu sur la durée choisie.</div>
+      <div class="field"><label>Règle à appliquer</label>
+        <select id="genRuleSelect" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14.5px;background:#FBFCFE;">
+          ${rules.map(r=>`<option value="${r.id}" ${r.id===selectedRuleId?'selected':''}>${escapeHtml(r.name)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="helper" id="genRuleDesc" style="margin-bottom:12px;">${ruleDescHtml}</div>
       <div class="list-mgr" style="margin-bottom:16px;">${listHtml}</div>
       <div class="field"><label>Générer pour combien de temps ?</label>
         <select id="genMonths" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14.5px;background:#FBFCFE;">
@@ -5651,9 +5850,14 @@ function renderModal(){
     </div>`;
     document.body.appendChild(overlay);
     document.getElementById('genCancel').addEventListener('click',closeModal);
+    document.getElementById('genRuleSelect').addEventListener('change',(e)=>{
+      state.modal.ruleId=e.target.value;
+      render();
+    });
     document.getElementById('genConfirm').addEventListener('click', async()=>{
       const months=parseInt(document.getElementById('genMonths').value,10);
-      const res=await generateAutoPlanning(months);
+      const ruleId=document.getElementById('genRuleSelect').value;
+      const res=await generateAutoPlanning(months, ruleId);
       state.genSelections={};
       state.genMode=false;
       toast('Planning généré pour '+res.employees+' salarié'+(res.employees>1?'s':'')+' ('+res.days+' jours au total).');
