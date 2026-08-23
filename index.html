@@ -88,7 +88,7 @@
   .sidebar-foot button:hover{background:rgba(255,255,255,.16);}
 
   .topbar{height:60px;flex-shrink:0;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 26px;position:relative;}
-  .topbar h2{font-size:16.5px;margin:0;font-weight:800;}
+  .topbar h2{font-size:16.5px;margin:0;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex-shrink:1;}
   .content{flex:1;padding:24px 28px 40px;overflow:auto;}
   .toast{position:fixed;bottom:22px;right:22px;background:var(--ink);color:#fff;padding:10px 16px;border-radius:9px;font-size:13px;font-weight:600;opacity:0;transform:translateY(8px);transition:all .2s;pointer-events:none;z-index:50;max-width:320px;}
   .toast.show{opacity:1;transform:translateY(0);}
@@ -161,6 +161,8 @@
   .sidebar-extra .icon-btn{background:transparent;color:#fff;border:1.5px solid rgba(255,255,255,.35);}
   .sidebar-extra .icon-btn:hover{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.5);color:#fff;}
   .sidebar-extra .helper{color:rgba(255,255,255,.55);}
+  .sidebar-extra .field{margin-bottom:14px;}
+  .sidebar-extra .field label{color:rgba(255,255,255,.55);font-size:10px;text-transform:uppercase;letter-spacing:.03em;}
   .chip{display:flex;align-items:center;gap:7px;border-radius:20px;padding:6px 12px 6px 8px;border:2px solid transparent;font-size:12.5px;font-weight:700;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.06);}
   .chip .dot{width:16px;height:16px;border-radius:5px;flex-shrink:0;}
   .chip .dot.dot-outline{border:1.5px dashed #C7CBD1;}
@@ -362,6 +364,15 @@
   .peq-week-name{font-size:11px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:3px;}
   .peq-week-cell{text-align:center;font-size:9.5px;font-weight:800;padding:7px 2px;border-radius:6px;background:#F4F5F7;color:#AEB4BE;}
   .peq-week-cell.today{outline:2px solid var(--primary-dark);outline-offset:-2px;}
+  .peq-week-unavailable{grid-column:2 / -1;font-size:10.5px;font-style:italic;color:var(--ink-soft);background:#F4F5F7;border-radius:6px;padding:7px 8px;text-align:center;}
+  /* ---------- Grille restreinte (consultation d'un autre service) ---------- */
+  .restricted-grid-card{padding:4px;}
+  .restricted-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border);}
+  .restricted-row:last-child{border-bottom:none;}
+  .restricted-name{width:150px;flex-shrink:0;font-weight:700;font-size:13px;}
+  .restricted-cells{flex:1;display:flex;flex-wrap:wrap;gap:2px;overflow-x:auto;}
+  .restricted-cell{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:26px;border-radius:5px;background:#F4F5F7;color:#B7BEC9;font-size:9px;font-weight:800;flex-shrink:0;}
+  .restricted-unavailable{flex:1;font-size:12.5px;font-style:italic;color:var(--ink-soft);}
   .indiv-today-card{border-radius:14px;padding:14px 16px;margin-top:4px;box-shadow:0 2px 6px rgba(0,0,0,.08);}
   .indiv-today-card-label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;opacity:.75;margin-bottom:3px;}
   .indiv-today-card-value{font-size:14px;font-weight:800;}
@@ -712,7 +723,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v4.0';
+const APP_VERSION = 'v4.3';
 const APP_VERSION_DATE = '23/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -1246,6 +1257,17 @@ function isFeatureEnabled(flag, service){
 async function persistAlertRules(){ await storageSet('alertRules', JSON.stringify(state.alertRules), true); }
 async function persistMonthValidations(){ await storageSet('monthValidations', JSON.stringify(state.monthValidations), true); }
 async function persistPostValidationChanges(){ await storageSet('postValidationChanges', JSON.stringify(state.postValidationChanges), true); }
+/**
+ * Applique réellement une modification en attente au planning (state.schedules)
+ * — c'est SEULEMENT à cet instant, quand l'admin valide la modification, que
+ * le salarié voit le nouveau code. Avant ça, paintCell() n'avait volontairement
+ * rien écrit dans le planning officiel.
+ */
+function applyPendingChangeToSchedule(chg){
+  if(!state.schedules[chg.username]) state.schedules[chg.username]={};
+  const key=chg.year+'-'+String(chg.month+1).padStart(2,'0')+'-'+String(chg.day).padStart(2,'0');
+  if(chg.newCode) state.schedules[chg.username][key]=chg.newCode; else delete state.schedules[chg.username][key];
+}
 async function cancelPostValidationChange(id){
   const chg=state.postValidationChanges.find(c=>c.id===id);
   if(!chg) return;
@@ -2028,46 +2050,70 @@ function fmtDateFr(y,m,d){
 async function paintCell(username,year,month,day){
   const key=year+'-'+String(month+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
   if(!state.schedules[username]) state.schedules[username]={};
-  const current=state.schedules[username][key];
+  const officialCode=state.schedules[username][key]||null;
   const dateStr=fmtDateFr(year,month,day);
-  const oldCode=current||null;
+  const emp=state.users.find(u=>u.username===username);
+  // Important : on utilise le service applicable CE JOUR-LÀ (historique
+  // d'affectation), pas le service "actuel" de l'employé — un salarié
+  // transféré en cours de mois (ex : Patrick Napel arrivé au CCO en août)
+  // doit voir ses modifications correctement rattachées à CCO sur les
+  // jours où il y est réellement affecté, jamais à son ancien service.
+  const cellTeam = emp ? affectationAt(emp, key).team : '';
+  const monthValidated = !!(emp && cellTeam && isMonthValidated(cellTeam,year,month));
+
+  // S'il existe déjà une modification en attente (non validée) sur cette
+  // case précise, on compare/édite PAR RAPPORT À ELLE plutôt que par rapport
+  // au planning officiel — sinon re-cliquer sur une case déjà modifiée
+  // empilerait des entrées en double au lieu de mettre à jour la même.
+  const existingPending = monthValidated
+    ? state.postValidationChanges.find(c=>c.username===username && c.year===year && c.month===month && c.day===day && !c.acknowledged)
+    : null;
+  const current = existingPending ? existingPending.newCode : officialCode;
+
   let newCode, message;
   if(state.selectedCode==='VIDE' || current===state.selectedCode){
-    delete state.schedules[username][key];
     newCode=null;
     message='Votre journée du '+dateStr+' a été effacée (case vide).';
   } else {
-    state.schedules[username][key]=state.selectedCode;
     newCode=state.selectedCode;
     const info=codeInfo(state.selectedCode);
     message='Votre journée du '+dateStr+' a été mise à jour : '+(info?info.label:state.selectedCode)+' ('+state.selectedCode+').';
   }
-  render();
-  try{
-    await persistSchedules();
-    const emp=state.users.find(u=>u.username===username);
-    // Important : on utilise le service applicable CE JOUR-LÀ (historique
-    // d'affectation), pas le service "actuel" de l'employé — un salarié
-    // transféré en cours de mois (ex : Patrick Napel arrivé au CCO en août)
-    // doit voir ses modifications correctement rattachées à CCO sur les
-    // jours où il y est réellement affecté, jamais à son ancien service.
-    const cellTeam = emp ? affectationAt(emp, key).team : '';
-    const monthValidated = !!(emp && cellTeam && isMonthValidated(cellTeam,year,month));
-    if(emp && cellTeam && oldCode!==newCode && monthValidated){
-      // Mois déjà validé : on NE notifie PAS tout de suite. On journalise juste
-      // le changement ; la notification ne part que lorsque l'admin valide
-      // (acquitte) cette modification — voir data-ack-change / ackAllChanges.
+  if(current===newCode) return;
+
+  if(monthValidated){
+    // Mois déjà validé : on NE modifie PAS le planning affiché aux salariés
+    // tout de suite — on journalise juste la modification « en attente ».
+    // Le salarié continue de voir l'ANCIEN code tant que vous n'avez pas
+    // cliqué sur « Valider » dans « Modifications après validation » ci-dessous.
+    // Votre propre vue admin affiche déjà la nouvelle valeur avec un repère
+    // visuel « en attente », sans toucher aux données réelles du planning.
+    if(newCode===officialCode && existingPending){
+      // Le nouveau clic ramène exactement à la valeur d'origine : la
+      // modification en attente n'a plus lieu d'être, on la retire.
+      state.postValidationChanges=state.postValidationChanges.filter(c=>c.id!==existingPending.id);
+    } else if(existingPending){
+      existingPending.newCode=newCode;
+      existingPending.message=message;
+      existingPending.changedAt=new Date().toISOString();
+      existingPending.changedBy=state.currentUser.username;
+    } else {
       state.postValidationChanges.push({
         id:genId(), service:cellTeam, year, month, day, username, name:emp.name,
-        oldCode, newCode, message, changedAt:new Date().toISOString(), changedBy:state.currentUser.username, acknowledged:false
+        oldCode:officialCode, newCode, message, changedAt:new Date().toISOString(), changedBy:state.currentUser.username, acknowledged:false
       });
-      await persistPostValidationChanges();
-      render();
     }
-    // Mois pas encore validé : AUCUNE notification à l'édition. Le salarié ne voit
-    // de toute façon pas encore son planning ; il sera notifié en une seule fois
-    // pour tout le service au moment où l'admin validera le mois (voir plus bas).
-  }catch(e){ toast('Erreur de sauvegarde','err'); }
+    render();
+    try{ await persistPostValidationChanges(); }catch(e){ toast('Erreur de sauvegarde','err'); }
+    return;
+  }
+
+  // Mois pas encore validé : on applique directement, aucune notification
+  // individuelle (le salarié ne voit de toute façon pas encore son planning ;
+  // il sera notifié en une seule fois pour tout le service à la validation).
+  if(newCode) state.schedules[username][key]=newCode; else delete state.schedules[username][key];
+  render();
+  try{ await persistSchedules(); }catch(e){ toast('Erreur de sauvegarde','err'); }
 }
 
 /* ============================================================
@@ -2396,6 +2442,17 @@ function bellHtml(){
  * deux actions doivent rester accessibles autrement : ce petit menu dans
  * le bandeau du haut.
  */
+/**
+ * Bouton de bascule Individuel ⇄ Équipe, déplacé dans le bandeau du haut
+ * (mobile uniquement) pour laisser toute la largeur du contenu à la
+ * navigation par mois/semaine en dessous.
+ */
+function topbarSwitchBtnHtml(){
+  if(!isMobileDevice() || !state.currentUser || state.currentUser.role!=='employee') return '';
+  if(state.tab==='individuel') return `<button class="icon-btn" id="topbarSwitchBtn" data-switch-to="equipe">👥 Équipe</button>`;
+  if(state.tab==='equipe') return `<button class="icon-btn" id="topbarSwitchBtn" data-switch-to="individuel">🗓️ Individuel</button>`;
+  return '';
+}
 function topbarAccountMenuHtml(){
   if(!isMobileDevice()) return '';
   return `
@@ -2513,7 +2570,8 @@ function renderShell(innerHtml,title,sidebarExtraHtml){
     <div class="main">
       <div class="topbar">
         <h2>${title}</h2>
-        <div style="display:flex;align-items:center;gap:8px;">
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+          ${topbarSwitchBtnHtml()}
           ${bellHtml()}
           ${topbarAccountMenuHtml()}
         </div>
@@ -2532,6 +2590,8 @@ function renderShell(innerHtml,title,sidebarExtraHtml){
   document.getElementById('btnAccount').addEventListener('click',()=>{ state.modal={type:'account'}; render(); });
   bindBell();
   bindTopbarAccountMenu();
+  const topbarSwitchBtn=document.getElementById('topbarSwitchBtn');
+  if(topbarSwitchBtn) topbarSwitchBtn.addEventListener('click',()=>{ state.tab=topbarSwitchBtn.dataset.switchTo; render(); });
   bindNotifBanner();
 }
 
@@ -2701,7 +2761,16 @@ function gridHtml({employees, readonly, alerts, changes, serviceContext}){
       const holidayName=holidays[dkey(date)];
       const dateKeyStr=y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
       const dayValid=isDayWithinValidity(emp, dateKeyStr, serviceContext);
-      const code=getDayCode(emp.username,y,m,d);
+      const changeKey=emp.username+'::'+dateKeyStr;
+      const chgList=changesMap[changeKey];
+      // Aperçu admin d'une modification pas encore validée : on affiche le
+      // nouveau code choisi (avec le repère visuel orange plus bas), MAIS le
+      // planning réellement vu par le salarié (state.schedules, lu via
+      // getDayCode) ne change qu'au moment où vous cliquez sur « Valider »
+      // dans « Modifications après validation ». Jamais côté salarié (readonly).
+      const pendingChange = !readonly && chgList ? chgList.find(c=>!c.acknowledged) : null;
+      let code=getDayCode(emp.username,y,m,d);
+      if(pendingChange) code=pendingChange.newCode;
       const info=code?codeInfo(code):null;
       const style=info?`background:${info.color};color:${info.text};`:'';
       const holidayMarkHtml=holidayName?`<span class="grid-holiday-mark">F</span>`:'';
@@ -2743,8 +2812,6 @@ function gridHtml({employees, readonly, alerts, changes, serviceContext}){
         desidStripHtml=`<div class="desid-strip ${desid.status}" ${readonly?`style="${stripStyle}"`:stripClickAttr} data-tip="${tipContent('Demande : '+desid.code+' · '+dLabel+(desid.comment?'\n« '+desid.comment+' »':'')+(readonly?'':'\n\u2192 Cliquer pour valider/refuser'))}">${desid.code}<span class="desid-strip-icon">${icon}</span></div>`;
       }
       if(!dayValid) cellClass+=' invalid-day';
-      const changeKey=emp.username+'::'+dateKeyStr;
-      const chgList=changesMap[changeKey];
       let changePastilleHtml='';
       if(chgList && chgList.length){
         const hasPending=chgList.some(c=>!c.acknowledged);
@@ -2996,8 +3063,7 @@ function renderPlanningIndividuel(){
   const inner=`
     <div class="indiv-mobile-wrap">
     <div class="indiv-top-row">
-      <button class="icon-btn" id="indivTeamBtn" title="Voir le planning de mon équipe">👥 Équipe</button>
-      <div style="flex:1;">${monthNavHtml()}</div>
+      ${monthNavHtml()}
     </div>
     <div class="indiv-dow-row" style="display:flex;gap:4px;margin-bottom:6px;">
       <div class="cal-week-num" style="visibility:hidden;">00</div>
@@ -3022,7 +3088,6 @@ function renderPlanningIndividuel(){
   renderShell(inner,'Planning individuel');
   bindMonthNav(render);
   bindSwipeMonthNav(document.getElementById('indivSwipeArea'));
-  document.getElementById('indivTeamBtn').addEventListener('click',()=>{ state.tab='equipe'; render(); });
   const indivDesidBtn=document.getElementById('indivDesidBtn');
   if(indivDesidBtn) indivDesidBtn.addEventListener('click',()=>{
     state.modal={type:'new-desiderata', data:{dateStart:'',dateEnd:'',code:state.codes[0]?state.codes[0].code:'',comment:''}};
@@ -3220,7 +3285,7 @@ function renderPlanningEmploye(){
    horizontal), navigation par balayage tactile ou flèches. Reprend le
    même regroupement par fonction que la vue mois classique.
    ============================================================ */
-function teamWeekViewHtml(teamEmployees, weekDates, myTeam, todayKeyStr){
+function teamWeekViewHtml(teamEmployees, weekDates, myTeam, todayKeyStr, restrictedMode, viewerTeam){
   const groups=groupByFonction(teamEmployees, myTeam, false);
   const dowHeadHtml=`<div class="peq-week-grid peq-week-head">
     <div></div>
@@ -3233,6 +3298,17 @@ function teamWeekViewHtml(teamEmployees, weekDates, myTeam, todayKeyStr){
   const groupsHtml=groups.map(g=>{
     const label = g.fonction==='__none__' ? 'Sans fonction' : (g.fonction||'');
     const rows=g.list.map(emp=>{
+      // En mode « je consulte un autre service que le mien », chaque salarié
+      // n'apparaît en clair que s'il a coché ce service dans sa fiche
+      // (« Visible aussi sur le planning équipe d'autres services ») — sinon
+      // sa ligne affiche juste « Planning non disponible », sans le code.
+      const hidden = restrictedMode && !(emp.extraTeams||[]).includes(viewerTeam) && emp.username!==state.currentUser.username;
+      if(hidden){
+        return `<div class="peq-week-grid">
+          <div class="peq-week-name">${escapeHtml(emp.name)}</div>
+          <div class="peq-week-unavailable">Planning non disponible</div>
+        </div>`;
+      }
       const cells=weekDates.map(k=>{
         const [ky,km]=k.split('-').map(Number);
         const dayOk=isMonthValidated(myTeam, ky, km-1);
@@ -3251,11 +3327,49 @@ function teamWeekViewHtml(teamEmployees, weekDates, myTeam, todayKeyStr){
   return `<div class="peq-week-view">${dowHeadHtml}${groupsHtml}</div>`;
 }
 
+/**
+ * Grille desktop pour consulter un AUTRE service que le sien (autorisé par
+ * l'admin) : chaque salarié n'apparaît en clair que s'il a coché ce service
+ * comme « visible » depuis sa fiche — sinon sa ligne affiche juste
+ * « Planning non disponible ». Volontairement séparée de gridHtml() pour ne
+ * jamais risquer de modifier le comportement du planning normal.
+ */
+function restrictedTeamGridHtml(employees, viewedTeam, viewerTeam, y, m){
+  const nDays=daysInMonth(y,m);
+  const groups=groupByFonction(employees, viewedTeam, false);
+  const rows=groups.map(g=>{
+    const label = g.fonction==='__none__' ? 'Sans fonction' : (g.fonction||'');
+    const empRows=g.list.map(emp=>{
+      const hidden = !(emp.extraTeams||[]).includes(viewerTeam) && emp.username!==state.currentUser.username;
+      if(hidden){
+        return `<div class="restricted-row"><div class="restricted-name">${escapeHtml(emp.name)}</div><div class="restricted-unavailable">🔒 Planning non disponible — ce salarié n'a pas autorisé la consultation de son planning par d'autres services</div></div>`;
+      }
+      let cells='';
+      for(let d=1; d<=nDays; d++){
+        const code=getDayCode(emp.username,y,m,d);
+        const info=code?codeInfo(code):null;
+        cells+=`<span class="restricted-cell" style="${info?`background:${info.color};color:${info.text};`:''}" title="${d}/${m+1}">${code||''}</span>`;
+      }
+      return `<div class="restricted-row"><div class="restricted-name">${escapeHtml(emp.name)}</div><div class="restricted-cells">${cells}</div></div>`;
+    }).join('');
+    return `${label?`<div class="peq-week-fonction-label">${escapeHtml(label)}</div>`:''}${empRows}`;
+  }).join('');
+  return `<div class="grid-card restricted-grid-card">${rows||'<div class="empty-state">Aucun salarié dans ce service.</div>'}</div>`;
+}
+
 function renderPlanningEquipe(){
   const y=state.viewDate.getFullYear(), m=state.viewDate.getMonth();
   const me=state.users.find(u=>u.username===state.currentUser.username);
   const myTeam=(me&&me.team)?me.team:'';
   const mobile=isMobileDevice();
+
+  // Un salarié ne peut consulter QUE les services que l'admin lui a
+  // explicitement autorisés (case « Visible aussi sur le planning équipe
+  // d'autres services », cochée sur sa fiche) — jamais un service au choix.
+  const myAuthorizedServices=(me&&me.extraTeams)||[];
+  let viewedTeam = state.peqViewedService && myAuthorizedServices.includes(state.peqViewedService) ? state.peqViewedService : myTeam;
+  const isOwnTeam = viewedTeam===myTeam;
+
   const weekMode = mobile && state.peqMobileView==='week';
 
   // En vue semaine (mobile), la période affichée est déterminée par
@@ -3269,22 +3383,32 @@ function renderPlanningEquipe(){
   // l'admin dans « Gestion des salariés ») ou avoir un collègue dont l'affectation
   // change en cours de mois (« Historique service / fonction ») : il apparaît alors
   // aussi sur le planning équipe de ce service, avec les jours hors période grisés.
-  const belongsToTeam=u=>employeeActiveInServiceDuringMonth(u, myTeam, refYear, refMonth);
-  const teamEmployees = myTeam
+  const belongsToTeam=u=>employeeActiveInServiceDuringMonth(u, viewedTeam, refYear, refMonth);
+  const teamEmployees = viewedTeam
     ? state.users.filter(u=>!isSuperAdmin(u) && belongsToTeam(u) && isEmployeeValidForMonth(u,refYear,refMonth))
     : state.users.filter(u=>!isSuperAdmin(u) && u.username===state.currentUser.username && isEmployeeValidForMonth(u,refYear,refMonth));
-  const teamUsernames = (myTeam ? state.users.filter(belongsToTeam) : [me]).filter(Boolean).map(u=>u.username);
+  const teamUsernames = (viewedTeam ? state.users.filter(belongsToTeam) : [me]).filter(Boolean).map(u=>u.username);
   // Les alertes (effectifs / charge hebdo) sont réservées à l'espace admin :
   // les salariés ne les voient jamais sur leur planning équipe.
-  const monthOk = isMonthValidated(myTeam,y,m);
+  const monthOk = isMonthValidated(viewedTeam,y,m);
+
+  const serviceSwitcherHtml = myAuthorizedServices.length ? `
+    <div class="field" style="margin:0 0 12px;">
+      <label style="font-size:11px;">Service consulté</label>
+      <select id="peqServiceSelect" style="width:100%;padding:9px 10px;border:1.5px solid var(--border);border-radius:9px;font-size:13.5px;background:#FBFCFE;">
+        <option value="${escapeHtml(myTeam)}" ${isOwnTeam?'selected':''}>${escapeHtml(myTeam)} (mon équipe)</option>
+        ${myAuthorizedServices.map(s=>`<option value="${escapeHtml(s)}" ${viewedTeam===s?'selected':''}>${escapeHtml(s)}</option>`).join('')}
+      </select>
+    </div>` : '';
 
   const sideCodesHtml = `
     <div class="sidebar-extra-title">Codes</div>
     ${sidebarLegendHtml(false)}
   `;
   const sideActionsHtml = `
+    ${myAuthorizedServices.length ? `<div class="sidebar-extra-title">Service</div>${serviceSwitcherHtml}` : ''}
     <div class="sidebar-extra-title" style="margin-top:22px;">Actions</div>
-    ${(monthOk && myTeam && isFeatureEnabled('impression')) ? `<button class="icon-btn" id="peqPrintBtn">🖨️ Imprimer</button>` : ''}
+    ${(monthOk && isOwnTeam && myTeam && isFeatureEnabled('impression')) ? `<button class="icon-btn" id="peqPrintBtn">🖨️ Imprimer</button>` : ''}
     ${isFeatureEnabled('desideratas', myTeam) ? `<button class="btn btn-primary" id="peqNewDesidBtn">🖐️ Désidératas</button>` : ''}
     ${isFeatureEnabled('echanges', myTeam) ? `<button class="btn btn-primary" id="peqNewExchBtn">🔄 Swap</button>` : ''}
   `;
@@ -3294,23 +3418,25 @@ function renderPlanningEquipe(){
   const inner=`
     ${mobile ? `
     <div class="indiv-top-row">
-      <button class="icon-btn" id="peqIndivBtn" title="Voir mon planning individuel">🗓️ Individuel</button>
-      <div style="flex:1;">
-        ${weekMode ? `
-        <div class="month-nav">
-          <button class="nav-arrow" id="peqPrevWeek">‹</button>
-          <div class="month-label">Semaine ${weekNumLabel}</div>
-          <button class="nav-arrow" id="peqNextWeek">›</button>
-          <button class="today-btn" id="peqTodayWeek">Aujourd'hui</button>
-        </div>
-        ` : monthNavHtml()}
+      ${weekMode ? `
+      <div class="month-nav">
+        <button class="nav-arrow" id="peqPrevWeek">‹</button>
+        <div class="month-label">Semaine ${weekNumLabel}</div>
+        <button class="nav-arrow" id="peqNextWeek">›</button>
+        <button class="today-btn" id="peqTodayWeek">Aujourd'hui</button>
       </div>
+      ` : monthNavHtml()}
     </div>
     <div style="text-align:center;font-size:11.5px;color:var(--ink-soft);margin:-2px 0 8px;">
       ${weekMode ? `${fmtDateKeyFr(weekDates[0])} → ${fmtDateKeyFr(weekDates[6])} · glissez pour changer de semaine` : ''}
     </div>
+    ${myAuthorizedServices.length?serviceSwitcherHtml:''}
     ` : monthNavHtml()}
-    <div class="legend-hint" style="margin:6px 0 12px;">${myTeam?`Planning en lecture seule de l'équipe <b>${escapeHtml(myTeam)}</b>.`:`Aucune équipe ne vous a été assignée pour le moment — seul votre planning est affiché ici.`}</div>
+    <div class="legend-hint" style="margin:6px 0 12px;">
+      ${!viewedTeam ? `Aucune équipe ne vous a été assignée pour le moment — seul votre planning est affiché ici.`
+        : isOwnTeam ? `Planning en lecture seule de l'équipe <b>${escapeHtml(viewedTeam)}</b>.`
+        : `Vous consultez le planning du service <b>${escapeHtml(viewedTeam)}</b> — seuls les salariés ayant autorisé cette consultation apparaissent en détail, les autres affichent « Planning non disponible ».`}
+    </div>
     ${mobile ? `
     <div class="mobile-action-row">
       ${isFeatureEnabled('desideratas', myTeam) ? `<button class="btn btn-primary" id="peqNewDesidBtn">🖐️ Désidératas</button>` : ''}
@@ -3318,24 +3444,28 @@ function renderPlanningEquipe(){
     </div>
     ` : ''}
     ${weekMode ? `
-    <div id="peqSwipeArea">${teamEmployees.length ? teamWeekViewHtml(teamEmployees, weekDates, myTeam, todayKeyStr) : `<div class="empty-state">Aucun salarié dans ce service.</div>`}</div>
+    <div id="peqSwipeArea">${teamEmployees.length ? teamWeekViewHtml(teamEmployees, weekDates, viewedTeam, todayKeyStr, !isOwnTeam, myTeam) : `<div class="empty-state">Aucun salarié dans ce service.</div>`}</div>
     <button class="icon-btn" id="peqMonthViewBtn" style="width:100%;margin-top:12px;">📅 Vue mois complet</button>
     ` : (monthOk ? `
-    <div id="peqSwipeArea">${gridHtml({employees:teamEmployees, readonly:true, alerts:[], serviceContext: myTeam||null})}</div>
+    <div id="peqSwipeArea">${isOwnTeam
+        ? gridHtml({employees:teamEmployees, readonly:true, alerts:[], serviceContext: viewedTeam||null})
+        : restrictedTeamGridHtml(teamEmployees, viewedTeam, myTeam, y, m)}</div>
     ${mobile ? `<button class="icon-btn" id="peqWeekViewBtn" style="width:100%;margin-top:12px;">🗓️ Vue semaine</button>` : ''}
-    ${commentsRecapHtml(y,m,teamUsernames,false)}
+    ${isOwnTeam ? commentsRecapHtml(y,m,teamUsernames,false) : ''}
     ` : `
     <div class="not-validated-card">
       <div class="not-validated-icon">🔒</div>
       <h3>Planning pas encore disponible</h3>
-      ${myTeam
-        ? `<p>Le planning de <b>${MOIS[m]} ${y}</b> n'a pas encore été validé par votre responsable.</p>`
+      ${viewedTeam
+        ? `<p>Le planning de <b>${MOIS[m]} ${y}</b> n'a pas encore été validé pour ce service.</p>`
         : `<p>Aucun <b>service</b> ne vous a été assigné pour le moment. Contactez votre administrateur pour qu'il complète votre fiche dans « Gestion des salariés ».</p>`}
       ${isMobileDevice()?'':"<p class='helper'>Vous pouvez toujours consulter ou déposer vos désidératas depuis l'onglet « Mes désidératas » (sur ordinateur).</p>"}
     </div>
     `)}
   `;
-  renderShell(inner,'Planning équipe'+(myTeam?' — '+myTeam:''), mobile?null:(sideCodesHtml+sideActionsHtml));
+  renderShell(inner,'Planning équipe'+(viewedTeam?' — '+viewedTeam:''), mobile?null:(sideCodesHtml+sideActionsHtml));
+  const peqServiceSelect=document.getElementById('peqServiceSelect');
+  if(peqServiceSelect) peqServiceSelect.addEventListener('change',e=>{ state.peqViewedService=e.target.value; render(); });
   if(weekMode){
     document.getElementById('peqPrevWeek').addEventListener('click',()=>{ state.peqWeekDate=addDays(state.peqWeekDate,-7); render(); });
     document.getElementById('peqNextWeek').addEventListener('click',()=>{ state.peqWeekDate=addDays(state.peqWeekDate,7); render(); });
@@ -3352,8 +3482,6 @@ function renderPlanningEquipe(){
   if(peqMonthViewBtn) peqMonthViewBtn.addEventListener('click',()=>{ state.peqMobileView='month'; render(); });
   const peqWeekViewBtn=document.getElementById('peqWeekViewBtn');
   if(peqWeekViewBtn) peqWeekViewBtn.addEventListener('click',()=>{ state.peqMobileView='week'; render(); });
-  const peqIndivBtn=document.getElementById('peqIndivBtn');
-  if(peqIndivBtn) peqIndivBtn.addEventListener('click',()=>{ state.tab='individuel'; render(); });
   const peqPrintBtn=document.getElementById('peqPrintBtn');
   if(peqPrintBtn) peqPrintBtn.addEventListener('click', ()=>{ printMonthlyPlanning(myTeam, y, m); });
   const peqNewDesidBtn=document.getElementById('peqNewDesidBtn');
@@ -4409,7 +4537,9 @@ function renderCalendrierAdmin(){
     btn.addEventListener('click', async()=>{
       const chg=state.postValidationChanges.find(c=>c.id===btn.dataset.ackChange);
       if(chg){
+        applyPendingChangeToSchedule(chg);
         chg.acknowledged=true; chg.acknowledgedAt=new Date().toISOString(); chg.acknowledgedBy=state.currentUser.username;
+        await persistSchedules();
         await persistPostValidationChanges();
         await pushNotification(chg.username, chg.message || ('Votre planning de '+MOIS[chg.month]+' '+chg.year+' a été modifié.'));
         toast('Modification validée.');
@@ -4432,10 +4562,12 @@ function renderCalendrierAdmin(){
     const now=new Date().toISOString();
     for(const c of changes){
       if(!c.acknowledged){
+        applyPendingChangeToSchedule(c);
         c.acknowledged=true; c.acknowledgedAt=now; c.acknowledgedBy=state.currentUser.username;
         await pushNotification(c.username, c.message || ('Votre planning de '+MOIS[c.month]+' '+c.year+' a été modifié.'));
       }
     }
+    await persistSchedules();
     await persistPostValidationChanges();
     toast('Toutes les modifications ont été validées.');
     render();
@@ -4889,7 +5021,7 @@ function renderModal(){
         <div class="check-list" id="mExtraTeams">
           ${(getAdminScope(state.currentUser)||state.services).filter(s=>s!==d.team).map(s=>`<label class="check-item"><input type="checkbox" value="${escapeHtml(s)}" ${(d.extraTeams||[]).includes(s)?'checked':''}> ${escapeHtml(s)}</label>`).join('') || '<div class="helper">Aucun autre service disponible.</div>'}
         </div>
-        <div class="helper">Cochez un service pour que ce salarié apparaisse aussi sur le « Planning équipe » consulté par ce service (ex : un responsable qui supervise plusieurs services). Décochez pour masquer son planning à ce service.</div>
+        <div class="helper">Cocher un service fait deux choses à la fois : ce salarié apparaît aussi sur le « Planning équipe » de ce service (ex : un responsable qui supervise plusieurs services), <b>et</b> ce service est autorisé à consulter le planning de ce salarié (sélecteur « Service consulté » côté salarié) — avec le détail visible en clair au lieu de « Planning non disponible ». Décochez pour retirer les deux à la fois.</div>
       </div>
       <div class="field admin-rights-field">
         <label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:6px;">Historique service / fonction</label>
