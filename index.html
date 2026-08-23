@@ -251,6 +251,35 @@
   .feat-service-table td{padding:9px 10px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600;}
   .feat-service-table input[type="checkbox"]{width:18px;height:18px;accent-color:var(--primary);cursor:pointer;}
   .feat-service-table tr:last-child td{border-bottom:none;}
+  /* ---------- Cycles (heures travaillées, admin) ---------- */
+  .cycles-config-bar{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin:14px 0 16px;}
+  .cycles-config-bar .field{margin:0;min-width:150px;flex:1;}
+  .cycles-summary-row{display:flex;gap:14px;margin-bottom:18px;flex-wrap:wrap;}
+  .cycles-summary-card{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--ok);border-radius:12px;padding:14px 18px;min-width:200px;flex:1;}
+  .cycles-summary-card.warn{border-left-color:var(--danger);}
+  .cycles-summary-card .cs-label{font-size:11.5px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px;}
+  .cycles-summary-card .cs-value{font-size:26px;font-weight:800;color:var(--ink);}
+  .cycles-summary-card.warn .cs-value{color:var(--danger);}
+  .cycles-emp-list{display:flex;flex-direction:column;gap:10px;}
+  .cycle-emp-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+  .cycle-emp-head{display:flex;align-items:center;gap:16px;padding:14px 18px;cursor:pointer;flex-wrap:wrap;}
+  .cycle-emp-head:hover{background:#FBFCFE;}
+  .cycle-emp-name{font-weight:800;font-size:14px;min-width:160px;}
+  .cycle-emp-stats{display:flex;align-items:center;gap:20px;flex-wrap:wrap;flex:1;}
+  .cycle-stat{display:flex;flex-direction:column;gap:2px;}
+  .cycle-stat-label{font-size:10.5px;color:var(--ink-soft);font-weight:700;text-transform:uppercase;letter-spacing:.02em;}
+  .cycle-stat-value{font-size:13px;font-weight:700;}
+  .cycle-status-badge{display:inline-block;padding:4px 12px;border-radius:20px;font-size:11.5px;font-weight:800;background:#E7F6EC;color:#1E7B3C;}
+  .cycle-status-badge.alert{background:#FBEAE9;color:var(--danger);}
+  .cycle-alert-count{font-size:11.5px;font-weight:700;color:var(--danger);}
+  .cycle-expand-btn{flex-shrink:0;}
+  .cycle-detail-table-wrap{border-top:1px solid var(--border);overflow-x:auto;}
+  .cycle-detail-table{width:100%;border-collapse:collapse;font-size:13px;}
+  .cycle-detail-table thead th{background:var(--primary-dark);color:#fff;text-align:left;padding:10px 16px;font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;font-weight:700;}
+  .cycle-detail-table td{padding:9px 16px;border-bottom:1px solid var(--border);}
+  .cycle-detail-table td.cycle-hours{font-weight:800;}
+  .cycle-detail-table tr.alert-row{background:#FFF7F6;}
+  .cycle-detail-table tr:last-child td{border-bottom:none;}
 
   /* ---------- Modal ---------- */
   .overlay{position:fixed;inset:0;background:rgba(20,25,40,.45);display:flex;align-items:center;justify-content:center;z-index:40;padding:20px;}
@@ -640,7 +669,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v2.6';
+const APP_VERSION = 'v2.8';
 const APP_VERSION_DATE = '22/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -678,7 +707,7 @@ const FIRESTORE_KEY_MAP = {
   comments:'comments', fonctions:'fonctions', services:'services', desideratas:'desideratas',
   alertRules:'alertRules', monthValidations:'monthValidations', postValidationChanges:'postValidationChanges',
   cpAllowances:'cpAllowances', employeeDrafts:'employeeDrafts', exchanges:'exchanges',
-  featureFlags:'featureFlags'
+  featureFlags:'featureFlags', cycleSettings:'cycleSettings'
 };
 // Enregistrement précoce et silencieux du service worker FCM (permet de recevoir
 // des notifications en arrière-plan même avant que l'utilisateur active les alertes).
@@ -796,7 +825,8 @@ let state={
   comments:{},
   desideratas:[],
   exchanges:[],
-  featureFlags:{desideratas:true, echanges:true, alertes:true, genAuto:true, impression:true, photos:true, perService:{}},
+  featureFlags:{desideratas:true, echanges:true, alertes:true, genAuto:true, impression:true, photos:true, cycles:false, perService:{}},
+  cycleSettings:{},
   alertRules:[],
   monthValidations:{},
   postValidationChanges:[],
@@ -916,11 +946,15 @@ async function loadAll(){
     // par une mise à jour de l'appli reste activée par défaut si l'admin n'a
     // encore rien configuré explicitement.
     state.featureFlags = Object.assign(
-      {desideratas:true, echanges:true, alertes:true, genAuto:true, impression:true, photos:true, perService:{}},
+      {desideratas:true, echanges:true, alertes:true, genAuto:true, impression:true, photos:true, cycles:false, perService:{}},
       parsed||{}
     );
     if(!state.featureFlags.perService) state.featureFlags.perService={};
   }catch(e){ /* garde les valeurs par défaut de state */ }
+  try{
+    const cs=await storageGet('cycleSettings', true);
+    state.cycleSettings = cs ? JSON.parse(cs.value) : {};
+  }catch(e){ state.cycleSettings={}; }
   try{
     const ar=await storageGet('alertRules', true);
     state.alertRules = ar ? JSON.parse(ar.value) : null;
@@ -1058,6 +1092,56 @@ async function persistServices(){ await storageSet('services', JSON.stringify(st
 async function persistDesideratas(){ await storageSet('desideratas', JSON.stringify(state.desideratas), true); }
 async function persistExchanges(){ await storageSet('exchanges', JSON.stringify(state.exchanges), true); }
 async function persistFeatureFlags(){ await storageSet('featureFlags', JSON.stringify(state.featureFlags), true); }
+async function persistCycleSettings(){ await storageSet('cycleSettings', JSON.stringify(state.cycleSettings), true); }
+/* ============================================================
+   CYCLES DE RÉFÉRENCE (heures travaillées sur N jours glissants)
+   ============================================================ */
+function defaultCycleSettings(){
+  return {startDate: dkey(new Date()), cycleDays:56, threshold:280};
+}
+function getCycleSettings(service){
+  return Object.assign(defaultCycleSettings(), state.cycleSettings[service]||{});
+}
+function codeHoursValue(code){
+  const info=codeInfo(code);
+  if(!info || !info.startTime || !info.endTime) return 0;
+  const [sh,sm]=info.startTime.split(':').map(Number);
+  const [eh,em]=info.endTime.split(':').map(Number);
+  let mins=(eh*60+em)-(sh*60+sm);
+  if(mins<=0) mins+=24*60; // service de nuit à cheval sur minuit
+  return mins/60;
+}
+function computeCyclesForEmployee(username, settings){
+  const {startDate, cycleDays, threshold}=settings;
+  const sched=state.schedules[username]||{};
+  const startD=new Date(startDate+'T00:00:00');
+  // On calcule assez de cycles pour couvrir au moins 18 mois après aujourd'hui,
+  // avec un plafond raisonnable pour ne jamais bloquer le navigateur.
+  const horizon=addDays(new Date(), 548);
+  const cycles=[];
+  let cursor=startD;
+  let i=0;
+  while(i<80 && (cycles.length<4 || cursor<=horizon)){
+    const cycleEnd=addDays(cursor, cycleDays-1);
+    let hours=0;
+    for(let d=0; d<cycleDays; d++){
+      const key=dkey(addDays(cursor,d));
+      const code=sched[key];
+      if(code) hours+=codeHoursValue(code);
+    }
+    cycles.push({num:i+1, start:dkey(cursor), end:dkey(cycleEnd), hours, alert: hours>threshold});
+    cursor=addDays(cursor, cycleDays);
+    i++;
+  }
+  return cycles;
+}
+function currentCycleFor(cycles){
+  const todayKey=dkey(new Date());
+  const inProgress=cycles.find(c=>todayKey>=c.start && todayKey<=c.end);
+  if(inProgress) return inProgress;
+  const past=[...cycles].reverse().find(c=>c.end<todayKey);
+  return past || cycles[0];
+}
 async function resetTestData(){
   state.desideratas=[];
   state.exchanges=[];
@@ -1911,6 +1995,107 @@ async function paintCell(username,year,month,day){
    ÉCRAN — FONCTIONNALITÉS (grand admin uniquement)
    Active/désactive des fonctionnalités du site, globalement ou par service.
    ============================================================ */
+/* ============================================================
+   ÉCRAN — CYCLES (heures travaillées sur période glissante, admin)
+   Fonctionnalité optionnelle, activée depuis « Fonctionnalités », visible
+   uniquement par les comptes admin (jamais par les salariés).
+   ============================================================ */
+function cycleEmployeeRowHtml(ec, settings, expanded){
+  const {user, cycles, current, alertCount, totalOverHours}=ec;
+  return `
+  <div class="cycle-emp-card">
+    <div class="cycle-emp-head" data-toggle-user="${user.username}">
+      <div class="cycle-emp-name">${escapeHtml(user.name)}</div>
+      <div class="cycle-emp-stats">
+        <div class="cycle-stat"><span class="cycle-stat-label">Cycle en cours</span><span class="cycle-stat-value">${fmtDateKeyFr(current.start)} → ${fmtDateKeyFr(current.end)}</span></div>
+        <div class="cycle-stat"><span class="cycle-stat-label">Heures</span><span class="cycle-stat-value">${current.hours.toFixed(1)} h</span></div>
+        <span class="cycle-status-badge ${current.alert?'alert':'ok'}">${current.alert?'⚠ Alerte':'✓ OK'}</span>
+        ${alertCount ? `<span class="cycle-alert-count">${alertCount} cycle${alertCount>1?'s':''} en alerte</span>` : ''}
+      </div>
+      <button class="icon-btn cycle-expand-btn" data-toggle-user="${user.username}">${expanded?'▲ Réduire':'▼ Détail'}</button>
+    </div>
+    ${expanded ? `
+    <div class="cycle-detail-table-wrap">
+      <table class="cycle-detail-table">
+        <thead><tr><th>Cycle</th><th>Début</th><th>Fin</th><th>Heures travaillées</th><th>Seuil</th><th>État</th></tr></thead>
+        <tbody>
+          ${cycles.map(c=>`<tr class="${c.alert?'alert-row':''}">
+            <td>${c.num}</td><td>${fmtDateKeyFr(c.start)}</td><td>${fmtDateKeyFr(c.end)}</td>
+            <td class="cycle-hours">${c.hours.toFixed(1)} h</td>
+            <td>${settings.threshold} h</td>
+            <td><span class="cycle-status-badge ${c.alert?'alert':'ok'}">${c.alert?'ALERTE':'OK'}</span></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>` : ''}
+  </div>`;
+}
+function renderCycles(){
+  if(!(state.currentUser.role==='admin' && isFeatureEnabled('cycles'))){ state.tab='calendrier'; render(); return; }
+  const scope=getAdminScope(state.currentUser);
+  const availableServices=scope || state.services;
+  if(state.cyclesServiceFilter===undefined || !availableServices.includes(state.cyclesServiceFilter)){
+    state.cyclesServiceFilter=availableServices[0]||'';
+  }
+  const service=state.cyclesServiceFilter;
+  const settings=getCycleSettings(service);
+
+  const empList=service ? state.users.filter(u=>!isSuperAdmin(u) && (u.team===service || (u.extraTeams||[]).includes(service))) : [];
+  const employeeCycles=empList.map(u=>{
+    const cycles=computeCyclesForEmployee(u.username, settings);
+    const current=currentCycleFor(cycles);
+    const alertCount=cycles.filter(c=>c.alert).length;
+    const totalOverHours=cycles.reduce((sum,c)=>sum+Math.max(0,c.hours-settings.threshold),0);
+    return {user:u, cycles, current, alertCount, totalOverHours};
+  }).sort((a,b)=>a.user.name.localeCompare(b.user.name));
+
+  const globalAlertCount=employeeCycles.filter(ec=>ec.current.alert).length;
+  const expandedUser=state.cyclesExpandedUser;
+
+  const inner=`
+    <div class="legend-hint">Calcule les heures travaillées de chaque salarié du service sur des cycles glissants de N jours (ex : 56 jours = 8 semaines), à partir des codes déjà saisis sur son planning et des horaires définis dans « Gestion des codes ». Une alerte se déclenche si un cycle dépasse le seuil choisi.</div>
+    <div class="cycles-config-bar">
+      <div class="field"><label>Service</label>
+        <select id="cycService" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14px;background:#FBFCFE;">
+          ${availableServices.map(s=>`<option value="${escapeHtml(s)}" ${service===s?'selected':''}>${escapeHtml(s)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field"><label>Date de début du 1ᵉʳ cycle</label><input type="date" id="cycStartDate" value="${settings.startDate}"></div>
+      <div class="field"><label>Durée d'un cycle (jours)</label><input type="number" id="cycDays" value="${settings.cycleDays}" min="7" max="365"></div>
+      <div class="field"><label>Seuil d'alerte (heures)</label><input type="number" id="cycThreshold" value="${settings.threshold}" min="1"></div>
+      <button class="btn btn-primary" id="cycSaveBtn" style="width:auto;align-self:flex-end;">Enregistrer</button>
+    </div>
+    ${service ? `
+    <div class="cycles-summary-row">
+      <div class="cycles-summary-card"><div class="cs-label">Salariés du service</div><div class="cs-value">${empList.length}</div></div>
+      <div class="cycles-summary-card ${globalAlertCount?'warn':''}"><div class="cs-label">En alerte sur leur cycle en cours</div><div class="cs-value">${globalAlertCount}</div></div>
+    </div>
+    <div class="cycles-emp-list">
+      ${employeeCycles.length ? employeeCycles.map(ec=>cycleEmployeeRowHtml(ec, settings, expandedUser===ec.user.username)).join('') : `<div class="empty-state">Aucun salarié dans ce service.</div>`}
+    </div>
+    ` : `<div class="empty-state">Aucun service disponible.</div>`}
+  `;
+  renderShell(inner,'Cycles — heures travaillées');
+  document.getElementById('cycService').addEventListener('change',e=>{ state.cyclesServiceFilter=e.target.value; state.cyclesExpandedUser=null; render(); });
+  document.getElementById('cycSaveBtn').addEventListener('click', async()=>{
+    const startDate=document.getElementById('cycStartDate').value;
+    const cycleDays=Math.max(7, Number(document.getElementById('cycDays').value)||56);
+    const threshold=Math.max(1, Number(document.getElementById('cycThreshold').value)||280);
+    if(!startDate){ toast('Merci de renseigner une date de départ.', true); return; }
+    state.cycleSettings[service]={startDate, cycleDays, threshold};
+    await persistCycleSettings();
+    toast('Réglages du cycle enregistrés pour '+service+'.');
+    render();
+  });
+  document.querySelectorAll('[data-toggle-user]').forEach(el=>{
+    el.addEventListener('click',()=>{
+      const u=el.dataset.toggleUser;
+      state.cyclesExpandedUser = state.cyclesExpandedUser===u ? null : u;
+      render();
+    });
+  });
+}
+
 function renderFonctionnalites(){
   if(!isSuperAdmin(state.currentUser)){ state.tab='calendrier'; render(); return; }
   const ff=state.featureFlags;
@@ -1944,6 +2129,7 @@ function renderFonctionnalites(){
       ${globalToggle('genAuto','Génération automatique du planning','Le bouton « 🪄 Générer automatiquement » sur le Calendrier Mensuel.')}
       ${globalToggle('impression','Impression PDF','Les boutons « Imprimer le planning » (admin, planning équipe, planning individuel).')}
       ${globalToggle('photos','Photo de profil','Permet aux salariés d\u2019ajouter une photo depuis « Mon compte ».')}
+      ${globalToggle('cycles','Cycles (heures travaillées)','Calcule les heures travaillées de chaque salarié sur des cycles glissants (ex : 8 semaines) et alerte en cas de dépassement. Visible uniquement par les comptes admin, jamais par les salariés.')}
     </div>
     <div class="feat-card">
       <h3>Droits par service</h3>
@@ -2056,6 +2242,7 @@ function navItems(){
     if(isFeatureEnabled('desideratas')) items.push({id:'desideratas', label:'Désidératas', icon:'🖐️'});
     if(isFeatureEnabled('echanges')) items.push({id:'echanges', label:'Échanges', icon:'🔄'});
     if(isFeatureEnabled('alertes')) items.push({id:'alertes', label:'Alertes', icon:'⚠️'});
+    if(isFeatureEnabled('cycles')) items.push({id:'cycles', label:'Cycles', icon:'📊'});
     if(isSuperAdmin(state.currentUser)) items.push({id:'fonctionnalites', label:'Fonctionnalités', icon:'🧩'});
     return items;
   }
@@ -3827,7 +4014,7 @@ function renderCalendrierAdmin(){
     ? (validated
         ? `<button class="btn-validate validated" id="validateBtn">✓ Mois validé — Dévalider</button>`
         : `<button class="btn-validate" id="validateBtn">🔒 Valider</button>`)
-    : `<span class="helper" style="margin:0;">Sélectionnez un service précis pour valider son mois.</span>`;
+    : `<span class="helper" style="display:block;margin:0 0 16px;">Sélectionnez un service précis pour valider son mois.</span>`;
   const genCount=Object.keys(state.genSelections).length;
   const genAutoOn=isFeatureEnabled('genAuto');
   const printOn=isFeatureEnabled('impression');
@@ -5323,6 +5510,7 @@ function render(){
     else if(state.tab==='desideratas') renderAdminDesiderata();
     else if(state.tab==='echanges') renderAdminEchanges();
     else if(state.tab==='alertes') renderAlertes();
+    else if(state.tab==='cycles') renderCycles();
     else if(state.tab==='fonctionnalites') renderFonctionnalites();
     else renderCalendrierAdmin();
   } else {
