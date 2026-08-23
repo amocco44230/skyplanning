@@ -161,6 +161,7 @@
   .sidebar-extra .icon-btn{background:transparent;color:#fff;border:1.5px solid rgba(255,255,255,.35);}
   .sidebar-extra .icon-btn:hover{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.5);color:#fff;}
   .sidebar-extra .helper{color:rgba(255,255,255,.55);}
+  .svc-select-hint{background:rgba(245,166,35,.15);border:1.5px solid rgba(245,166,35,.4);color:#F5A623;font-size:12px;font-weight:700;padding:10px 12px;border-radius:10px;line-height:1.4;}
   .sidebar-extra .field{margin-bottom:14px;}
   .sidebar-extra .field label{color:rgba(255,255,255,.55);font-size:10px;text-transform:uppercase;letter-spacing:.03em;}
   .chip{display:flex;align-items:center;gap:7px;border-radius:20px;padding:6px 12px 6px 8px;border:2px solid transparent;font-size:12.5px;font-weight:700;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.06);}
@@ -724,7 +725,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v4.7';
+const APP_VERSION = 'v4.9';
 const APP_VERSION_DATE = '23/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -4498,7 +4499,7 @@ function renderCalendrierAdmin(){
     ? (validated
         ? `<button class="btn-validate validated" id="validateBtn">✓ Mois validé — Dévalider</button>`
         : `<button class="btn-validate" id="validateBtn">🔒 Valider</button>`)
-    : `<span class="helper" style="display:block;margin:0 0 16px;">Sélectionnez un service précis pour valider son mois.</span>`;
+    : `<div class="svc-select-hint">👉 Sélectionnez un service précis dans le menu ci-dessus pour pouvoir valider son mois.</div>`;
   const genCount=Object.keys(state.genSelections).length;
   const genAutoOn=isFeatureEnabled('genAuto');
   const printOn=isFeatureEnabled('impression');
@@ -5227,11 +5228,15 @@ function renderModal(){
       <div class="helper" style="margin:-10px 0 14px;">Laissez les heures vides pour un code sans horaire (congé, repos, férié…). Le type détermine dans quelle section il apparaît dans « Gestion des codes ».</div>
       <div class="field"><label>Description</label><input id="cDesc" value="${d.description||''}" placeholder="Ex : Télétravail à domicile"></div>
       <div class="field">
-        <label>Réservé à certains services (optionnel)</label>
-        <div class="check-list" id="cServices">
+        <label>Services autorisés</label>
+        <div class="type-toggle">
+          <label class="type-toggle-opt ${!(d.services&&d.services.length)?'active':''}"><input type="radio" name="cSvcMode" value="all" ${!(d.services&&d.services.length)?'checked':''}> 🌐 Tous les services</label>
+          <label class="type-toggle-opt ${(d.services&&d.services.length)?'active':''}"><input type="radio" name="cSvcMode" value="restricted" ${(d.services&&d.services.length)?'checked':''}> 🔒 Services précis</label>
+        </div>
+        <div class="check-list" id="cServices" style="margin-top:10px;${(d.services&&d.services.length)?'':'display:none;'}">
           ${state.services.map(s=>`<label class="check-item"><input type="checkbox" value="${escapeHtml(s)}" ${(d.services||[]).includes(s)?'checked':''}> ${escapeHtml(s)}</label>`).join('') || '<div class="helper">Aucun service créé pour l\u2019instant.</div>'}
         </div>
-        <div class="helper">Ne rien cocher = disponible pour tous les services. Cocher un ou plusieurs services le réserve exclusivement à ceux-ci — il n'apparaîtra plus dans la palette de codes des autres services.</div>
+        <div class="helper">« Tous les services » couvre aussi les services créés plus tard. « Services précis » réserve ce code exclusivement à ceux cochés — il n'apparaîtra plus dans la palette des autres services.</div>
       </div>
       <div id="cError" style="color:var(--danger);font-size:12.5px;font-weight:600;display:none;margin-bottom:6px;"></div>
       <div class="modal-actions">
@@ -5243,8 +5248,15 @@ function renderModal(){
     document.getElementById('cCancel').addEventListener('click',closeModal);
     document.querySelectorAll('input[name="cIsWork"]').forEach(r=>{
       r.addEventListener('change',()=>{
-        document.querySelectorAll('.type-toggle-opt').forEach(opt=>opt.classList.remove('active'));
+        r.closest('.type-toggle').querySelectorAll('.type-toggle-opt').forEach(opt=>opt.classList.remove('active'));
         r.closest('.type-toggle-opt').classList.add('active');
+      });
+    });
+    document.querySelectorAll('input[name="cSvcMode"]').forEach(r=>{
+      r.addEventListener('change',()=>{
+        r.closest('.type-toggle').querySelectorAll('.type-toggle-opt').forEach(opt=>opt.classList.remove('active'));
+        r.closest('.type-toggle-opt').classList.add('active');
+        document.getElementById('cServices').style.display = (r.value==='restricted') ? '' : 'none';
       });
     });
     document.getElementById('cSave').addEventListener('click',async()=>{
@@ -5255,7 +5267,8 @@ function renderModal(){
       const endTime=document.getElementById('cEnd').value;
       const description=document.getElementById('cDesc').value.trim();
       const isWork=document.querySelector('input[name="cIsWork"]:checked').value==='1';
-      const services=[...document.querySelectorAll('#cServices input:checked')].map(i=>i.value);
+      const svcMode=document.querySelector('input[name="cSvcMode"]:checked').value;
+      const services = svcMode==='restricted' ? [...document.querySelectorAll('#cServices input:checked')].map(i=>i.value) : [];
       const err=document.getElementById('cError');
       if(!code||!label){ err.textContent='Merci de remplir le code et le libellé.'; err.style.display='block'; return; }
       if(state.modal.isNew && state.codes.some(c=>c.code===code)){ err.textContent='Ce code existe déjà.'; err.style.display='block'; return; }
