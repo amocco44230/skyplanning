@@ -402,6 +402,7 @@
   .col-duree{width:55px;flex-shrink:0;font-size:12.5px;color:var(--ink-soft);}
   .col-horaires{width:140px;flex-shrink:0;font-size:12.5px;color:var(--ink-soft);}
   .col-desc{flex:1;min-width:0;font-size:12.5px;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .col-services{width:150px;flex-shrink:0;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .col-actions{display:flex;gap:8px;flex-shrink:0;}
   .code-act-btn{width:32px;height:32px;border-radius:8px;border:1.5px solid var(--border);background:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;}
   .code-act-btn:hover{border-color:var(--primary);}
@@ -723,7 +724,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v4.3';
+const APP_VERSION = 'v4.7';
 const APP_VERSION_DATE = '23/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -2656,8 +2657,13 @@ function bindSwipeMonthNav(el){
 /* ============================================================
    RENDU — LÉGENDE / PALETTE
    ============================================================ */
-function legendHtml(interactive){
-  const chips=state.codes.map(c=>`
+function codeAvailableForService(c, service){
+  if(!service) return true;
+  if(!c.services || c.services.length===0) return true;
+  return c.services.includes(service);
+}
+function legendHtml(interactive, serviceFilter){
+  const chips=state.codes.filter(c=>codeAvailableForService(c, serviceFilter)).map(c=>`
     <div class="chip ${interactive?'selectable':''} ${state.selectedCode===c.code?'active':''}" data-code="${c.code}" title="${escapeHtml(c.code+' · '+c.label)}">
       <span class="dot ${c.code==='VIDE'?'dot-outline':''}" style="background:${c.color}"></span>${c.code} · ${c.label}
     </div>`).join('');
@@ -2671,8 +2677,8 @@ function legendHtml(interactive){
  * classes/attributs (chip, selectable, active, data-code, addCodeChip) que
  * legendHtml() : bindLegend() fonctionne donc sans aucune modification.
  */
-function sidebarLegendHtml(interactive){
-  const chips=state.codes.map(c=>`
+function sidebarLegendHtml(interactive, serviceFilter){
+  const chips=state.codes.filter(c=>codeAvailableForService(c, serviceFilter)).map(c=>`
     <div class="chip sidebar-code-chip ${interactive?'selectable':''} ${state.selectedCode===c.code?'active':''}" data-code="${c.code}" data-tip="${tipContent(c.code+' · '+c.label)}" style="background:${c.color};color:${c.text};">
       ${c.code}
     </div>`).join('');
@@ -3046,7 +3052,7 @@ function renderPlanningIndividuel(){
     dayCounter+=7;
   }
 
-  const legendChipsHtml=state.codes.map(c=>`
+  const legendChipsHtml=state.codes.filter(c=>codeAvailableForService(c, myService)).map(c=>`
     <div class="chip sidebar-code-chip selectable ${selectedCode===c.code?'active':''}" data-indiv-code="${c.code}" style="background:${c.color};color:${c.text};">
       ${c.code}
     </div>`).join('');
@@ -3366,7 +3372,16 @@ function renderPlanningEquipe(){
   // Un salarié ne peut consulter QUE les services que l'admin lui a
   // explicitement autorisés (case « Visible aussi sur le planning équipe
   // d'autres services », cochée sur sa fiche) — jamais un service au choix.
-  const myAuthorizedServices=(me&&me.extraTeams)||[];
+  // Un service devient consultable dès qu'AU MOINS UN de ses salariés a coché
+  // « me montrer aussi aux autres services » pour MON propre service — aucune
+  // configuration séparée n'est nécessaire côté salarié CCO : une seule case
+  // cochée (par la personne qui accepte d'être vue) suffit à faire apparaître
+  // tout son service dans le sélecteur, pour toute mon équipe.
+  const myAuthorizedServices = myTeam ? [...new Set(
+    state.users
+      .filter(u=>!isSuperAdmin(u) && u.team && u.team!==myTeam && (u.extraTeams||[]).includes(myTeam))
+      .map(u=>u.team)
+  )] : [];
   let viewedTeam = state.peqViewedService && myAuthorizedServices.includes(state.peqViewedService) ? state.peqViewedService : myTeam;
   const isOwnTeam = viewedTeam===myTeam;
 
@@ -3379,11 +3394,12 @@ function renderPlanningEquipe(){
   const refYear = weekMode ? Number(weekDates[0].slice(0,4)) : y;
   const refMonth = weekMode ? Number(weekDates[0].slice(5,7))-1 : m;
 
-  // Un salarié peut être rattaché à un service supplémentaire (extraTeams, géré par
-  // l'admin dans « Gestion des salariés ») ou avoir un collègue dont l'affectation
-  // change en cours de mois (« Historique service / fonction ») : il apparaît alors
-  // aussi sur le planning équipe de ce service, avec les jours hors période grisés.
-  const belongsToTeam=u=>employeeActiveInServiceDuringMonth(u, viewedTeam, refYear, refMonth);
+  // Le service consulté n'affiche QUE ses membres réels (via l'historique
+  // d'affectation) — la case « Visible aussi sur le planning équipe d'autres
+  // services » ne fait plus apparaître qui que ce soit directement sur une
+  // autre page : elle sert uniquement à autoriser la consultation croisée
+  // (voir plus bas, quand on regarde un AUTRE service que le sien).
+  const belongsToTeam=u=>affectationsForMonth(u, refYear, refMonth).some(s=>s.team===viewedTeam);
   const teamEmployees = viewedTeam
     ? state.users.filter(u=>!isSuperAdmin(u) && belongsToTeam(u) && isEmployeeValidForMonth(u,refYear,refMonth))
     : state.users.filter(u=>!isSuperAdmin(u) && u.username===state.currentUser.username && isEmployeeValidForMonth(u,refYear,refMonth));
@@ -3403,7 +3419,7 @@ function renderPlanningEquipe(){
 
   const sideCodesHtml = `
     <div class="sidebar-extra-title">Codes</div>
-    ${sidebarLegendHtml(false)}
+    ${sidebarLegendHtml(false, viewedTeam)}
   `;
   const sideActionsHtml = `
     ${myAuthorizedServices.length ? `<div class="sidebar-extra-title">Service</div>${serviceSwitcherHtml}` : ''}
@@ -4152,11 +4168,12 @@ function renderMonPlanningAnnuel(){
   })();
   const statChips=state.codes.map(c=>`<div class="cal-stat"><b>${countCodeUsedInYear(username,year,c.code)}</b><span>${c.label}</span></div>`).join('');
 
-  const legendChipsHtml=state.codes.map(c=>`
+  const myAnnualTeam = emp ? emp.team : '';
+  const legendChipsHtml=state.codes.filter(c=>codeAvailableForService(c, myAnnualTeam)).map(c=>`
     <div class="chip selectable ${state.annualSelectedCode===c.code?'active':''}" data-code="${c.code}" title="${escapeHtml(c.code+' · '+c.label)}">
       <span class="dot ${c.code==='VIDE'?'dot-outline':''}" style="background:${c.color}"></span>${c.code} · ${c.label}
     </div>`).join('');
-  const sidebarLegendChipsHtml=state.codes.map(c=>`
+  const sidebarLegendChipsHtml=state.codes.filter(c=>codeAvailableForService(c, myAnnualTeam)).map(c=>`
     <div class="chip sidebar-code-chip selectable ${state.annualSelectedCode===c.code?'active':''}" data-code="${c.code}" data-tip="${tipContent(c.code+' · '+c.label)}" style="background:${c.color};color:${c.text};">
       ${c.code}
     </div>`).join('');
@@ -4495,7 +4512,7 @@ function renderCalendrierAdmin(){
     </div>` : '';
   const sideCodesHtml = `
     <div class="sidebar-extra-title">Codes</div>
-    ${sidebarLegendHtml(true)}
+    ${sidebarLegendHtml(true, svcFilter!=='ALL'?svcFilter:null)}
   `;
   const sideActionsHtml = `
     <div class="sidebar-extra-title" style="margin-top:22px;">Actions</div>
@@ -4512,7 +4529,7 @@ function renderCalendrierAdmin(){
     </div>
     ${mobile ? `
     <div class="legend-hint" style="margin:12px 0 6px;"><b>Codes</b> — touchez-en un puis touchez une case du planning.</div>
-    ${legendHtml(true)}
+    ${legendHtml(true, svcFilter!=='ALL'?svcFilter:null)}
     <div style="margin:10px 0 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">${validateBtnHtml}${genBtnHtml}${(canValidate && printOn) ? `<button class="icon-btn" id="printMonthBtn">🖨️ Imprimer</button>` : ''}</div>
     ` : ''}
     ${genSelectionBarHtml}
@@ -4871,6 +4888,7 @@ function computeDuration(startTime,endTime){
 function renderGestionCodes(){
   const workCodes=state.codes.filter(c=>c.isWork);
   const otherCodes=state.codes.filter(c=>!c.isWork);
+  const servicesLabel=(c)=> (!c.services || c.services.length===0) ? '<span class="helper" style="margin:0;">Tous services</span>' : c.services.map(s=>escapeHtml(s)).join(', ');
   const rowHtml=(c,showDuree)=>`
     <div class="code-row">
       <div class="col-code">${c.code}</div>
@@ -4879,6 +4897,7 @@ function renderGestionCodes(){
       ${showDuree?`<div class="col-duree">${computeDuration(c.startTime,c.endTime)}</div>`:''}
       ${showDuree?`<div class="col-horaires">${c.startTime&&c.endTime?c.startTime+' - '+c.endTime:'—'}</div>`:''}
       <div class="col-desc">${c.description||'—'}</div>
+      <div class="col-services" style="font-size:12px;">${servicesLabel(c)}</div>
       <div class="col-actions">
         <button class="code-act-btn" data-edit-code="${c.code}" title="Modifier">✎</button>
         <button class="code-act-btn del" data-del-code="${c.code}" title="Supprimer">🗑</button>
@@ -4892,6 +4911,7 @@ function renderGestionCodes(){
       ${showDuree?'<div class="col-duree">Durée</div>':''}
       ${showDuree?'<div class="col-horaires">Horaires</div>':''}
       <div class="col-desc">Description</div>
+      <div class="col-services">Services</div>
       <div class="col-actions">Actions</div>
     </div>`;
 
@@ -4900,6 +4920,7 @@ function renderGestionCodes(){
       <div style="font-size:13px;color:var(--ink-soft);">${state.codes.length} code${state.codes.length>1?'s':''} au total</div>
       <button class="btn btn-primary" id="addCodeBtn2" style="width:auto;margin:0;">+ Ajouter un code</button>
     </div>
+    <div class="legend-hint">Un code sans service coché reste disponible pour tous les services. Cochez un ou plusieurs services pour le réserver à ces services précis (ex : « ADH » utilisable seulement par LOG) — il n'apparaîtra plus dans la palette des autres services.</div>
     <div class="codes-section">
       <h3>Codes de travail (${workCodes.length})</h3>
       <div class="codes-table">
@@ -4915,13 +4936,13 @@ function renderGestionCodes(){
   `;
   renderShell(inner,'Gestion des codes');
   document.getElementById('addCodeBtn2').addEventListener('click',()=>{
-    state.modal={type:'code', isNew:true, data:{code:'',label:'',color:'#8AB4F8',text:'#1E2433',startTime:'',endTime:'',description:'',isWork:true}};
+    state.modal={type:'code', isNew:true, data:{code:'',label:'',color:'#8AB4F8',text:'#1E2433',startTime:'',endTime:'',description:'',isWork:true,services:[]}};
     render();
   });
   document.querySelectorAll('[data-edit-code]').forEach(btn=>{
     btn.addEventListener('click',()=>{
       const c=state.codes.find(x=>x.code===btn.dataset.editCode);
-      state.modal={type:'code', isNew:false, data:Object.assign({},c)};
+      state.modal={type:'code', isNew:false, data:Object.assign({services:[]},c)};
       render();
     });
   });
@@ -5021,7 +5042,7 @@ function renderModal(){
         <div class="check-list" id="mExtraTeams">
           ${(getAdminScope(state.currentUser)||state.services).filter(s=>s!==d.team).map(s=>`<label class="check-item"><input type="checkbox" value="${escapeHtml(s)}" ${(d.extraTeams||[]).includes(s)?'checked':''}> ${escapeHtml(s)}</label>`).join('') || '<div class="helper">Aucun autre service disponible.</div>'}
         </div>
-        <div class="helper">Cocher un service fait deux choses à la fois : ce salarié apparaît aussi sur le « Planning équipe » de ce service (ex : un responsable qui supervise plusieurs services), <b>et</b> ce service est autorisé à consulter le planning de ce salarié (sélecteur « Service consulté » côté salarié) — avec le détail visible en clair au lieu de « Planning non disponible ». Décochez pour retirer les deux à la fois.</div>
+        <div class="helper">Cocher un service fait tout en une seule fois : ce salarié apparaît aussi sur le « Planning équipe » de ce service (ex : un responsable qui supervise plusieurs services), <b>et</b> ce salarié autorise SON service à être consulté par les salariés du service coché — dès qu'un seul salarié d'un service accepte comme ça, ce service apparaît automatiquement dans le sélecteur « Service consulté » de tout le service en question, sans rien à configurer de leur côté. Seul ce salarié montre son détail en clair (les autres du même service affichent « Planning non disponible » tant qu'ils n'ont pas fait pareil).</div>
       </div>
       <div class="field admin-rights-field">
         <label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:6px;">Historique service / fonction</label>
@@ -5205,6 +5226,13 @@ function renderModal(){
       </div>
       <div class="helper" style="margin:-10px 0 14px;">Laissez les heures vides pour un code sans horaire (congé, repos, férié…). Le type détermine dans quelle section il apparaît dans « Gestion des codes ».</div>
       <div class="field"><label>Description</label><input id="cDesc" value="${d.description||''}" placeholder="Ex : Télétravail à domicile"></div>
+      <div class="field">
+        <label>Réservé à certains services (optionnel)</label>
+        <div class="check-list" id="cServices">
+          ${state.services.map(s=>`<label class="check-item"><input type="checkbox" value="${escapeHtml(s)}" ${(d.services||[]).includes(s)?'checked':''}> ${escapeHtml(s)}</label>`).join('') || '<div class="helper">Aucun service créé pour l\u2019instant.</div>'}
+        </div>
+        <div class="helper">Ne rien cocher = disponible pour tous les services. Cocher un ou plusieurs services le réserve exclusivement à ceux-ci — il n'apparaîtra plus dans la palette de codes des autres services.</div>
+      </div>
       <div id="cError" style="color:var(--danger);font-size:12.5px;font-weight:600;display:none;margin-bottom:6px;"></div>
       <div class="modal-actions">
         <button class="btn btn-ghost" id="cCancel">Annuler</button>
@@ -5227,15 +5255,16 @@ function renderModal(){
       const endTime=document.getElementById('cEnd').value;
       const description=document.getElementById('cDesc').value.trim();
       const isWork=document.querySelector('input[name="cIsWork"]:checked').value==='1';
+      const services=[...document.querySelectorAll('#cServices input:checked')].map(i=>i.value);
       const err=document.getElementById('cError');
       if(!code||!label){ err.textContent='Merci de remplir le code et le libellé.'; err.style.display='block'; return; }
       if(state.modal.isNew && state.codes.some(c=>c.code===code)){ err.textContent='Ce code existe déjà.'; err.style.display='block'; return; }
       if((startTime && !endTime) || (!startTime && endTime)){ err.textContent="Merci de renseigner à la fois l'heure de début et de fin, ou aucune des deux."; err.style.display='block'; return; }
       if(state.modal.isNew){
-        state.codes.push({code,label,color,text:'#1E2433',startTime,endTime,description,isWork});
+        state.codes.push({code,label,color,text:'#1E2433',startTime,endTime,description,isWork,services});
       } else {
         const existing=state.codes.find(c=>c.code===d.code);
-        Object.assign(existing,{label,color,startTime,endTime,description,isWork});
+        Object.assign(existing,{label,color,startTime,endTime,description,isWork,services});
       }
       await persistCodes();
       toast(state.modal.isNew?'Code ajouté.':'Code mis à jour.');
