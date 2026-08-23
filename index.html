@@ -350,6 +350,18 @@
   .indiv-day-tile .indiv-draft{position:absolute;bottom:1px;right:1px;width:15px;height:15px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:6.5px;font-weight:900;box-shadow:0 0 0 1.5px #fff,0 1px 2px rgba(0,0,0,.25);margin:0;padding:0;}
   .indiv-top-row{display:flex;align-items:center;gap:6px;margin-bottom:2px;}
   .indiv-top-row .month-nav{justify-content:center;}
+  /* ---------- Planning équipe — vue semaine (mobile) ---------- */
+  .peq-week-view{display:flex;flex-direction:column;gap:3px;}
+  .peq-week-grid{display:grid;grid-template-columns:78px repeat(7,1fr);gap:3px;align-items:center;}
+  .peq-week-head{margin-bottom:4px;}
+  .peq-week-daylabel{text-align:center;font-size:9px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;}
+  .peq-week-daylabel span{display:block;font-size:10px;font-weight:800;color:var(--ink);}
+  .peq-week-daylabel.today{color:var(--primary-dark);}
+  .peq-week-daylabel.today span{color:var(--primary-dark);}
+  .peq-week-fonction-label{font-size:10.5px;font-weight:800;color:#fff;background:var(--primary-dark);padding:5px 8px;border-radius:6px;margin:8px 0 3px;text-transform:uppercase;letter-spacing:.02em;}
+  .peq-week-name{font-size:11px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:3px;}
+  .peq-week-cell{text-align:center;font-size:9.5px;font-weight:800;padding:7px 2px;border-radius:6px;background:#F4F5F7;color:#AEB4BE;}
+  .peq-week-cell.today{outline:2px solid var(--primary-dark);outline-offset:-2px;}
   .indiv-today-card{border-radius:14px;padding:14px 16px;margin-top:4px;box-shadow:0 2px 6px rgba(0,0,0,.08);}
   .indiv-today-card-label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;opacity:.75;margin-bottom:3px;}
   .indiv-today-card-value{font-size:14px;font-weight:800;}
@@ -700,7 +712,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v3.8';
+const APP_VERSION = 'v4.0';
 const APP_VERSION_DATE = '23/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -869,6 +881,8 @@ let state={
   annualSelectedDay:null,
   annualGenMode:false,
   indivSelectedCode:null,
+  peqWeekDate:new Date(),
+  peqMobileView:'week',
   employeeDrafts:{},
   desidFilterStatus:'pending',
   desidFilterYear:'all',
@@ -2552,7 +2566,7 @@ function bindMonthNav(onChange){
  * (plus large que haut) pour ne jamais interférer avec le défilement
  * vertical normal de la page.
  */
-function bindSwipeMonthNav(el){
+function bindSwipeNav(el, onSwipeLeft, onSwipeRight){
   if(!el) return;
   let startX=null, startY=null, tracking=false;
   el.addEventListener('touchstart',(e)=>{
@@ -2567,12 +2581,16 @@ function bindSwipeMonthNav(el){
     const dx=endTouch.clientX-startX;
     const dy=endTouch.clientY-startY;
     if(Math.abs(dx)>55 && Math.abs(dx)>Math.abs(dy)*1.4){
-      if(dx<0) state.viewDate=new Date(state.viewDate.getFullYear(),state.viewDate.getMonth()+1,1);
-      else state.viewDate=new Date(state.viewDate.getFullYear(),state.viewDate.getMonth()-1,1);
-      render();
+      if(dx<0) onSwipeLeft(); else onSwipeRight();
     }
     startX=null; startY=null;
   },{passive:true});
+}
+function bindSwipeMonthNav(el){
+  bindSwipeNav(el,
+    ()=>{ state.viewDate=new Date(state.viewDate.getFullYear(),state.viewDate.getMonth()+1,1); render(); },
+    ()=>{ state.viewDate=new Date(state.viewDate.getFullYear(),state.viewDate.getMonth()-1,1); render(); }
+  );
 }
 
 /* ============================================================
@@ -2980,7 +2998,6 @@ function renderPlanningIndividuel(){
     <div class="indiv-top-row">
       <button class="icon-btn" id="indivTeamBtn" title="Voir le planning de mon équipe">👥 Équipe</button>
       <div style="flex:1;">${monthNavHtml()}</div>
-      ${(monthOk && isFeatureEnabled('impression')) ? `<button class="icon-btn" id="indivPrintBtn" style="flex-shrink:0;">🖨️</button>` : ''}
     </div>
     <div class="indiv-dow-row" style="display:flex;gap:4px;margin-bottom:6px;">
       <div class="cal-week-num" style="visibility:hidden;">00</div>
@@ -3006,8 +3023,6 @@ function renderPlanningIndividuel(){
   bindMonthNav(render);
   bindSwipeMonthNav(document.getElementById('indivSwipeArea'));
   document.getElementById('indivTeamBtn').addEventListener('click',()=>{ state.tab='equipe'; render(); });
-  const indivPrintBtn=document.getElementById('indivPrintBtn');
-  if(indivPrintBtn) indivPrintBtn.addEventListener('click', ()=>{ printMonthlyPlanning(myService, y, m); });
   const indivDesidBtn=document.getElementById('indivDesidBtn');
   if(indivDesidBtn) indivDesidBtn.addEventListener('click',()=>{
     state.modal={type:'new-desiderata', data:{dateStart:'',dateEnd:'',code:state.codes[0]?state.codes[0].code:'',comment:''}};
@@ -3199,24 +3214,70 @@ function renderPlanningEmploye(){
 /* ============================================================
    ÉCRAN — PLANNING ÉQUIPE (salarié, lecture seule, toute l'équipe)
    ============================================================ */
+/* ============================================================
+   VUE SEMAINE — Planning équipe (mobile)
+   Une seule semaine à la fois (7 colonnes, jamais de défilement
+   horizontal), navigation par balayage tactile ou flèches. Reprend le
+   même regroupement par fonction que la vue mois classique.
+   ============================================================ */
+function teamWeekViewHtml(teamEmployees, weekDates, myTeam, todayKeyStr){
+  const groups=groupByFonction(teamEmployees, myTeam, false);
+  const dowHeadHtml=`<div class="peq-week-grid peq-week-head">
+    <div></div>
+    ${weekDates.map(k=>{
+      const d=new Date(k+'T00:00:00');
+      const isToday=k===todayKeyStr;
+      return `<div class="peq-week-daylabel ${isToday?'today':''}">${DOW[(d.getDay()+6)%7]}<span>${d.getDate()}</span></div>`;
+    }).join('')}
+  </div>`;
+  const groupsHtml=groups.map(g=>{
+    const label = g.fonction==='__none__' ? 'Sans fonction' : (g.fonction||'');
+    const rows=g.list.map(emp=>{
+      const cells=weekDates.map(k=>{
+        const [ky,km]=k.split('-').map(Number);
+        const dayOk=isMonthValidated(myTeam, ky, km-1);
+        const code=dayOk ? getDayCodeByKey(emp.username,k) : null;
+        const info=code?codeInfo(code):null;
+        const isToday=k===todayKeyStr;
+        return `<div class="peq-week-cell ${isToday?'today':''}" style="${info?`background:${info.color};color:${info.text};`:''}">${!dayOk?'🔒':(code||'—')}</div>`;
+      }).join('');
+      return `<div class="peq-week-grid">
+        <div class="peq-week-name">${escapeHtml(emp.name)}</div>
+        ${cells}
+      </div>`;
+    }).join('');
+    return `${label?`<div class="peq-week-fonction-label">${escapeHtml(label)}</div>`:''}${rows}`;
+  }).join('');
+  return `<div class="peq-week-view">${dowHeadHtml}${groupsHtml}</div>`;
+}
+
 function renderPlanningEquipe(){
   const y=state.viewDate.getFullYear(), m=state.viewDate.getMonth();
   const me=state.users.find(u=>u.username===state.currentUser.username);
   const myTeam=(me&&me.team)?me.team:'';
+  const mobile=isMobileDevice();
+  const weekMode = mobile && state.peqMobileView==='week';
+
+  // En vue semaine (mobile), la période affichée est déterminée par
+  // state.peqWeekDate plutôt que par state.viewDate (qui reste dédié à la
+  // vue mois classique) — une semaine peut chevaucher deux mois.
+  const weekDates = weekMode ? weekDatesAround(dkey(state.peqWeekDate)) : null;
+  const refYear = weekMode ? Number(weekDates[0].slice(0,4)) : y;
+  const refMonth = weekMode ? Number(weekDates[0].slice(5,7))-1 : m;
+
   // Un salarié peut être rattaché à un service supplémentaire (extraTeams, géré par
   // l'admin dans « Gestion des salariés ») ou avoir un collègue dont l'affectation
   // change en cours de mois (« Historique service / fonction ») : il apparaît alors
   // aussi sur le planning équipe de ce service, avec les jours hors période grisés.
-  const belongsToTeam=u=>employeeActiveInServiceDuringMonth(u, myTeam, y, m);
+  const belongsToTeam=u=>employeeActiveInServiceDuringMonth(u, myTeam, refYear, refMonth);
   const teamEmployees = myTeam
-    ? state.users.filter(u=>!isSuperAdmin(u) && belongsToTeam(u) && isEmployeeValidForMonth(u,y,m))
-    : state.users.filter(u=>!isSuperAdmin(u) && u.username===state.currentUser.username && isEmployeeValidForMonth(u,y,m));
+    ? state.users.filter(u=>!isSuperAdmin(u) && belongsToTeam(u) && isEmployeeValidForMonth(u,refYear,refMonth))
+    : state.users.filter(u=>!isSuperAdmin(u) && u.username===state.currentUser.username && isEmployeeValidForMonth(u,refYear,refMonth));
   const teamUsernames = (myTeam ? state.users.filter(belongsToTeam) : [me]).filter(Boolean).map(u=>u.username);
   // Les alertes (effectifs / charge hebdo) sont réservées à l'espace admin :
   // les salariés ne les voient jamais sur leur planning équipe.
   const monthOk = isMonthValidated(myTeam,y,m);
 
-  const mobile=isMobileDevice();
   const sideCodesHtml = `
     <div class="sidebar-extra-title">Codes</div>
     ${sidebarLegendHtml(false)}
@@ -3227,11 +3288,26 @@ function renderPlanningEquipe(){
     ${isFeatureEnabled('desideratas', myTeam) ? `<button class="btn btn-primary" id="peqNewDesidBtn">🖐️ Désidératas</button>` : ''}
     ${isFeatureEnabled('echanges', myTeam) ? `<button class="btn btn-primary" id="peqNewExchBtn">🔄 Swap</button>` : ''}
   `;
+  const todayKeyStr=dkey(new Date());
+  const weekNumLabel = weekMode ? isoWeekNumber(new Date(weekDates[0]+'T00:00:00')) : null;
+
   const inner=`
     ${mobile ? `
     <div class="indiv-top-row">
       <button class="icon-btn" id="peqIndivBtn" title="Voir mon planning individuel">🗓️ Individuel</button>
-      <div style="flex:1;">${monthNavHtml()}</div>
+      <div style="flex:1;">
+        ${weekMode ? `
+        <div class="month-nav">
+          <button class="nav-arrow" id="peqPrevWeek">‹</button>
+          <div class="month-label">Semaine ${weekNumLabel}</div>
+          <button class="nav-arrow" id="peqNextWeek">›</button>
+          <button class="today-btn" id="peqTodayWeek">Aujourd'hui</button>
+        </div>
+        ` : monthNavHtml()}
+      </div>
+    </div>
+    <div style="text-align:center;font-size:11.5px;color:var(--ink-soft);margin:-2px 0 8px;">
+      ${weekMode ? `${fmtDateKeyFr(weekDates[0])} → ${fmtDateKeyFr(weekDates[6])} · glissez pour changer de semaine` : ''}
     </div>
     ` : monthNavHtml()}
     <div class="legend-hint" style="margin:6px 0 12px;">${myTeam?`Planning en lecture seule de l'équipe <b>${escapeHtml(myTeam)}</b>.`:`Aucune équipe ne vous a été assignée pour le moment — seul votre planning est affiché ici.`}</div>
@@ -3241,8 +3317,12 @@ function renderPlanningEquipe(){
       ${isFeatureEnabled('echanges', myTeam) ? `<button class="btn btn-primary" id="peqNewExchBtn">🔄 Swap</button>` : ''}
     </div>
     ` : ''}
-    ${monthOk ? `
+    ${weekMode ? `
+    <div id="peqSwipeArea">${teamEmployees.length ? teamWeekViewHtml(teamEmployees, weekDates, myTeam, todayKeyStr) : `<div class="empty-state">Aucun salarié dans ce service.</div>`}</div>
+    <button class="icon-btn" id="peqMonthViewBtn" style="width:100%;margin-top:12px;">📅 Vue mois complet</button>
+    ` : (monthOk ? `
     <div id="peqSwipeArea">${gridHtml({employees:teamEmployees, readonly:true, alerts:[], serviceContext: myTeam||null})}</div>
+    ${mobile ? `<button class="icon-btn" id="peqWeekViewBtn" style="width:100%;margin-top:12px;">🗓️ Vue semaine</button>` : ''}
     ${commentsRecapHtml(y,m,teamUsernames,false)}
     ` : `
     <div class="not-validated-card">
@@ -3253,11 +3333,25 @@ function renderPlanningEquipe(){
         : `<p>Aucun <b>service</b> ne vous a été assigné pour le moment. Contactez votre administrateur pour qu'il complète votre fiche dans « Gestion des salariés ».</p>`}
       ${isMobileDevice()?'':"<p class='helper'>Vous pouvez toujours consulter ou déposer vos désidératas depuis l'onglet « Mes désidératas » (sur ordinateur).</p>"}
     </div>
-    `}
+    `)}
   `;
   renderShell(inner,'Planning équipe'+(myTeam?' — '+myTeam:''), mobile?null:(sideCodesHtml+sideActionsHtml));
-  bindMonthNav(render);
-  if(mobile) bindSwipeMonthNav(document.getElementById('peqSwipeArea'));
+  if(weekMode){
+    document.getElementById('peqPrevWeek').addEventListener('click',()=>{ state.peqWeekDate=addDays(state.peqWeekDate,-7); render(); });
+    document.getElementById('peqNextWeek').addEventListener('click',()=>{ state.peqWeekDate=addDays(state.peqWeekDate,7); render(); });
+    document.getElementById('peqTodayWeek').addEventListener('click',()=>{ state.peqWeekDate=new Date(); render(); });
+    bindSwipeNav(document.getElementById('peqSwipeArea'),
+      ()=>{ state.peqWeekDate=addDays(state.peqWeekDate,7); render(); },
+      ()=>{ state.peqWeekDate=addDays(state.peqWeekDate,-7); render(); }
+    );
+  } else {
+    bindMonthNav(render);
+    if(mobile) bindSwipeMonthNav(document.getElementById('peqSwipeArea'));
+  }
+  const peqMonthViewBtn=document.getElementById('peqMonthViewBtn');
+  if(peqMonthViewBtn) peqMonthViewBtn.addEventListener('click',()=>{ state.peqMobileView='month'; render(); });
+  const peqWeekViewBtn=document.getElementById('peqWeekViewBtn');
+  if(peqWeekViewBtn) peqWeekViewBtn.addEventListener('click',()=>{ state.peqMobileView='week'; render(); });
   const peqIndivBtn=document.getElementById('peqIndivBtn');
   if(peqIndivBtn) peqIndivBtn.addEventListener('click',()=>{ state.tab='individuel'; render(); });
   const peqPrintBtn=document.getElementById('peqPrintBtn');
