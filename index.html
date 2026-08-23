@@ -4990,6 +4990,11 @@ const CSS_VAR_HEX = {
   'var(--c-M)':'#7FB3F5','var(--c-S)':'#F5A65B','var(--c-N)':'#544A87','var(--c-ADM)':'#9AA5B1',
   'var(--c-FOR)':'#4FADA3','var(--c-CP)':'#6FCF7C','var(--c-CPA)':'#BBE7A9','var(--c-FER)':'#E8615A','var(--c-O)':'#EDEFF2'
 };
+function parseGradientColor(c){
+  if(!c || typeof c!=='string') return null;
+  const m = c.match(/linear-gradient\([^,]+,\s*(\S+)\s+50%,\s*(\S+)\s+50%\)/);
+  return m ? [m[1], m[2]] : null;
+}
 function resolveHexColor(c){ return CSS_VAR_HEX[c] || (c && c.startsWith('#') ? c : '#8AB4F8'); }
 /* ============================================================
    CORRECTION : CALCUL INCLUSIF DE LA DURÉE EN JOURS
@@ -5348,13 +5353,30 @@ function renderModal(){
 
   if(state.modal.type==='code'){
     const d=state.modal.data;
+    const gradParts=parseGradientColor(d.color);
+    const isSplit=!!gradParts;
+    const color1=gradParts?resolveHexColor(gradParts[0]):resolveHexColor(d.color);
+    const color2=gradParts?resolveHexColor(gradParts[1]):'#6FCF7C';
     overlay.innerHTML=`
     <div class="modal">
       <h3>${state.modal.isNew?'Ajouter un code de journée':'Modifier le code'}</h3>
       <div class="row2">
         <div class="field"><label>Code (court)</label><input id="cCode" maxlength="5" value="${d.code||''}" placeholder="Ex : TT" ${!state.modal.isNew?'disabled':''}></div>
-        <div class="field"><label>Couleur</label><input id="cColor" type="color" value="${resolveHexColor(d.color)}" style="width:100%;height:42px;padding:4px;"></div>
+        <div class="field"><label>Type de couleur</label>
+          <div class="type-toggle">
+            <label class="type-toggle-opt ${!isSplit?'active':''}"><input type="radio" name="cColorMode" value="single" ${!isSplit?'checked':''}> 🎨 Unie</label>
+            <label class="type-toggle-opt ${isSplit?'active':''}"><input type="radio" name="cColorMode" value="split" ${isSplit?'checked':''}> ◐ 2 couleurs</label>
+          </div>
+        </div>
       </div>
+      <div class="row2" id="cColorSingleRow" style="${isSplit?'display:none;':''}">
+        <div class="field" style="grid-column:1/-1;"><label>Couleur</label><input id="cColor" type="color" value="${color1}" style="width:100%;height:42px;padding:4px;"></div>
+      </div>
+      <div class="row2" id="cColorSplitRow" style="${isSplit?'':'display:none;'}">
+        <div class="field"><label>Couleur 1 (ex : demi-journée travaillée)</label><input id="cColor1" type="color" value="${color1}" style="width:100%;height:42px;padding:4px;"></div>
+        <div class="field"><label>Couleur 2 (ex : demi-journée congé)</label><input id="cColor2" type="color" value="${color2}" style="width:100%;height:42px;padding:4px;"></div>
+      </div>
+      <div class="helper" id="cColorSplitHelper" style="margin:-10px 0 14px;${isSplit?'':'display:none;'}">La case sera affichée avec un dégradé diagonal entre les deux couleurs — pratique pour les codes « demi-journée » (ex : ½ Matin + ½ CP).</div>
       <div class="field"><label>Libellé</label><input id="cLabel" value="${d.label||''}" placeholder="Ex : Télétravail"></div>
       <div class="field"><label>Type de code</label>
         <div class="type-toggle">
@@ -5400,10 +5422,23 @@ function renderModal(){
         document.getElementById('cServices').style.display = (r.value==='restricted') ? '' : 'none';
       });
     });
+    document.querySelectorAll('input[name="cColorMode"]').forEach(r=>{
+      r.addEventListener('change',()=>{
+        r.closest('.type-toggle').querySelectorAll('.type-toggle-opt').forEach(opt=>opt.classList.remove('active'));
+        r.closest('.type-toggle-opt').classList.add('active');
+        const split = r.value==='split';
+        document.getElementById('cColorSingleRow').style.display = split ? 'none' : '';
+        document.getElementById('cColorSplitRow').style.display = split ? '' : 'none';
+        document.getElementById('cColorSplitHelper').style.display = split ? '' : 'none';
+      });
+    });
     document.getElementById('cSave').addEventListener('click',async()=>{
       const code=document.getElementById('cCode').value.trim().toUpperCase();
       const label=document.getElementById('cLabel').value.trim();
-      const color=document.getElementById('cColor').value;
+      const colorMode=document.querySelector('input[name="cColorMode"]:checked').value;
+      const color = colorMode==='split'
+        ? `linear-gradient(135deg, ${document.getElementById('cColor1').value} 50%, ${document.getElementById('cColor2').value} 50%)`
+        : document.getElementById('cColor').value;
       const startTime=document.getElementById('cStart').value;
       const endTime=document.getElementById('cEnd').value;
       const description=document.getElementById('cDesc').value.trim();
