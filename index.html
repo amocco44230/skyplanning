@@ -731,7 +731,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v5.6';
+const APP_VERSION = 'v5.7';
 const APP_VERSION_DATE = '23/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -3444,7 +3444,13 @@ function renderPlanningEquipe(){
   // services » ne fait plus apparaître qui que ce soit directement sur une
   // autre page : elle sert uniquement à autoriser la consultation croisée
   // (voir plus bas, quand on regarde un AUTRE service que le sien).
-  const belongsToTeam=u=>affectationsForMonth(u, refYear, refMonth).some(s=>s.team===viewedTeam);
+  // Un salarié qui supervise plusieurs services (ex : Stéphanie Cesne sur LOG
+  // ET REGULPN) apparaît directement, en entier, sur le planning équipe de
+  // chacun des services cochés dans « Apparaît aussi directement sur ces
+  // services » (alsoShowInServices, réglage admin dédié — distinct de
+  // « Visible aussi sur le planning équipe d'autres services » qui sert
+  // uniquement à la consultation croisée entre pairs).
+  const belongsToTeam=u=>affectationsForMonth(u, refYear, refMonth).some(s=>s.team===viewedTeam) || (u.alsoShowInServices||[]).includes(viewedTeam);
   const teamEmployees = viewedTeam
     ? state.users.filter(u=>!isSuperAdmin(u) && belongsToTeam(u) && isEmployeeValidForMonth(u,refYear,refMonth))
     : state.users.filter(u=>!isSuperAdmin(u) && u.username===state.currentUser.username && isEmployeeValidForMonth(u,refYear,refMonth));
@@ -4542,7 +4548,7 @@ function renderCalendrierAdmin(){
   // les jours hors période grisés — l'ancienne case « Visible aussi
   // ailleurs » ne fait plus ça, elle sert uniquement à la consultation
   // croisée ci-dessus (isForeignView).
-  const belongsToService=(u,svc)=> employeeActiveInServiceDuringMonth(u,svc,y,m);
+  const belongsToService=(u,svc)=> employeeActiveInServiceDuringMonth(u,svc,y,m) || (u.alsoShowInServices||[]).includes(svc);
   const employees=state.users.filter(u=>
     !isSuperAdmin(u) &&
     isEmployeeValidForMonth(u,y,m) &&
@@ -4761,6 +4767,14 @@ function groupByServiceThenFonction(employees, includeEmpty, serviceContext){
     const svc=e.team||'__none_service__';
     if(!byService[svc]) byService[svc]=[];
     byService[svc].push(e);
+    // Supervision de plusieurs services : apparaît aussi, en plus, dans les
+    // groupes des services cochés dans « Apparaît aussi directement sur ces
+    // services », même sur cette vue globale « Tous les services ».
+    (e.alsoShowInServices||[]).forEach(extraSvc=>{
+      if(extraSvc===svc) return;
+      if(!byService[extraSvc]) byService[extraSvc]=[];
+      byService[extraSvc].push(e);
+    });
   });
   const order=state.services.concat(['__none_service__']);
   const result=[];
@@ -4791,7 +4805,7 @@ function renderGestionSalaries(){
       <div class="emp-avatar">${emp.photoUrl?`<img src="${emp.photoUrl}" alt="">`:initials(emp.name)}</div>
       <div class="emp-info">
         <div class="name">${escapeHtml(emp.name)} ${emp.role==='admin'?'<span class="badge-admin">'+(isSuperAdmin(emp)?'Grand admin':'Admin — '+escapeHtml((emp.adminServices||[]).join(', ')))+'</span>':''} ${inactive?'<span class="badge-inactive">Hors période</span>':''}</div>
-        <div class="meta">Identifiant : ${emp.username} ${emp.email?'· '+escapeHtml(emp.email)+' ':''}${emp.phone?'· 📞 '+escapeHtml(emp.phone)+' ':''}${emp.team?'· Service : '+escapeHtml(emp.team)+' ':''}${(emp.extraTeams&&emp.extraTeams.length)?'· Aussi visible sur : '+escapeHtml(emp.extraTeams.join(', '))+' ':''}· Validité : ${fmtDate(emp.startDate)} → ${emp.endDate?fmtDate(emp.endDate):'toujours'}</div>
+        <div class="meta">Identifiant : ${emp.username} ${emp.email?'· '+escapeHtml(emp.email)+' ':''}${emp.phone?'· 📞 '+escapeHtml(emp.phone)+' ':''}${emp.team?'· Service : '+escapeHtml(emp.team)+' ':''}${(emp.alsoShowInServices&&emp.alsoShowInServices.length)?'· Apparaît aussi sur : '+escapeHtml(emp.alsoShowInServices.join(', '))+' ':''}${(emp.extraTeams&&emp.extraTeams.length)?'· Autorise la consultation par : '+escapeHtml(emp.extraTeams.join(', '))+' ':''}· Validité : ${fmtDate(emp.startDate)} → ${emp.endDate?fmtDate(emp.endDate):'toujours'}</div>
         ${nextAffect ? `<div class="meta" style="color:var(--primary);font-weight:700;">→ Changement programmé le ${fmtDate(nextAffect.startDate)} : ${escapeHtml(nextAffect.team||'Aucun service')}${nextAffect.fonction?' · '+escapeHtml(nextAffect.fonction):''}</div>` : ''}
       </div>
       <div class="emp-actions">
@@ -5105,11 +5119,18 @@ function renderModal(){
       </div>
       <div class="helper" style="margin:-10px 0 14px;">Le service détermine qui voit qui sur « Planning équipe ». La liste des fonctions dépend du service choisi (gérée dans « Gestion des salariés »).</div>
       <div class="field admin-rights-field">
+        <label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:6px;">Apparaît directement sur le planning équipe de ces services</label>
+        <div class="check-list" id="mAlsoShowIn">
+          ${(getAdminScope(state.currentUser)||state.services).filter(s=>s!==d.team).map(s=>`<label class="check-item"><input type="checkbox" value="${escapeHtml(s)}" ${(d.alsoShowInServices||[]).includes(s)?'checked':''}> ${escapeHtml(s)}</label>`).join('') || '<div class="helper">Aucun autre service disponible.</div>'}
+        </div>
+        <div class="helper">Pour un responsable qui supervise plusieurs services (ex : Stéphanie Cesne sur LOG et REGULPN) : il apparaît en entier, en clair, sur le planning équipe de chacun des services cochés — comme s'il en faisait pleinement partie, sans aucune autorisation à donner de son côté. À réserver aux situations de supervision décidées par l'admin.</div>
+      </div>
+      <div class="field admin-rights-field">
         <label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:6px;">Visible aussi sur le planning équipe d'autres services</label>
         <div class="check-list" id="mExtraTeams">
           ${(getAdminScope(state.currentUser)||state.services).filter(s=>s!==d.team).map(s=>`<label class="check-item"><input type="checkbox" value="${escapeHtml(s)}" ${(d.extraTeams||[]).includes(s)?'checked':''}> ${escapeHtml(s)}</label>`).join('') || '<div class="helper">Aucun autre service disponible.</div>'}
         </div>
-        <div class="helper">Cocher un service fait tout en une seule fois : ce salarié apparaît aussi sur le « Planning équipe » de ce service (ex : un responsable qui supervise plusieurs services), <b>et</b> ce salarié autorise SON service à être consulté par les salariés du service coché — dès qu'un seul salarié d'un service accepte comme ça, ce service apparaît automatiquement dans le sélecteur « Service consulté » de tout le service en question, sans rien à configurer de leur côté. Seul ce salarié montre son détail en clair (les autres du même service affichent « Planning non disponible » tant qu'ils n'ont pas fait pareil).</div>
+        <div class="helper">Autorise le service coché à consulter le planning de ce salarié quand il choisit de parcourir son service (menu « Service consulté » côté salarié comme côté admin). Dès qu'un seul salarié d'un service accepte comme ça, ce service apparaît automatiquement dans ce sélecteur, sans rien à configurer côté service visiteur. Ce salarié reste sur son propre planning équipe uniquement — contrairement au réglage ci-dessus, il n'apparaît pas directement ailleurs.</div>
       </div>
       <div class="field admin-rights-field">
         <label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:6px;">Historique service / fonction</label>
@@ -5240,6 +5261,7 @@ function renderModal(){
         err.textContent='La date de fin doit être postérieure à la date de début.'; err.style.display='block'; return;
       }
       const extraTeams=[...document.querySelectorAll('#mExtraTeams input:checked')].map(i=>i.value).filter(s=>s!==team);
+      const alsoShowInServices=[...document.querySelectorAll('#mAlsoShowIn input:checked')].map(i=>i.value).filter(s=>s!==team);
       let role='employee', adminServices=[];
       const mIsAdminChk=document.getElementById('mIsAdmin');
       if(mIsAdminChk){
@@ -5252,13 +5274,13 @@ function renderModal(){
         role=d.role; adminServices=d.adminServices||[];
       }
       if(state.modal.isNew){
-        const newEmp={username,password,name,role,startDate,endDate,team,fonction,email,adminServices,extraTeams};
+        const newEmp={username,password,name,role,startDate,endDate,team,fonction,email,adminServices,extraTeams,alsoShowInServices};
         newEmp.affectations=[{id:genId(), startDate: startDate||dkey(new Date()), team, fonction}];
         state.users.push(newEmp);
       } else {
         const emp=state.users.find(u=>u.username===d.username);
         emp.name=name; emp.password=password; emp.startDate=startDate; emp.endDate=endDate; emp.email=email;
-        emp.role=role; emp.adminServices=adminServices; emp.extraTeams=extraTeams;
+        emp.role=role; emp.adminServices=adminServices; emp.extraTeams=extraTeams; emp.alsoShowInServices=alsoShowInServices;
         if(team!==(d.team||'') || fonction!==(d.fonction||'')){
           setImmediateAffectation(emp, team, fonction);
         } else {
