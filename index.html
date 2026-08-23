@@ -679,7 +679,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v3.3';
+const APP_VERSION = 'v3.4';
 const APP_VERSION_DATE = '22/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -2601,7 +2601,10 @@ function gridHtml({employees, readonly, alerts, changes, serviceContext}){
         const stripStyle=dinfo?`background:${dinfo.color};color:${dinfo.text};`:'background:#EDEFF2;color:#7A8393;';
         const icon = desid.status==='pending' ? '⏳' : desid.status==='validated' ? '✓' : '✕';
         cellClass+=' desid-'+desid.status;
-        desidStripHtml=`<div class="desid-strip ${desid.status}" style="${stripStyle}" data-tip="${tipContent('Demande : '+desid.code+' · '+dLabel+(desid.comment?'\n« '+desid.comment+' »':''))}">${desid.code}<span class="desid-strip-icon">${icon}</span></div>`;
+        // Cliquable côté admin (pas en lecture seule) pour ouvrir directement la
+        // popup de validation/refus, sans devoir passer par l'onglet Désidératas.
+        const stripClickAttr = readonly ? '' : `data-desid-review="${desid.id}" style="cursor:pointer;${stripStyle}"`;
+        desidStripHtml=`<div class="desid-strip ${desid.status}" ${readonly?`style="${stripStyle}"`:stripClickAttr} data-tip="${tipContent('Demande : '+desid.code+' · '+dLabel+(desid.comment?'\n« '+desid.comment+' »':'')+(readonly?'':'\n\u2192 Cliquer pour valider/refuser'))}">${desid.code}<span class="desid-strip-icon">${icon}</span></div>`;
       }
       if(!dayValid) cellClass+=' invalid-day';
       const changeKey=emp.username+'::'+dateKeyStr;
@@ -2652,6 +2655,16 @@ function gridHtml({employees, readonly, alerts, changes, serviceContext}){
 let gridClickTimer=null;
 function bindGrid(readonly){
   if(readonly) return;
+  document.querySelectorAll('.desid-strip[data-desid-review]').forEach(strip=>{
+    strip.addEventListener('click',(e)=>{
+      e.stopPropagation();
+      if(gridClickTimer){ clearTimeout(gridClickTimer); gridClickTimer=null; }
+      const desid=state.desideratas.find(x=>x.id===strip.dataset.desidReview);
+      if(!desid) return;
+      state.modal={type:'desid-review', id:desid.id, adminComment:desid.adminComment||''};
+      render();
+    });
+  });
   document.querySelectorAll('td.day-cell').forEach(td=>{
     td.addEventListener('click',(e)=>{
       if(td.dataset.invalid==='true'){
