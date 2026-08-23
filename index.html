@@ -269,6 +269,7 @@
   .cycle-stat{display:flex;flex-direction:column;gap:2px;}
   .cycle-stat-label{font-size:10.5px;color:var(--ink-soft);font-weight:700;text-transform:uppercase;letter-spacing:.02em;}
   .cycle-stat-value{font-size:13px;font-weight:700;}
+  .cycle-start-input{border:1.5px solid var(--border);border-radius:7px;padding:4px 6px;font-size:12.5px;font-weight:700;color:var(--ink);background:#FBFCFE;}
   .cycle-status-badge{display:inline-block;padding:4px 12px;border-radius:20px;font-size:11.5px;font-weight:800;background:#E7F6EC;color:#1E7B3C;}
   .cycle-status-badge.alert{background:#FBEAE9;color:var(--danger);}
   .cycle-alert-count{font-size:11.5px;font-weight:700;color:var(--danger);}
@@ -309,6 +310,7 @@
   .cal-week-row{display:flex;gap:10px;margin-bottom:10px;align-items:stretch;}
   .cal-week-days{flex:1;min-width:0;display:grid;grid-template-columns:repeat(7,1fr);gap:10px;}
   .cal-day{border-radius:12px;border:1.5px solid var(--border);background:#fff;padding:10px 11px;min-height:82px;box-shadow:0 1px 2px rgba(15,23,42,.04);}
+  .cal-day .d-hours{font-size:11px;font-weight:700;color:var(--ink-soft);margin-top:6px;}
   .cal-day.blank{background:transparent;border:none;box-shadow:none;}
   .cal-day.today{border-color:var(--danger);border-width:2px;}
   .cal-day .d-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;flex-wrap:wrap;gap:4px;}
@@ -501,6 +503,13 @@
   table.annual-grid .annual-holiday-mark{position:absolute;top:1px;left:2px;font-size:9.5px;font-weight:900;color:var(--danger);line-height:1;z-index:3;pointer-events:none;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 2px #fff,0 0 2px #fff;}
   table.annual-grid .annual-draft-bubble{position:absolute;bottom:-2px;right:-2px;width:14px;height:14px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:7.2px;font-weight:900;box-shadow:0 0 0 1.5px #fff,0 1px 2px rgba(0,0,0,.2);z-index:3;pointer-events:none;}
   table.annual-grid td.annual-cell:hover .annual-cell-official{outline:2px solid var(--primary);outline-offset:-2px;}
+  /* ---------- Mon planning annuel : grille compacte (mois en lignes) ---------- */
+  .annual-compact-card{overflow:auto;}
+  table.annual-compact-grid{border-collapse:separate;border-spacing:0;}
+  table.annual-compact-grid thead th{background:#fbfcfe;font-size:9.5px;color:var(--ink-soft);font-weight:700;padding:6px 1px;text-align:center;border-bottom:1px solid var(--border);min-width:26px;}
+  .annual-compact-month-label{position:sticky;left:0;background:#fff;z-index:2;text-align:left;padding:7px 12px;font-weight:800;font-size:12.5px;white-space:nowrap;min-width:88px;box-shadow:2px 0 4px rgba(15,23,42,.04);}
+  table.annual-compact-grid thead .annual-compact-month-label{background:#fbfcfe;z-index:3;}
+  table.annual-compact-grid td.annual-cell{height:30px;}
 
   .annual-quick-choices{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
   .annual-quick-btn{flex:1;min-width:120px;border:1.5px solid var(--border);background:#FBFCFE;border-radius:12px;padding:16px 12px;font-size:13.5px;font-weight:800;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;}
@@ -669,7 +678,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v2.8';
+const APP_VERSION = 'v3.1';
 const APP_VERSION_DATE = '22/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -1097,10 +1106,15 @@ async function persistCycleSettings(){ await storageSet('cycleSettings', JSON.st
    CYCLES DE RÉFÉRENCE (heures travaillées sur N jours glissants)
    ============================================================ */
 function defaultCycleSettings(){
-  return {startDate: dkey(new Date()), cycleDays:56, threshold:280};
+  return {cycleDays:56, threshold:280, employeeStarts:{}};
 }
 function getCycleSettings(service){
-  return Object.assign(defaultCycleSettings(), state.cycleSettings[service]||{});
+  const merged=Object.assign(defaultCycleSettings(), state.cycleSettings[service]||{});
+  if(!merged.employeeStarts) merged.employeeStarts={};
+  return merged;
+}
+function getEmployeeCycleStart(settings, username){
+  return settings.employeeStarts[username] || '2026-01-01';
 }
 function codeHoursValue(code){
   const info=codeInfo(code);
@@ -1111,8 +1125,8 @@ function codeHoursValue(code){
   if(mins<=0) mins+=24*60; // service de nuit à cheval sur minuit
   return mins/60;
 }
-function computeCyclesForEmployee(username, settings){
-  const {startDate, cycleDays, threshold}=settings;
+function computeCyclesForEmployee(username, startDate, settings){
+  const {cycleDays, threshold}=settings;
   const sched=state.schedules[username]||{};
   const startD=new Date(startDate+'T00:00:00');
   // On calcule assez de cycles pour couvrir au moins 18 mois après aujourd'hui,
@@ -2001,16 +2015,20 @@ async function paintCell(username,year,month,day){
    uniquement par les comptes admin (jamais par les salariés).
    ============================================================ */
 function cycleEmployeeRowHtml(ec, settings, expanded){
-  const {user, cycles, current, alertCount, totalOverHours}=ec;
+  const {user, cycles, current, alertCount, totalOverHours, startDate}=ec;
   return `
   <div class="cycle-emp-card">
-    <div class="cycle-emp-head" data-toggle-user="${user.username}">
-      <div class="cycle-emp-name">${escapeHtml(user.name)}</div>
+    <div class="cycle-emp-head">
+      <div class="cycle-emp-name" data-toggle-user="${user.username}">${escapeHtml(user.name)}</div>
       <div class="cycle-emp-stats">
-        <div class="cycle-stat"><span class="cycle-stat-label">Cycle en cours</span><span class="cycle-stat-value">${fmtDateKeyFr(current.start)} → ${fmtDateKeyFr(current.end)}</span></div>
-        <div class="cycle-stat"><span class="cycle-stat-label">Heures</span><span class="cycle-stat-value">${current.hours.toFixed(1)} h</span></div>
-        <span class="cycle-status-badge ${current.alert?'alert':'ok'}">${current.alert?'⚠ Alerte':'✓ OK'}</span>
-        ${alertCount ? `<span class="cycle-alert-count">${alertCount} cycle${alertCount>1?'s':''} en alerte</span>` : ''}
+        <div class="cycle-stat">
+          <span class="cycle-stat-label">Départ du cycle</span>
+          <input type="date" class="cycle-start-input" data-start-user="${user.username}" value="${startDate}">
+        </div>
+        <div class="cycle-stat" data-toggle-user="${user.username}"><span class="cycle-stat-label">Cycle en cours</span><span class="cycle-stat-value">${fmtDateKeyFr(current.start)} → ${fmtDateKeyFr(current.end)}</span></div>
+        <div class="cycle-stat" data-toggle-user="${user.username}"><span class="cycle-stat-label">Heures</span><span class="cycle-stat-value">${current.hours.toFixed(1)} h</span></div>
+        <span class="cycle-status-badge ${current.alert?'alert':'ok'}" data-toggle-user="${user.username}">${current.alert?'⚠ Alerte':'✓ OK'}</span>
+        ${alertCount ? `<span class="cycle-alert-count" data-toggle-user="${user.username}">${alertCount} cycle${alertCount>1?'s':''} en alerte</span>` : ''}
       </div>
       <button class="icon-btn cycle-expand-btn" data-toggle-user="${user.username}">${expanded?'▲ Réduire':'▼ Détail'}</button>
     </div>
@@ -2042,11 +2060,12 @@ function renderCycles(){
 
   const empList=service ? state.users.filter(u=>!isSuperAdmin(u) && (u.team===service || (u.extraTeams||[]).includes(service))) : [];
   const employeeCycles=empList.map(u=>{
-    const cycles=computeCyclesForEmployee(u.username, settings);
+    const startDate=getEmployeeCycleStart(settings, u.username);
+    const cycles=computeCyclesForEmployee(u.username, startDate, settings);
     const current=currentCycleFor(cycles);
     const alertCount=cycles.filter(c=>c.alert).length;
     const totalOverHours=cycles.reduce((sum,c)=>sum+Math.max(0,c.hours-settings.threshold),0);
-    return {user:u, cycles, current, alertCount, totalOverHours};
+    return {user:u, cycles, current, alertCount, totalOverHours, startDate};
   }).sort((a,b)=>a.user.name.localeCompare(b.user.name));
 
   const globalAlertCount=employeeCycles.filter(ec=>ec.current.alert).length;
@@ -2060,11 +2079,11 @@ function renderCycles(){
           ${availableServices.map(s=>`<option value="${escapeHtml(s)}" ${service===s?'selected':''}>${escapeHtml(s)}</option>`).join('')}
         </select>
       </div>
-      <div class="field"><label>Date de début du 1ᵉʳ cycle</label><input type="date" id="cycStartDate" value="${settings.startDate}"></div>
       <div class="field"><label>Durée d'un cycle (jours)</label><input type="number" id="cycDays" value="${settings.cycleDays}" min="7" max="365"></div>
       <div class="field"><label>Seuil d'alerte (heures)</label><input type="number" id="cycThreshold" value="${settings.threshold}" min="1"></div>
       <button class="btn btn-primary" id="cycSaveBtn" style="width:auto;align-self:flex-end;">Enregistrer</button>
     </div>
+    <div class="legend-hint" style="margin-top:-6px;">La durée et le seuil sont communs à tout le service. La <b>date de départ du cycle</b> se règle individuellement pour chaque salarié ci-dessous (par défaut : 01/01/2026).</div>
     ${service ? `
     <div class="cycles-summary-row">
       <div class="cycles-summary-card"><div class="cs-label">Salariés du service</div><div class="cs-value">${empList.length}</div></div>
@@ -2078,14 +2097,28 @@ function renderCycles(){
   renderShell(inner,'Cycles — heures travaillées');
   document.getElementById('cycService').addEventListener('change',e=>{ state.cyclesServiceFilter=e.target.value; state.cyclesExpandedUser=null; render(); });
   document.getElementById('cycSaveBtn').addEventListener('click', async()=>{
-    const startDate=document.getElementById('cycStartDate').value;
     const cycleDays=Math.max(7, Number(document.getElementById('cycDays').value)||56);
     const threshold=Math.max(1, Number(document.getElementById('cycThreshold').value)||280);
-    if(!startDate){ toast('Merci de renseigner une date de départ.', true); return; }
-    state.cycleSettings[service]={startDate, cycleDays, threshold};
+    if(!state.cycleSettings[service]) state.cycleSettings[service]={};
+    state.cycleSettings[service].cycleDays=cycleDays;
+    state.cycleSettings[service].threshold=threshold;
+    if(!state.cycleSettings[service].employeeStarts) state.cycleSettings[service].employeeStarts={};
     await persistCycleSettings();
     toast('Réglages du cycle enregistrés pour '+service+'.');
     render();
+  });
+  document.querySelectorAll('.cycle-start-input').forEach(input=>{
+    input.addEventListener('change', async()=>{
+      const username=input.dataset.startUser;
+      if(!input.value) return;
+      if(!state.cycleSettings[service]) state.cycleSettings[service]=defaultCycleSettings();
+      if(!state.cycleSettings[service].employeeStarts) state.cycleSettings[service].employeeStarts={};
+      state.cycleSettings[service].employeeStarts[username]=input.value;
+      await persistCycleSettings();
+      toast('Date de départ du cycle mise à jour.');
+      render();
+    });
+    input.addEventListener('click', e=>e.stopPropagation());
   });
   document.querySelectorAll('[data-toggle-user]').forEach(el=>{
     el.addEventListener('click',()=>{
@@ -2770,7 +2803,8 @@ function renderPlanningIndividuel(){
     const draftCode=getDraftCode(username,y,m,d);
     const draftInfo=draftCode?codeInfo(draftCode):null;
     const dayValid = meRec ? isDayWithinValidity(meRec, dateKeyStr) : true;
-    return `<div class="cal-day cal-day-compact ${isToday?'today':''} ${dayValid?'selectable-day':''}" ${dayValid?`data-date="${dateKeyStr}"`:''} title="${dateKeyStr}${draftCode?' — brouillon : '+draftCode:''}">
+    const cardBg = info ? `background-color: color-mix(in srgb, ${info.color} 14%, white);` : '';
+    return `<div class="cal-day cal-day-compact ${isToday?'today':''} ${dayValid?'selectable-day':''}" ${dayValid?`data-date="${dateKeyStr}"`:''} style="${cardBg}" title="${dateKeyStr}${draftCode?' — brouillon : '+draftCode:''}">
       <div class="d-head">
         <span><span class="d-num">${d}</span><span class="d-dow">${DOW_SHORT[(date.getDay()+6)%7]}</span></span>
         ${holidayName?'<span class="d-fer" title="'+escapeHtml(holidayName)+'">FÉR</span>':''}
@@ -2866,12 +2900,18 @@ function renderPlanningEmploye(){
         ${icon} Désidérata ${desid.status==='pending'?'en attente':desid.status==='validated'?'validé':'refusé'} : ${desid.code}
       </div>`;
     }
-    return `<div class="cal-day ${isToday?'today':''} ${desid&&desid.status==='pending'?'desid-pending-card':''}">
+    // Case entière légèrement teintée de la couleur du code (repère visuel
+    // rapide en balayant le mois du regard), en plus du badge coloré plein.
+    const cardBg = info ? `background-color: color-mix(in srgb, ${info.color} 16%, white);` : '';
+    const hours = codeHoursValue(code);
+    const hoursHtml = hours>0 ? `<div class="d-hours">${hours%1===0?hours:hours.toFixed(2)}h</div>` : '';
+    return `<div class="cal-day ${isToday?'today':''} ${desid&&desid.status==='pending'?'desid-pending-card':''}" style="${cardBg}">
       <div class="d-head">
         <span><span class="d-num">${d}</span><span class="d-dow">${DOW_SHORT[(date.getDay()+6)%7]}</span></span>
         ${holidayName?'<span class="d-fer" title="'+holidayName+'">FÉR</span>':''}
       </div>
       <div class="d-code" style="background:${info?info.color:'#EDEFF2'};color:${info?info.text:'#7A8393'};">${code}${info?' · '+info.label:''}</div>
+      ${hoursHtml}
       ${desidHtml}
       ${commentHtml}
     </div>`;
@@ -3635,44 +3675,28 @@ function renderMonPlanningAnnuel(){
     </td>`;
   };
 
-  // Construit un mini-tableau par mois, avec son propre bandeau de semaines
-  // (aligné exactement comme sur le Calendrier annuel admin) au-dessus des jours
-  let monthBlocks='';
+  // Une seule grille compacte : les mois en lignes, les jours 1-31 en
+  // colonnes — bien plus lisible d'un coup d'œil que 12 blocs mensuels
+  // empilés. La logique de chaque case (code officiel, bulle de brouillon
+  // en bas à droite, verrou, etc.) est inchangée : seule la disposition
+  // change, cellHtml() reste la même fonction.
+  let compactDayHead='<th class="annual-compact-month-label"></th>';
+  for(let d=1; d<=31; d++) compactDayHead+=`<th>${d}</th>`;
+  let compactBodyRows='';
   for(let mo=0; mo<12; mo++){
-    const nDays=daysInMonth(year,mo);
-    let weekHead=''; {
-      let dd=1;
-      while(dd<=nDays){
-        const wn=isoWeekNumber(new Date(year,mo,dd));
-        let span=1;
-        while(dd+span<=nDays && isoWeekNumber(new Date(year,mo,dd+span))===wn) span++;
-        weekHead+=`<th colspan="${span}" class="annual-week-head">S${wn}</th>`;
-        dd+=span;
-      }
-    }
-    let dayHead='';
-    for(let d=1; d<=nDays; d++){
-      const date=new Date(year,mo,d);
-      const dow=date.getDay();
-      const isWeekend=dow===0||dow===6;
-      const isHol=!!holidays[dkey(date)];
-      dayHead+=`<th class="${isWeekend?'weekend':''} ${isHol?'holiday':''}">${d}<span class="dow">${DOW[(dow+6)%7]}</span></th>`;
-    }
     let cells='';
-    for(let d=1; d<=nDays; d++) cells+=cellHtml(mo,d);
+    for(let d=1; d<=31; d++) cells+=cellHtml(mo,d);
     const monthOkLbl=isMonthValidated(emp?emp.team:'', year, mo);
     const lockMark=monthOkLbl?'':'<span class="annual-month-lock" title="Ce mois n\u2019est pas encore validé par l\u2019administration">🔒</span>';
-    monthBlocks+=`
-    <div class="annual-month-block">
-      <div class="annual-month-block-title">${MOIS[mo].charAt(0).toUpperCase()+MOIS[mo].slice(1)} ${year}${lockMark}</div>
-      <div class="grid-card annual-grid-card">
-        <table class="annual-grid">
-          <thead><tr>${weekHead}</tr><tr>${dayHead}</tr></thead>
-          <tbody><tr>${cells}</tr></tbody>
-        </table>
-      </div>
-    </div>`;
+    compactBodyRows+=`<tr><th class="annual-compact-month-label">${MOIS[mo].charAt(0).toUpperCase()+MOIS[mo].slice(1)}${lockMark}</th>${cells}</tr>`;
   }
+  const monthBlocks=`
+    <div class="grid-card annual-grid-card annual-compact-card">
+      <table class="annual-grid annual-compact-grid">
+        <thead><tr>${compactDayHead}</tr></thead>
+        <tbody>${compactBodyRows}</tbody>
+      </table>
+    </div>`;
 
   const allowance=state.cpAllowances[cpAllowanceKey(username,year)] ?? '';
   const used=countCodeUsedInYear(username,year,'CP');
