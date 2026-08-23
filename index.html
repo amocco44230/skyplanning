@@ -731,7 +731,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v5.7';
+const APP_VERSION = 'v5.8';
 const APP_VERSION_DATE = '23/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -4743,12 +4743,24 @@ function groupByFonction(employees, service, includeEmpty){
   const groups={};
   fonctionsList.forEach(f=>groups[f]=[]);
   groups['__none__']=[];
+  const extraFonctions=[];
   employees.forEach(e=>{
-    const f=fonctionsList.includes(e.fonction)?e.fonction:'__none__';
-    groups[f].push(e);
+    if(e.fonction && fonctionsList.includes(e.fonction)){
+      groups[e.fonction].push(e);
+    } else if(e.fonction){
+      // Fonction réelle mais absente de la liste officielle de ce service —
+      // typiquement un responsable affiché ici via « Apparaît aussi
+      // directement sur ces services » (supervision de plusieurs services).
+      // On garde sa vraie fonction comme groupe plutôt que de le noyer dans
+      // « Sans fonction ».
+      if(!groups[e.fonction]){ groups[e.fonction]=[]; extraFonctions.push(e.fonction); }
+      groups[e.fonction].push(e);
+    } else {
+      groups['__none__'].push(e);
+    }
   });
   const result=[];
-  fonctionsList.forEach(f=>{ if(includeEmpty || groups[f].length) result.push({fonction:f, list:groups[f]}); });
+  fonctionsList.concat(extraFonctions).forEach(f=>{ if(includeEmpty || groups[f].length) result.push({fonction:f, list:groups[f]}); });
   if(includeEmpty || groups['__none__'].length) result.push({fonction:'__none__', list:groups['__none__']});
   return result;
 }
