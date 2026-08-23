@@ -640,7 +640,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v2.4';
+const APP_VERSION = 'v2.5';
 const APP_VERSION_DATE = '22/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -2800,7 +2800,7 @@ function renderPlanningEquipe(){
     ${sidebarLegendHtml(false)}
   `;
   const sideActionsHtml = `
-    <div class="sidebar-extra-title" style="margin-top:8px;">Actions</div>
+    <div class="sidebar-extra-title" style="margin-top:22px;">Actions</div>
     ${(monthOk && myTeam && isFeatureEnabled('impression')) ? `<button class="icon-btn" id="peqPrintBtn">🖨️ Imprimer</button>` : ''}
     ${isFeatureEnabled('desideratas', myTeam) ? `<button class="btn btn-primary" id="peqNewDesidBtn">🖐️ Désidératas</button>` : ''}
     ${isFeatureEnabled('echanges', myTeam) ? `<button class="btn btn-primary" id="peqNewExchBtn">🔄 Swap</button>` : ''}
@@ -3518,15 +3518,15 @@ function renderMonPlanningAnnuel(){
     </div>`).join('');
 
   const modeToggleHtml = !isFeatureEnabled('genAuto') ? '' : (genMode
-    ? `<button class="btn-gen active" id="annModeToggle">🪄 Mode génération activé — cliquer pour repasser en peinture</button>`
-    : `<button class="btn-gen" id="annModeToggle">🪄 Passer en mode génération (choisir le jour de départ)</button>`);
+    ? `<button class="btn-gen active" id="annModeToggle">🪄 Quitter la génération</button>`
+    : `<button class="btn-gen" id="annModeToggle">🪄 Générer</button>`);
 
   const sideCodesHtml = genMode ? '' : `
     <div class="sidebar-extra-title">Codes</div>
     <div class="legend sidebar-code-grid">${sidebarLegendChipsHtml}</div>
   `;
   const sideActionsHtml = `
-    <div class="sidebar-extra-title" style="margin-top:8px;">Actions</div>
+    <div class="sidebar-extra-title" style="margin-top:22px;">Actions</div>
     ${modeToggleHtml}
     <button class="btn" style="width:100%;background:#FBEAE9;color:var(--danger);margin-bottom:8px;" id="annClearBtn">🗑 Vider mon brouillon ${year}</button>
     ${isFeatureEnabled('desideratas', emp?emp.team:'') ? `<button class="btn" style="width:100%;background:var(--primary-light);color:var(--primary-dark);" id="annDesidBtn">🖐️ Demande de désidérata${state.annualSelectedDay?' — '+fmtDateKeyFr(state.annualSelectedDay):''}</button>` : ''}
@@ -3825,15 +3825,15 @@ function renderCalendrierAdmin(){
   const validated = canValidate && isMonthValidated(svcFilter,y,m);
   const validateBtnHtml = canValidate
     ? (validated
-        ? `<button class="btn-validate validated" id="validateBtn">✓ Mois validé — visible par les salariés</button>`
-        : `<button class="btn-validate" id="validateBtn">🔒 Valider le mois — le rendre visible aux salariés</button>`)
+        ? `<button class="btn-validate validated" id="validateBtn">✓ Mois validé — Dévalider</button>`
+        : `<button class="btn-validate" id="validateBtn">🔒 Valider</button>`)
     : `<span class="helper" style="margin:0;">Sélectionnez un service précis pour valider son mois.</span>`;
   const genCount=Object.keys(state.genSelections).length;
   const genAutoOn=isFeatureEnabled('genAuto');
   const printOn=isFeatureEnabled('impression');
   const genBtnHtml = !genAutoOn ? '' : (state.genMode
-    ? `<button class="btn-gen active" id="genToggleBtn">🪄 Mode génération activé — cliquer pour quitter</button>`
-    : `<button class="btn-gen" id="genToggleBtn">🪄 Générer automatiquement le planning</button>`);
+    ? `<button class="btn-gen active" id="genToggleBtn">🪄 Quitter la génération</button>`
+    : `<button class="btn-gen" id="genToggleBtn">🪄 Générer</button>`);
   const genSelectionBarHtml = (genAutoOn && state.genMode) ? `
     <div class="legend-hint gen-hint">
       🪄 Cliquez sur le <b>dernier jour travaillé (M ou S)</b> de chaque salarié à régénérer. ${genCount} sélectionné${genCount>1?'s':''}.
@@ -3844,10 +3844,10 @@ function renderCalendrierAdmin(){
     ${sidebarLegendHtml(true)}
   `;
   const sideActionsHtml = `
-    <div class="sidebar-extra-title" style="margin-top:8px;">Actions</div>
+    <div class="sidebar-extra-title" style="margin-top:22px;">Actions</div>
     ${validateBtnHtml}
     ${genBtnHtml}
-    ${(canValidate && printOn) ? `<button class="icon-btn" id="printMonthBtn">🖨️ Imprimer le planning</button>` : ''}
+    ${(canValidate && printOn) ? `<button class="icon-btn" id="printMonthBtn">🖨️ Imprimer</button>` : ''}
   `;
   const mobile=isMobileDevice();
   const inner=`
