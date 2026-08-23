@@ -369,16 +369,15 @@
   /* ---------- Grille restreinte (consultation d'un autre service) ---------- */
   .restricted-grid-card{padding:4px;}
   .restricted-scroll{overflow-x:auto;}
-  .restricted-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--border);min-width:max-content;}
+  .restricted-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border-bottom:1px solid var(--border);}
   .restricted-row:last-child{border-bottom:none;}
-  .restricted-name{width:150px;flex-shrink:0;font-weight:700;font-size:13px;position:sticky;left:0;background:var(--surface);z-index:1;}
-  .restricted-cells{flex:1;display:flex;flex-wrap:nowrap;gap:2px;}
-  .restricted-cell{display:inline-flex;align-items:center;justify-content:center;min-width:26px;width:26px;height:26px;border-radius:5px;background:#F4F5F7;color:#B7BEC9;font-size:9px;font-weight:800;flex-shrink:0;}
+  .restricted-name{width:170px;flex-shrink:0;font-weight:700;font-size:13.5px;position:sticky;left:0;background:var(--surface);z-index:1;}
+  .restricted-cells{flex:1;display:grid;gap:3px;min-width:0;}
+  .restricted-cell{display:flex;align-items:center;justify-content:center;height:32px;border-radius:6px;background:#F4F5F7;color:#B7BEC9;font-size:10.5px;font-weight:800;}
   .restricted-unavailable{flex:1;font-size:12.5px;font-style:italic;color:var(--ink-soft);}
-  .restricted-head-row{padding:4px 10px;border-bottom:1.5px solid var(--border);}
-  .restricted-head-cells{gap:2px;}
-  .restricted-week-group{flex-shrink:0;text-align:center;font-size:9.5px;font-weight:800;color:var(--primary-dark);background:#EAF0F6;border-radius:5px;padding:3px 0;}
-  .restricted-daylabel{background:transparent;color:var(--ink-soft);font-size:9px;font-weight:700;}
+  .restricted-head-row{padding:5px 10px;border-bottom:1.5px solid var(--border);}
+  .restricted-week-group{text-align:center;font-size:10.5px;font-weight:800;color:var(--primary-dark);background:#EAF0F6;border-radius:6px;padding:4px 0;}
+  .restricted-daylabel{background:transparent;color:var(--ink-soft);font-size:10px;font-weight:700;}
   .restricted-daylabel.weekend{color:#8A6FE0;}
   .restricted-daylabel.holiday{color:var(--danger);}
   .indiv-today-card{border-radius:14px;padding:14px 16px;margin-top:4px;box-shadow:0 2px 6px rgba(0,0,0,.08);}
@@ -732,7 +731,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v5.2';
+const APP_VERSION = 'v5.3';
 const APP_VERSION_DATE = '23/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -3356,21 +3355,28 @@ function teamWeekViewHtml(teamEmployees, weekDates, myTeam, todayKeyStr, restric
  * jamais risquer de modifier le comportement du planning normal.
  */
 function restrictedTeamGridHtml(employees, viewedTeam, viewerTeam, y, m){
+  // viewerTeam peut être un seul service (salarié) ou un tableau de services
+  // (admin scopé sur plusieurs services) — on normalise pour accepter les deux.
+  const viewerTeams = Array.isArray(viewerTeam) ? viewerTeam : [viewerTeam];
   const nDays=daysInMonth(y,m);
   const holidays=frenchHolidays(y);
-  // En-tête semaines (regroupées, comme le planning standard) + jours,
-  // pour se repérer — ça manquait complètement avant.
-  let weekHeadHtml='<div class="restricted-name"></div><div class="restricted-cells restricted-head-cells">';
+  // Grille CSS (et non flexbox) : chaque case fait AU MOINS 28px mais grandit
+  // pour remplir toute la largeur de la page sur un grand écran — la CSS
+  // grid garantit un alignement parfait entre l'en-tête (regroupé par
+  // semaine, colonnes fusionnées) et les cases en dessous, quelle que soit
+  // la largeur réelle des colonnes.
+  const gridCols=`grid-template-columns:repeat(${nDays}, minmax(28px, 1fr));`;
+  let weekHeadHtml=`<div class="restricted-name"></div><div class="restricted-cells restricted-head-cells" style="${gridCols}">`;
   let dd=1;
   while(dd<=nDays){
     const wn=isoWeekNumber(new Date(y,m,dd));
     let span=1;
     while(dd+span<=nDays && isoWeekNumber(new Date(y,m,dd+span))===wn) span++;
-    weekHeadHtml+=`<span class="restricted-week-group" style="flex-basis:${span*28-2}px;">S${wn}</span>`;
+    weekHeadHtml+=`<span class="restricted-week-group" style="grid-column:span ${span};">S${wn}</span>`;
     dd+=span;
   }
   weekHeadHtml+='</div>';
-  let dayHeadHtml='<div class="restricted-name"></div><div class="restricted-cells restricted-head-cells">';
+  let dayHeadHtml=`<div class="restricted-name"></div><div class="restricted-cells restricted-head-cells" style="${gridCols}">`;
   for(let d=1; d<=nDays; d++){
     const date=new Date(y,m,d);
     const dow=date.getDay();
@@ -3385,7 +3391,7 @@ function restrictedTeamGridHtml(employees, viewedTeam, viewerTeam, y, m){
   const rows=groups.map(g=>{
     const label = g.fonction==='__none__' ? 'Sans fonction' : (g.fonction||'');
     const empRows=g.list.map(emp=>{
-      const hidden = !(emp.extraTeams||[]).includes(viewerTeam) && emp.username!==state.currentUser.username;
+      const hidden = !viewerTeams.some(vt=>(emp.extraTeams||[]).includes(vt)) && emp.username!==state.currentUser.username;
       if(hidden){
         return `<div class="restricted-row"><div class="restricted-name">${escapeHtml(emp.name)}</div><div class="restricted-unavailable">🔒 Planning non disponible — ce salarié n'a pas autorisé la consultation de son planning par d'autres services</div></div>`;
       }
@@ -3395,7 +3401,7 @@ function restrictedTeamGridHtml(employees, viewedTeam, viewerTeam, y, m){
         const info=code?codeInfo(code):null;
         cells+=`<span class="restricted-cell" style="${info?`background:${info.color};color:${info.text};`:''}" title="${d}/${m+1}">${code||''}</span>`;
       }
-      return `<div class="restricted-row"><div class="restricted-name">${escapeHtml(emp.name)}</div><div class="restricted-cells">${cells}</div></div>`;
+      return `<div class="restricted-row"><div class="restricted-name">${escapeHtml(emp.name)}</div><div class="restricted-cells" style="${gridCols}">${cells}</div></div>`;
     }).join('');
     return `${label?`<div class="peq-week-fonction-label">${escapeHtml(label)}</div>`:''}${empRows}`;
   }).join('');
@@ -4510,15 +4516,27 @@ function renderCalendrierAdmin(){
   const y=state.viewDate.getFullYear(), m=state.viewDate.getMonth();
   const scope=getAdminScope(state.currentUser);
   const availableServices = scope || state.services;
-  if(state.calendarServiceFilter===undefined || (scope && !scope.includes(state.calendarServiceFilter) && state.calendarServiceFilter!=='ALL')){
+  // Services HORS de son périmètre de gestion, mais qu'un admin scopé peut
+  // quand même consulter en lecture seule — dès qu'AU MOINS UN salarié de ce
+  // service a autorisé un des services gérés par cet admin (même case à
+  // cocher que côté salarié : « Visible aussi sur le planning équipe
+  // d'autres services »). Le grand admin n'en a pas besoin, il voit déjà tout.
+  const foreignAuthorizedServices = scope ? [...new Set(
+    state.users
+      .filter(u=>!isSuperAdmin(u) && u.team && !scope.includes(u.team) && (u.extraTeams||[]).some(s=>scope.includes(s)))
+      .map(u=>u.team)
+  )] : [];
+  if(state.calendarServiceFilter===undefined || (scope && !scope.includes(state.calendarServiceFilter) && !foreignAuthorizedServices.includes(state.calendarServiceFilter) && state.calendarServiceFilter!=='ALL')){
     // Le grand admin doit voir tous les services par défaut sur son calendrier.
     state.calendarServiceFilter = scope ? (availableServices.includes('CCO') ? 'CCO' : (availableServices[0] || 'ALL')) : 'ALL';
   }
   const svcFilter=state.calendarServiceFilter;
-  // Un salarié rattaché en service supplémentaire (extraTeams, "Gestion des salariés")
-  // apparaît aussi ici, tout comme un salarié dont l'affectation change en cours
-  // de mois (voir « Historique service / fonction » dans sa fiche) : il apparaît
-  // dans les deux services concernés, avec les jours hors période grisés.
+  const isForeignView = scope && foreignAuthorizedServices.includes(svcFilter);
+  // Un salarié dont l'affectation change en cours de mois (« Historique
+  // service / fonction ») apparaît dans les deux services concernés, avec
+  // les jours hors période grisés — l'ancienne case « Visible aussi
+  // ailleurs » ne fait plus ça, elle sert uniquement à la consultation
+  // croisée ci-dessus (isForeignView).
   const belongsToService=(u,svc)=> employeeActiveInServiceDuringMonth(u,svc,y,m);
   const employees=state.users.filter(u=>
     !isSuperAdmin(u) &&
@@ -4526,20 +4544,23 @@ function renderCalendrierAdmin(){
     (svcFilter==='ALL' ? availableServices.some(s=>belongsToService(u,s)) : belongsToService(u,svcFilter))
   );
   const svcOptions = `<option value="ALL" ${svcFilter==='ALL'?'selected':''}>${scope?'Tous mes services':'Tous les services'}</option>`
-    + availableServices.map(s=>`<option value="${escapeHtml(s)}" ${svcFilter===s?'selected':''}>${escapeHtml(s)}</option>`).join('');
+    + availableServices.map(s=>`<option value="${escapeHtml(s)}" ${svcFilter===s?'selected':''}>${escapeHtml(s)}</option>`).join('')
+    + (foreignAuthorizedServices.length ? `<optgroup label="Autres services (consultation)">${foreignAuthorizedServices.map(s=>`<option value="${escapeHtml(s)}" ${svcFilter===s?'selected':''}>${escapeHtml(s)}</option>`).join('')}</optgroup>` : '');
   const alerts=computeAllAlerts(y,m).filter(a=>!scope || scope.includes(a.rule.service));
   const allChangesThisMonth=state.postValidationChanges.filter(c=>c.year===y && c.month===m && (svcFilter==='ALL'?availableServices.includes(c.service):c.service===svcFilter));
   const changes=allChangesThisMonth.filter(c=>state.showAcknowledgedChanges || !c.acknowledged);
   const pendingChanges=allChangesThisMonth.filter(c=>!c.acknowledged);
-  const canValidate = svcFilter!=='ALL';
+  const canValidate = svcFilter!=='ALL' && !isForeignView;
   const validated = canValidate && isMonthValidated(svcFilter,y,m);
-  const validateBtnHtml = canValidate
+  const validateBtnHtml = isForeignView
+    ? `<div class="svc-select-hint">👁️ Vous consultez <b>${escapeHtml(svcFilter)}</b> en lecture seule (hors de vos services gérés) — seuls les salariés ayant autorisé la consultation apparaissent en détail.</div>`
+    : canValidate
     ? (validated
         ? `<button class="btn-validate validated" id="validateBtn">✓ Mois validé — Dévalider</button>`
         : `<button class="btn-validate" id="validateBtn">🔒 Valider</button>`)
     : `<div class="svc-select-hint">👉 Sélectionnez un service précis dans le menu ci-dessus pour pouvoir valider son mois.</div>`;
   const genCount=Object.keys(state.genSelections).length;
-  const genAutoOn=isFeatureEnabled('genAuto');
+  const genAutoOn=isFeatureEnabled('genAuto') && !isForeignView;
   const printOn=isFeatureEnabled('impression');
   const genBtnHtml = !genAutoOn ? '' : (state.genMode
     ? `<button class="btn-gen active" id="genToggleBtn">🪄 Quitter la génération</button>`
@@ -4572,11 +4593,13 @@ function renderCalendrierAdmin(){
     <div style="margin:10px 0 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">${validateBtnHtml}${genBtnHtml}${(canValidate && printOn) ? `<button class="icon-btn" id="printMonthBtn">🖨️ Imprimer</button>` : ''}</div>
     ` : ''}
     ${genSelectionBarHtml}
-    ${canValidate && !validated ? `<div class="legend-hint lock-hint">🔒 Ce mois n'est <b>pas encore validé</b> pour ${escapeHtml(svcFilter)} — les salariés de ce service ne voient rien sur leur planning pour ${MOIS[m]} ${y} (leurs désidératas restent accessibles). Cliquez sur « Valider le mois » ${mobile?'ci-dessus':'dans le bandeau de gauche'} quand vous êtes prêt.</div>` : ''}
-    ${pendingChanges.length?`<div class="legend-hint change-hint">✎ <b>${pendingChanges.length} modification${pendingChanges.length>1?'s':''}</b> apportée${pendingChanges.length>1?'s':''} depuis la validation du mois — cases encadrées en orange, détail tout en bas de page.</div>`:''}
-    ${gridHtml({employees, readonly:false, alerts, changes:allChangesThisMonth, serviceContext: svcFilter!=='ALL'?svcFilter:null})}
-    ${commentsRecapHtml(y,m, (svcFilter==='ALL' && !scope)?null:employees.map(e=>e.username))}
-    ${changesLogHtml(changes)}
+    ${(canValidate && !validated && !isForeignView) ? `<div class="legend-hint lock-hint">🔒 Ce mois n'est <b>pas encore validé</b> pour ${escapeHtml(svcFilter)} — les salariés de ce service ne voient rien sur leur planning pour ${MOIS[m]} ${y} (leurs désidératas restent accessibles). Cliquez sur « Valider le mois » ${mobile?'ci-dessus':'dans le bandeau de gauche'} quand vous êtes prêt.</div>` : ''}
+    ${(pendingChanges.length && !isForeignView)?`<div class="legend-hint change-hint">✎ <b>${pendingChanges.length} modification${pendingChanges.length>1?'s':''}</b> apportée${pendingChanges.length>1?'s':''} depuis la validation du mois — cases encadrées en orange, détail tout en bas de page.</div>`:''}
+    ${isForeignView
+      ? restrictedTeamGridHtml(employees, svcFilter, scope, y, m)
+      : gridHtml({employees, readonly:false, alerts, changes:allChangesThisMonth, serviceContext: svcFilter!=='ALL'?svcFilter:null})}
+    ${!isForeignView ? commentsRecapHtml(y,m, (svcFilter==='ALL' && !scope)?null:employees.map(e=>e.username)) : ''}
+    ${!isForeignView ? changesLogHtml(changes) : ''}
   `;
   renderShell(inner,'Calendrier Mensuel'+(svcFilter==='ALL'?'':' — '+svcFilter), mobile?null:(sideCodesHtml+sideActionsHtml));
   bindMonthNav(render);
