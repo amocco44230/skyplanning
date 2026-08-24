@@ -73,13 +73,13 @@
   .sidebar-scroll{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;}
   .main{flex:1;min-width:0;display:flex;flex-direction:column;margin-left:222px;}
   .sidebar-brand{padding:14px 18px 12px;display:flex;align-items:center;gap:10px;}
-  .sidebar-last-update{padding:32px 18px 22px;font-size:10.5px;font-weight:700;color:rgba(255,255,255,.5);border-bottom:1px solid rgba(255,255,255,.08);margin-bottom:2px;}
+  .sidebar-last-update{padding:14px 18px 12px;font-size:10.5px;font-weight:700;color:rgba(255,255,255,.5);border-bottom:1px solid rgba(255,255,255,.08);margin-bottom:2px;}
   .content > .sidebar-last-update{color:var(--ink-soft);border-bottom:none;padding:0 0 22px;}
   .sidebar-brand .mark{width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;}
   .sidebar-brand span{font-weight:800;font-size:15px;}
   .sidebar-skyplanning{font-family:'Manrope',sans-serif;font-weight:800;font-size:17px;letter-spacing:.01em;color:#E8342A;}
-  .sidebar-nav{padding:8px 8px;}
-  .sidebar-nav button{display:flex;align-items:center;gap:9px;width:100%;text-align:left;background:transparent;border:none;color:rgba(255,255,255,.72);padding:7px 10px;border-radius:7px;font-size:12.5px;font-weight:600;margin-bottom:1px;}
+  .sidebar-nav{padding:6px 8px;}
+  .sidebar-nav button{display:flex;align-items:center;gap:9px;width:100%;text-align:left;background:transparent;border:none;color:rgba(255,255,255,.72);padding:6px 10px;border-radius:7px;font-size:12px;font-weight:600;margin-bottom:1px;}
   .sidebar-nav button:hover{background:rgba(255,255,255,.06);color:#fff;}
   .sidebar-nav button.active{background:rgba(255,255,255,.14);color:#fff;}
   .nav-badge{margin-left:auto;background:var(--danger);color:#fff;font-size:10.5px;font-weight:800;min-width:18px;height:18px;border-radius:20px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px;}
@@ -768,7 +768,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v7.4';
+const APP_VERSION = 'v7.6';
 const APP_VERSION_DATE = '24/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -986,7 +986,7 @@ let state={
   comments:{},
   desideratas:[],
   exchanges:[],
-  featureFlags:{desideratas:true, echanges:true, alertes:true, genAuto:true, impression:true, photos:true, cycles:false, stats:false, historique:false, perService:{}},
+  featureFlags:{desideratas:true, echanges:true, alertes:true, genAuto:true, impression:true, photos:true, cycles:false, stats:false, historique:false, crossServiceView:false, perService:{}},
   cycleSettings:{},
   alertRules:[],
   monthValidations:{},
@@ -1115,7 +1115,7 @@ async function loadAll(){
     // par une mise à jour de l'appli reste activée par défaut si l'admin n'a
     // encore rien configuré explicitement.
     state.featureFlags = Object.assign(
-      {desideratas:true, echanges:true, alertes:true, genAuto:true, impression:true, photos:true, cycles:false, stats:false, historique:false, perService:{}},
+      {desideratas:true, echanges:true, alertes:true, genAuto:true, impression:true, photos:true, cycles:false, stats:false, historique:false, crossServiceView:false, perService:{}},
       parsed||{}
     );
     if(!state.featureFlags.perService) state.featureFlags.perService={};
@@ -2870,6 +2870,7 @@ function renderFonctionnalites(){
       ${globalToggle('cycles','Cycles (heures travaillées)','Calcule les heures travaillées de chaque salarié sur des cycles glissants (ex : 8 semaines) et alerte en cas de dépassement. Visible uniquement par les comptes admin, jamais par les salariés.')}
       ${globalToggle('stats','Statistiques','Tableau de bord : heures travaillées, répartition des codes, équité nuits/week-ends. Visible uniquement par les comptes admin, jamais par les salariés.')}
       ${globalToggle('historique','Historique','Journal complet : validations/dévalidations de mois, désidératas et échanges déposés/traités, modifications du planning après validation — qui, quand, quoi. Visible uniquement par les comptes admin, jamais par les salariés.')}
+      ${globalToggle('crossServiceView','Consultation d\u2019un autre service','Autorise les salariés (et les admins) à consulter le planning d\u2019un autre service que le leur, uniquement pour les personnes qui ont explicitement accepté d\u2019être vues (fiche salarié → « Visible aussi sur le planning équipe d\u2019autres services »). Décoché par défaut : chacun ne voit que son (ou ses) propre(s) service(s), même si des autorisations ont été données.')}
     </div>
     <div class="feat-card">
       <h3>Droits par service</h3>
@@ -3123,7 +3124,6 @@ function topbarSwitchBtnHtml(){
   return '';
 }
 function topbarAccountMenuHtml(){
-  if(!isMobileDevice()) return '';
   return `
   <div style="position:relative;">
     <button class="bell-btn" id="topbarMenuBtn">⋮</button>
@@ -3231,11 +3231,6 @@ function renderShell(innerHtml,title,sidebarExtraHtml){
       </div>
       ${sidebarExtraHtml ? `<div class="sidebar-extra">${sidebarExtraHtml}</div>` : ''}
       </div>
-      <div class="sidebar-foot">
-        <div class="sidebar-user"><b>${state.currentUser.name}</b>${state.currentUser.role==='admin'?(isSuperAdmin(state.currentUser)?'Administrateur':'Admin · '+(getAdminScope(state.currentUser)||[]).join(', ')):'Salarié·e'}</div>
-        <button id="btnAccount">⚙ <span class="label">Mon compte</span></button>
-        <button id="btnLogout">↪ <span class="label">Se déconnecter</span></button>
-      </div>
     </div>
     <div class="main">
       <div class="topbar">
@@ -3256,8 +3251,6 @@ function renderShell(innerHtml,title,sidebarExtraHtml){
   document.querySelectorAll('.sidebar-nav [data-tab]').forEach(btn=>{
     btn.addEventListener('click',()=>{ state.tab=btn.dataset.tab; state.selectedCode=null; render(); });
   });
-  document.getElementById('btnLogout').addEventListener('click',logout);
-  document.getElementById('btnAccount').addEventListener('click',()=>{ state.modal={type:'account'}; render(); });
   bindBell();
   bindTopbarAccountMenu();
   const topbarSwitchBtn=document.getElementById('topbarSwitchBtn');
@@ -4088,7 +4081,7 @@ function renderPlanningEquipe(){
   // configuration séparée n'est nécessaire côté salarié CCO : une seule case
   // cochée (par la personne qui accepte d'être vue) suffit à faire apparaître
   // tout son service dans le sélecteur, pour toute mon équipe.
-  const myAuthorizedServices = myTeam ? [...new Set(
+  const myAuthorizedServices = (myTeam && isFeatureEnabled('crossServiceView')) ? [...new Set(
     state.users
       .filter(u=>!isSuperAdmin(u) && u.team && u.team!==myTeam && (u.extraTeams||[]).includes(myTeam))
       .map(u=>u.team)
@@ -5196,7 +5189,7 @@ function renderCalendrierAdmin(){
   // service a autorisé un des services gérés par cet admin (même case à
   // cocher que côté salarié : « Visible aussi sur le planning équipe
   // d'autres services »). Le grand admin n'en a pas besoin, il voit déjà tout.
-  const foreignAuthorizedServices = scope ? [...new Set(
+  const foreignAuthorizedServices = (scope && isFeatureEnabled('crossServiceView')) ? [...new Set(
     state.users
       .filter(u=>!isSuperAdmin(u) && u.team && !scope.includes(u.team) && (u.extraTeams||[]).some(s=>scope.includes(s)))
       .map(u=>u.team)
