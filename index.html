@@ -159,6 +159,8 @@
   .sidebar-extra .btn-primary{background:#fff;color:var(--primary-dark);margin-top:0;}
   .sidebar-extra .btn-primary:hover{background:rgba(255,255,255,.85);}
   .sidebar-extra .btn-gen{background:rgba(255,255,255,.1);color:#fff;border:1.5px solid rgba(255,255,255,.16);}
+  .sidebar-extra .btn-gen.danger{background:rgba(232,97,90,.16);color:#F4A6A2;border-color:rgba(232,97,90,.35);}
+  .sidebar-extra .btn-gen.danger:hover{background:rgba(232,97,90,.26);}
   .sidebar-extra .btn-gen.active{background:#8B6FE0;border-color:#8B6FE0;color:#fff;}
   .sidebar-extra .icon-btn{background:transparent;color:#fff;border:1.5px solid rgba(255,255,255,.35);}
   .sidebar-extra .icon-btn:hover{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.5);color:#fff;}
@@ -778,7 +780,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v8.1';
+const APP_VERSION = 'v8.2';
 const APP_VERSION_DATE = '24/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -4992,8 +4994,8 @@ function renderMonPlanningAnnuel(){
     </div>`).join('');
 
   const modeToggleHtml = !isFeatureEnabled('genAuto') ? '' : (genMode
-    ? `<button class="btn-gen active" id="annModeToggle">🪄 Quitter la génération</button>`
-    : `<button class="btn-gen" id="annModeToggle">🪄 Générer</button>`);
+    ? `<button class="btn-gen active" id="annModeToggle">Quitter la génération</button>`
+    : `<button class="btn-gen" id="annModeToggle">Générer</button>`);
 
   const sideCodesHtml = genMode ? '' : `
     <div class="sidebar-extra-title">Codes</div>
@@ -5002,10 +5004,13 @@ function renderMonPlanningAnnuel(){
   const sideActionsHtml = `
     <div class="sidebar-extra-title" style="margin-top:22px;">Actions</div>
     ${modeToggleHtml}
-    <button class="btn" style="width:100%;background:#FBEAE9;color:var(--danger);margin-bottom:8px;" id="annClearBtn">🗑 Vider mon brouillon ${year}</button>
-    ${isFeatureEnabled('desideratas', emp?emp.team:'') ? `<button class="btn btn-primary" id="annDesidBtn">🖐️ Désidératas${state.annualSelectedDay?' — '+fmtDateKeyFr(state.annualSelectedDay):''}</button>` : ''}
-    ${isFeatureEnabled('desideratas', emp?emp.team:'') ? `<button class="btn" style="width:100%;background:var(--primary-light);color:var(--primary-dark);margin-bottom:8px;" id="annDraftToDesidBtn">📤 Transformer mon brouillon en désidératas</button>` : ''}
-    ${isFeatureEnabled('echanges', emp?emp.team:'') ? `<button class="btn btn-primary" id="annNewExchBtn">🔄 Swap</button>` : ''}
+    ${isFeatureEnabled('desideratas', emp?emp.team:'') ? `<button class="btn-gen" id="annDesidBtn">Désidératas${state.annualSelectedDay?' — '+fmtDateKeyFr(state.annualSelectedDay):''}</button>` : ''}
+    ${isFeatureEnabled('echanges', emp?emp.team:'') ? `<button class="btn-gen" id="annNewExchBtn">Swap</button>` : ''}
+    ${isFeatureEnabled('desideratas', emp?emp.team:'') ? `
+    <div class="sidebar-extra-title" style="margin-top:18px;">Brouillon</div>
+    <button class="btn-gen" id="annDraftToDesidBtn">Transformer en désidératas</button>
+    <button class="btn-gen danger" id="annClearBtn">Vider mon brouillon ${year}</button>
+    ` : ''}
   `;
   const mobile=isMobileDevice();
   const inner=`
@@ -5021,11 +5026,15 @@ function renderMonPlanningAnnuel(){
     ${mobile ? `
     <div class="mobile-action-row">
       ${modeToggleHtml}
-      <button class="btn" style="background:#FBEAE9;color:var(--danger);" id="annClearBtn">🗑 Vider</button>
-      ${isFeatureEnabled('desideratas', emp?emp.team:'') ? `<button class="btn btn-primary" id="annDesidBtn">🖐️ Désidératas</button>` : ''}
-      ${isFeatureEnabled('desideratas', emp?emp.team:'') ? `<button class="btn" style="background:var(--primary-light);color:var(--primary-dark);" id="annDraftToDesidBtn">📤 Brouillon → désidératas</button>` : ''}
-      ${isFeatureEnabled('echanges', emp?emp.team:'') ? `<button class="btn btn-primary" id="annNewExchBtn">🔄 Swap</button>` : ''}
+      ${isFeatureEnabled('desideratas', emp?emp.team:'') ? `<button class="btn-gen" id="annDesidBtn">Désidératas</button>` : ''}
+      ${isFeatureEnabled('echanges', emp?emp.team:'') ? `<button class="btn-gen" id="annNewExchBtn">Swap</button>` : ''}
     </div>
+    ${isFeatureEnabled('desideratas', emp?emp.team:'') ? `
+    <div class="mobile-action-row" style="margin-top:6px;">
+      <button class="btn-gen" id="annDraftToDesidBtn">Brouillon → désidératas</button>
+      <button class="btn-gen danger" id="annClearBtn">Vider mon brouillon</button>
+    </div>
+    ` : ''}
     ` : ''}
     ${genMode
       ? `<div class="legend-hint gen-hint">🪄 Cliquez sur un jour du planning ci-dessous pour le choisir comme <b>jour de départ</b> de la génération automatique. Une fenêtre vous demandera si vous démarrez en M ou en S, et le cycle (4 jours travaillés / 4 jours OFF) se génère aussitôt jusqu'au 31 décembre ${year}.</div>`
