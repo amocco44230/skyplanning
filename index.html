@@ -600,9 +600,21 @@
   table.annual-grid .annual-cell-inner{position:relative;width:100%;height:100%;}
   table.annual-grid .annual-cell-official{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:8.5px;font-weight:800;}
   table.annual-grid .annual-holiday-mark{position:absolute;top:1px;left:2px;font-size:9.5px;font-weight:900;color:var(--danger);line-height:1;z-index:3;pointer-events:none;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 2px #fff,0 0 2px #fff;}
-  table.annual-grid .annual-draft-bubble{position:absolute;bottom:-2px;right:-2px;width:14px;height:14px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:7.2px;font-weight:900;box-shadow:0 0 0 1.5px #fff,0 1px 2px rgba(0,0,0,.2);z-index:3;pointer-events:none;}
-  table.annual-grid .annual-desid-mark{position:absolute;top:-2px;right:-2px;width:13px;height:13px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:900;box-shadow:0 0 0 1.5px #fff,0 1px 2px rgba(0,0,0,.2);z-index:4;pointer-events:none;}
-  table.annual-grid td.annual-cell.desid-approved{outline:2px solid #1E7B3C;outline-offset:-1px;}
+  table.annual-grid .annual-status-bubble{position:absolute;bottom:-2px;right:-2px;width:14px;height:14px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:7.2px;font-weight:900;box-shadow:0 0 0 1.5px #fff,0 1px 2px rgba(0,0,0,.2);z-index:4;pointer-events:none;}
+  table.annual-grid td.annual-cell.status-draft{outline:1.5px dashed #4C8DFF;outline-offset:-1px;}
+  table.annual-grid td.annual-cell.status-pending{outline:2px solid #F5A623;outline-offset:-1px;}
+  table.annual-grid td.annual-cell.status-validated{outline:2px solid #1E7B3C;outline-offset:-1px;}
+  table.annual-grid td.annual-cell.status-refused{outline:1.5px dashed #D8544A;outline-offset:-1px;}
+  /* ---------- Légende des statuts (bas de "Mon planning annuel") ---------- */
+  .annual-status-legend{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-top:18px;}
+  .annual-status-legend-title{font-size:12.5px;font-weight:800;color:var(--ink-soft);margin-bottom:12px;text-transform:uppercase;letter-spacing:.03em;}
+  .annual-status-legend-items{display:flex;flex-wrap:wrap;gap:14px 26px;}
+  .annual-status-legend-item{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:600;color:var(--ink);}
+  .annual-status-swatch{width:20px;height:20px;border-radius:6px;background:#F7F8FA;flex-shrink:0;}
+  .annual-status-swatch.status-draft{outline:2px dashed #4C8DFF;outline-offset:-2px;}
+  .annual-status-swatch.status-pending{outline:2.5px solid #F5A623;outline-offset:-2px;}
+  .annual-status-swatch.status-validated{outline:2.5px solid #1E7B3C;outline-offset:-2px;}
+  .annual-status-swatch.status-refused{outline:2px dashed #D8544A;outline-offset:-2px;}
   table.annual-grid td.annual-cell:hover .annual-cell-official{outline:2px solid var(--primary);outline-offset:-2px;}
   /* ---------- Mon planning annuel : grille compacte (mois en lignes) ---------- */
   .annual-compact-card{overflow:auto;}
@@ -638,8 +650,7 @@
     table.annual-grid th{min-width:22px;font-size:9px;}
     .annual-month-block-title{font-size:12px;}
     .annual-cell-official{font-size:7.5px;}
-    .annual-draft-bubble{width:14px;height:14px;font-size:6.1px;}
-    .annual-desid-mark{width:12px;height:12px;font-size:6px;}
+    .annual-status-bubble{width:14px;height:14px;font-size:6.1px;}
     .annual-holiday-mark{font-size:7.5px;}
     .cp-form-body{flex-direction:column;align-items:stretch;}
   }
@@ -783,7 +794,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v8.3';
+const APP_VERSION = 'v8.4';
 const APP_VERSION_DATE = '24/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -4921,40 +4932,52 @@ function renderMonPlanningAnnuel(){
     if(!dayValid){
       return `<td class="annual-cell invalid" title="${dateKeyStr} — hors période de validité"></td>`;
     }
-    // Planning VALIDÉ (officiel, admin) — affiché en grand si ce mois a été
-    // validé pour le service du salarié (même verrou que « Mon planning » /
-    // « Planning équipe »), OU si une désidérata précise a déjà été validée
-    // pour CE jour précis (elle a bien été écrite dans le planning officiel
-    // au moment de sa validation — voir validateDesiderata) : dans ce cas on
-    // l'affiche quand même, indépendamment de la validation globale du mois.
     const desid=desiderataForCell(username,dateKeyStr);
     const desidApproved = !!(desid && desid.status==='validated');
+    // Planning VALIDÉ (officiel, admin) — affiché en grand si ce mois a été
+    // validé pour le service du salarié, OU si une désidérata précise a déjà
+    // été validée pour CE jour précis (écrite dans le planning officiel dès
+    // sa validation — voir validateDesiderata) : on l'affiche alors même si
+    // le reste du mois n'est pas encore officiellement validé.
     const monthValidatedForCell = isMonthValidated(emp?emp.team:'', year, monthIdx);
     const officialCode = (monthValidatedForCell || desidApproved) ? getDayCode(username,year,monthIdx,day) : undefined;
     const officialInfo=officialCode?codeInfo(officialCode):null;
     const officialStyle=officialInfo?`background:${officialInfo.color};color:${officialInfo.text};`:(isWeekend?'background:#F3F0FA;':'');
     const holidayMark=isHoliday?`<span class="annual-holiday-mark" title="${escapeHtml(holidays[dateKeyStr])}">F</span>`:'';
-    // Brouillon personnel — petite bulle ronde en bas à droite de la case
     const draftCode=getDraftCode(username,year,monthIdx,day);
-    const draftInfo=draftCode?codeInfo(draftCode):null;
-    const draftHtml=draftCode?`<span class="annual-draft-bubble" style="background:${draftInfo?draftInfo.color:'#DDD'};color:${draftInfo?draftInfo.text:'#333'};" title="Mon brouillon : ${escapeHtml(draftCode)}">${draftCode}</span>`:'';
-    // Désidérata — petit repère en haut à gauche, pour toujours savoir où en
-    // est ma demande (en attente / validée / refusée), même avant que le
-    // mois entier ne soit officiellement validé par l'admin.
-    let desidMarkHtml='';
-    if(desid){
+
+    // Un seul statut « en cours » actif à la fois par case (un brouillon
+    // transformé en désidérata sort automatiquement du brouillon) : on
+    // détermine lequel s'applique ici, par ordre de priorité, pour ne
+    // jamais superposer deux repères contradictoires sur la même case.
+    let statusClass='', bubbleHtml='', statusTip='';
+    if(desid && desid.status==='pending'){
       const dInfo=codeInfo(desid.code);
-      const sc=desidStatusColor(desid.status);
-      const icon = desid.status==='pending' ? '⏳' : desid.status==='validated' ? '✓' : '✕';
-      desidMarkHtml=`<span class="annual-desid-mark" style="background:${sc.bg};color:${sc.fg};" title="Désidérata (${desidStatusLabel(desid.status)}) : ${dInfo?dInfo.label:desid.code}${desid.comment?' — '+escapeHtml(desid.comment):''}">${icon}</span>`;
+      statusClass='status-pending';
+      statusTip=`Désidérata en attente : ${dInfo?dInfo.label:desid.code}${desid.comment?' — '+escapeHtml(desid.comment):''}`;
+      bubbleHtml=`<span class="annual-status-bubble pending" style="background:${dInfo?dInfo.color:'#F5A623'};color:${dInfo?dInfo.text:'#fff'};" title="${statusTip}">${desid.code}</span>`;
+    } else if(desidApproved){
+      statusClass='status-validated';
+      statusTip=`Désidérata validée : ${officialCode||desid.code}`;
+      // Pas de bulle séparée : le code approuvé est déjà le grand code officiel affiché.
+    } else if(desid && desid.status==='refused'){
+      const dInfo=codeInfo(desid.code);
+      statusClass='status-refused';
+      statusTip=`Désidérata refusée : ${dInfo?dInfo.label:desid.code}${desid.comment?' — '+escapeHtml(desid.comment):''}`;
+      bubbleHtml=`<span class="annual-status-bubble refused" style="background:${dInfo?dInfo.color:'#B7BEC9'};color:${dInfo?dInfo.text:'#fff'};" title="${statusTip}">${desid.code}</span>`;
+    } else if(draftCode){
+      const draftInfo=codeInfo(draftCode);
+      statusClass='status-draft';
+      statusTip=`Mon brouillon : ${draftCode}`;
+      bubbleHtml=`<span class="annual-status-bubble draft" style="background:${draftInfo?draftInfo.color:'#DDD'};color:${draftInfo?draftInfo.text:'#333'};" title="${statusTip}">${draftCode}</span>`;
     }
+
     const selected=genMode && state.annualSelectedDay===dateKeyStr;
-    return `<td class="annual-cell ${selected?'selected':''} ${desidApproved?'desid-approved':''}" data-date="${dateKeyStr}" title="${dateKeyStr}${officialCode?' — validé : '+officialCode:''}${draftCode?' — brouillon : '+draftCode:''}${isHoliday?' — '+holidays[dateKeyStr]:''}">
+    return `<td class="annual-cell ${selected?'selected':''} ${statusClass}" data-date="${dateKeyStr}" title="${dateKeyStr}${officialCode?' — validé : '+officialCode:''}${statusTip?' — '+statusTip:''}${isHoliday?' — '+holidays[dateKeyStr]:''}">
       <div class="annual-cell-inner">
         ${holidayMark}
-        ${desidMarkHtml}
         <div class="annual-cell-official" style="${officialStyle}">${officialCode||''}</div>
-        ${draftHtml}
+        ${bubbleHtml}
       </div>
     </td>`;
   };
@@ -5035,7 +5058,7 @@ function renderMonPlanningAnnuel(){
   const mobile=isMobileDevice();
   const inner=`
     <div class="legend-hint annual-legend-hint">
-      Le grand code affiché est votre <b>planning validé</b> par l'administration. Le petit badge en bas de case est <b>votre brouillon personnel</b> — il n'écrase jamais le planning officiel.
+      Le grand code affiché est votre <b>planning validé</b> par l'administration. Le contour coloré et la petite bulle indiquent le statut de vos demandes personnelles (brouillon, désidérata en attente, validée ou refusée) — <b>détail en bas de page</b>.
     </div>
     <div class="month-nav" style="margin-bottom:14px;">
       <button class="nav-arrow" id="annPrevYear">‹</button>
@@ -5063,6 +5086,16 @@ function renderMonPlanningAnnuel(){
     ${mobile && !genMode ? `<div class="legend">${legendChipsHtml}</div>` : ''}
 
     ${monthBlocks}
+
+    <div class="annual-status-legend">
+      <div class="annual-status-legend-title">Comment lire les cases de ce calendrier</div>
+      <div class="annual-status-legend-items">
+        <div class="annual-status-legend-item"><span class="annual-status-swatch status-draft"></span> Brouillon — pas encore envoyé</div>
+        <div class="annual-status-legend-item"><span class="annual-status-swatch status-pending"></span> Désidérata en attente</div>
+        <div class="annual-status-legend-item"><span class="annual-status-swatch status-validated"></span> Désidérata validée</div>
+        <div class="annual-status-legend-item"><span class="annual-status-swatch status-refused"></span> Désidérata refusée</div>
+      </div>
+    </div>
 
     <form class="cp-form" id="cpForm">
       <div class="cp-form-header">
