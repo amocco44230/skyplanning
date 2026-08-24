@@ -768,7 +768,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v7.6';
+const APP_VERSION = 'v7.8';
 const APP_VERSION_DATE = '24/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -1459,14 +1459,52 @@ function svgDonutChartHtml(items, opts){
     <text x="${cx}" y="${cy+16}" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--ink-soft)">${escapeHtml(opts.centerSub||'')}</text>
   </svg>`;
 }
-async function resetTestData(){
-  state.desideratas=[];
-  state.exchanges=[];
-  state.schedules={};
-  state.employeeDrafts={};
-  state.postValidationChanges=[];
-  state.monthValidations={};
-  state.comments={};
+/**
+ * Renvoie le préfixe « AAAA-MM » d'une clé de date (YYYY-MM-DD), d'une paire
+ * année/mois numérique, ou d'un horodatage ISO — pour comparer facilement
+ * « à partir de quel mois » sans avoir à reconvertir en objets Date partout.
+ */
+function ymKey(year, month){ return year+'-'+String(month+1).padStart(2,'0'); }
+function ymKeyFromDateStr(dateStr){ return dateStr ? dateStr.slice(0,7) : ''; }
+/**
+ * Vide les données de test — à partir d'un mois donné (inclus) si fourni,
+ * sinon tout l'historique. Tout ce qui est strictement AVANT ce mois est
+ * préservé (utile pour ne jamais toucher un planning historique déjà
+ * importé, par exemple).
+ */
+async function resetTestData(fromYear, fromMonth){
+  const cutoff = (fromYear!=null && fromMonth!=null) ? ymKey(fromYear, fromMonth) : null; // null = tout vider
+  const keep = (ym)=> cutoff!==null && ym!=='' && ym<cutoff; // true = à conserver (avant la coupure)
+
+  // Désidératas : on garde celles dont le premier jour demandé est avant la coupure.
+  state.desideratas = state.desideratas.filter(d=>keep(ymKeyFromDateStr(d.dateStart)));
+  // Échanges : on garde ceux dont la première date concernée est avant la coupure.
+  state.exchanges = state.exchanges.filter(x=>keep(ymKeyFromDateStr(x.dateA)));
+  // Planning officiel : on retire uniquement les jours à partir de la coupure, service par service.
+  Object.keys(state.schedules).forEach(username=>{
+    const sc=state.schedules[username];
+    Object.keys(sc).forEach(dateKey=>{ if(!keep(ymKeyFromDateStr(dateKey))) delete sc[dateKey]; });
+  });
+  // Brouillons personnels : même logique, jour par jour.
+  Object.keys(state.employeeDrafts).forEach(username=>{
+    const dr=state.employeeDrafts[username];
+    Object.keys(dr).forEach(dateKey=>{ if(!keep(ymKeyFromDateStr(dateKey))) delete dr[dateKey]; });
+  });
+  // Modifications après validation : sur la base de leur année/mois propres.
+  state.postValidationChanges = state.postValidationChanges.filter(c=>keep(ymKey(c.year, c.month)));
+  // Validations de mois : la clé est "service:AAAA-MM".
+  Object.keys(state.monthValidations).forEach(key=>{
+    const ym=key.split(':')[1]||'';
+    if(!keep(ym)) delete state.monthValidations[key];
+  });
+  // Commentaires : clé "utilisateur::AAAA-MM-JJ".
+  Object.keys(state.comments).forEach(key=>{
+    const dateKey=key.split('::')[1]||'';
+    if(!keep(ymKeyFromDateStr(dateKey))) delete state.comments[key];
+  });
+  // Historique (journal d'audit) : sur la base de l'horodatage de l'événement.
+  state.auditLog = state.auditLog.filter(e=>keep(ymKeyFromDateStr(e.timestamp)));
+
   await Promise.all([
     persistDesideratas(),
     persistExchanges(),
@@ -1475,6 +1513,7 @@ async function resetTestData(){
     persistPostValidationChanges(),
     persistMonthValidations(),
     persistComments(),
+    persistAuditLog(),
   ]);
 }
 /**
@@ -2887,7 +2926,7 @@ function renderFonctionnalites(){
       <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--border);">
         <div>
           <div style="font-weight:700;font-size:13.5px;">Vider les données de test</div>
-          <div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">Efface désidératas, échanges, planning de <b>tous les mois</b>, commentaires et brouillons personnels de <b>tous les salariés</b>. Les comptes, services, codes et réglages ne sont pas touchés.</div>
+          <div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">Efface désidératas, échanges, planning, commentaires, brouillons et historique — <b>tout ou seulement à partir d'un mois choisi</b> (pour préserver un planning historique déjà importé, par exemple). Les comptes, services, codes et réglages ne sont pas touchés.</div>
         </div>
         <button class="icon-btn" id="resetTestDataBtn" style="color:var(--danger);border-color:var(--danger);flex-shrink:0;">🗑️ Vider</button>
       </div>
@@ -5354,6 +5393,26 @@ function renderCalendrierAdmin(){
    colonnes suivantes = un jour du mois choisi, case vide = pas de code ce
    jour-là. Séparateur virgule OU point-virgule, accepté indifféremment.
    ============================================================ */
+function normalizeNameForMatch(s){
+  // Insensible aux accents (é/è/ê -> e, etc.) et à la casse — pour ne jamais
+  // bloquer un import à cause d'un accent mal recopié lors d'un copier-coller
+  // (ex : Excel -> Gemini -> presse-papiers -> ici), qui arrive facilement.
+  return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim().replace(/\s+/g,' ');
+}
+function repairMojibake(s){
+  // Répare le cas (très courant lors d'un copier-coller entre outils
+  // différents) où un texte UTF-8 a été relu comme du Latin-1/Windows-1252,
+  // produisant des séquences du type "Ã©" à la place de "é". On détecte la
+  // signature typique, puis on retente un décodage correct.
+  if(!s || !/Ã[\x80-\xBF\u0080-\u00BF]|â€/.test(s)) return s;
+  try{
+    const bytes=[];
+    for(let i=0;i<s.length;i++) bytes.push(s.charCodeAt(i) & 0xFF);
+    const repaired=new TextDecoder('utf-8').decode(new Uint8Array(bytes));
+    if(repaired && !repaired.includes('\uFFFD')) return repaired;
+  }catch(e){ /* on garde la chaîne d'origine si la réparation échoue */ }
+  return s;
+}
 function parsePlanningCsv(csvText, year, month){
   const lines=csvText.split(/\r?\n/).map(l=>l.trim()).filter(l=>l.length);
   if(!lines.length) return {matched:[], unmatchedNames:[], unknownCodes:new Set(), totalCells:0, rows:[]};
@@ -5368,8 +5427,9 @@ function parsePlanningCsv(csvText, year, month){
   for(let i=1;i<lines.length;i++){
     const cols=lines[i].split(sep).map(c=>c.trim());
     if(!cols.length || !cols[0]) continue;
-    const name=cols[0];
-    const user=state.users.find(u=>!isSuperAdmin(u) && u.name.toLowerCase()===name.toLowerCase());
+    const name=repairMojibake(cols[0]);
+    const nameKey=normalizeNameForMatch(name);
+    const user=state.users.find(u=>!isSuperAdmin(u) && normalizeNameForMatch(u.name)===nameKey);
     if(!user){ unmatchedNames.push(name); continue; }
     const cells=[];
     for(let day=1; day<=nDays; day++){
@@ -6833,28 +6893,50 @@ function renderModal(){
   }
 
   if(state.modal.type==='confirm-reset-test-data'){
+    const now=new Date();
+    const defaultMonthValue=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+    const fromMode = state.modal.fromMode || 'from'; // 'from' = à partir d'un mois, 'all' = tout
     overlay.innerHTML=`
-    <div class="modal" style="max-width:440px;">
+    <div class="modal" style="max-width:460px;">
       <h3>⚠️ Vider les données de test ?</h3>
       <p>Cette action efface <b>définitivement</b>, pour tous les salariés :</p>
       <ul style="margin:0 0 14px;padding-left:20px;font-size:13.5px;color:var(--ink-soft);line-height:1.7;">
         <li>Toutes les demandes de désidératas</li>
         <li>Toutes les demandes d'échange de service</li>
-        <li>Le planning validé, <b>tous les mois confondus</b></li>
+        <li>Le planning validé</li>
         <li>Tous les commentaires (publics et privés) sur le planning</li>
         <li>Tous les brouillons personnels ("Mon planning annuel")</li>
-        <li>Les validations de mois et le journal des modifications</li>
+        <li>Les validations de mois, l'historique et le journal des modifications</li>
       </ul>
       <p class="helper" style="margin:-6px 0 14px;">Les comptes, services, fonctions, codes et réglages de « Fonctionnalités » ne sont pas touchés.</p>
+      <div class="field">
+        <label>Période à vider</label>
+        <div class="type-toggle">
+          <label class="type-toggle-opt ${fromMode==='from'?'active':''}"><input type="radio" name="resetFromMode" value="from" ${fromMode==='from'?'checked':''}> 📅 À partir d'un mois</label>
+          <label class="type-toggle-opt ${fromMode==='all'?'active':''}"><input type="radio" name="resetFromMode" value="all" ${fromMode==='all'?'checked':''}> 🗑️ Tout, sans limite</label>
+        </div>
+      </div>
+      <div class="field" id="resetFromMonthField" style="${fromMode==='from'?'':'display:none;'}">
+        <label>Vider à partir de (inclus)</label>
+        <input type="month" id="resetFromMonthInput" value="${state.modal.fromMonthValue||defaultMonthValue}">
+        <div class="helper">Tout ce qui est <b>avant</b> ce mois est conservé (utile pour ne pas toucher un planning historique déjà importé, par exemple).</div>
+      </div>
       <div class="field"><label>Tapez <b>VIDER</b> pour confirmer</label><input id="resetConfirmInput" placeholder="VIDER"></div>
       <div id="resetConfirmError" style="color:var(--danger);font-size:12.5px;font-weight:600;display:none;margin-bottom:6px;"></div>
       <div class="modal-actions">
         <button class="btn btn-ghost" id="resetCancel">Annuler</button>
-        <button class="btn btn-primary" id="resetConfirmBtn" style="background:var(--danger);">Tout vider</button>
+        <button class="btn btn-primary" id="resetConfirmBtn" style="background:var(--danger);">Vider</button>
       </div>
     </div>`;
     document.body.appendChild(overlay);
     document.getElementById('resetCancel').addEventListener('click',closeModal);
+    document.querySelectorAll('input[name="resetFromMode"]').forEach(r=>{
+      r.addEventListener('change',()=>{
+        state.modal.fromMode=r.value;
+        state.modal.fromMonthValue=document.getElementById('resetFromMonthInput')?document.getElementById('resetFromMonthInput').value:defaultMonthValue;
+        render();
+      });
+    });
     document.getElementById('resetConfirmBtn').addEventListener('click',async()=>{
       const val=document.getElementById('resetConfirmInput').value.trim().toUpperCase();
       if(val!=='VIDER'){
@@ -6863,8 +6945,22 @@ function renderModal(){
         err.style.display='block';
         return;
       }
-      await resetTestData();
-      toast('Données de test effacées.');
+      const mode=document.querySelector('input[name="resetFromMode"]:checked').value;
+      if(mode==='all'){
+        await resetTestData(null, null);
+        toast('Données de test effacées (toute la période).');
+      } else {
+        const monthVal=document.getElementById('resetFromMonthInput').value;
+        if(!monthVal){
+          const err=document.getElementById('resetConfirmError');
+          err.textContent='Merci de choisir un mois de départ.';
+          err.style.display='block';
+          return;
+        }
+        const [y,m]=monthVal.split('-').map(Number);
+        await resetTestData(y, m-1);
+        toast('Données de test effacées à partir de '+MOIS[m-1]+' '+y+'.');
+      }
       closeModal();
     });
   }
