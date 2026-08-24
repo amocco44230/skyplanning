@@ -740,7 +740,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v6.2';
+const APP_VERSION = 'v6.3';
 const APP_VERSION_DATE = '23/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -862,7 +862,69 @@ async function storageSet(key,value,shared){
 
 /* ============================================================
    FIREBASE — SYNCHRONISATION TEMPS RÉEL (tous appareils : PC & mobile)
+
+   NE TOUCHE JAMAIS À LA CONNEXION NI AUX NOTIFICATIONS PUSH — ce bloc gère
+   uniquement le rafraîchissement de l'affichage suite à un changement
+   distant (données Firestore), rien d'autre.
+
+   Trois optimisations volontairement prudentes :
+   1) REGROUPEMENT : plusieurs changements rapprochés (ex : plusieurs cases
+      modifiées d'affilée par un admin) ne déclenchent qu'UN SEUL rendu au
+      lieu d'un par changement.
+   2) PROTECTION DE LA SAISIE : si la personne est en train de taper dans un
+      champ texte (commentaire, désidérata...), le rendu déclenché par un
+      changement distant est reporté jusqu'à ce qu'elle quitte ce champ —
+      pour ne jamais lui faire perdre ce qu'elle est en train d'écrire.
+   3) CLÉS SANS IMPACT SUR L'ÉCRAN ACTUEL : ignoré uniquement pour deux clés
+      entièrement auditées (genRules, cycleSettings) dont on est certain
+      qu'elles n'affectent que des écrans précis — volontairement pas
+      étendu à d'autres clés pour ne prendre aucun risque d'affichage
+      obsolète ailleurs dans l'appli.
    ============================================================ */
+const SCREEN_ONLY_RELEVANT_KEYS = {
+  genRules: ['calendrier','fonctionnalites'],
+  cycleSettings: ['cycles'],
+};
+function isKeyRelevantToCurrentScreen(key){
+  const onlyTabs = SCREEN_ONLY_RELEVANT_KEYS[key];
+  if(!onlyTabs) return true; // par défaut, toujours pertinent (sécurité avant tout)
+  return onlyTabs.includes(state.tab);
+}
+function isTypingInTextField(){
+  const el=document.activeElement;
+  if(!el) return false;
+  const tag=el.tagName;
+  if(tag!=='INPUT' && tag!=='TEXTAREA') return false;
+  if(tag==='INPUT' && ['checkbox','radio','button','submit','range','color','file'].includes(el.type)) return false;
+  return true;
+}
+let remoteRenderDebounceTimer=null;
+let remoteRenderPending=false;
+let remoteRenderBlurListenerAttached=false;
+function scheduleRemoteRender(){
+  remoteRenderPending=true;
+  if(remoteRenderDebounceTimer) clearTimeout(remoteRenderDebounceTimer);
+  remoteRenderDebounceTimer=setTimeout(()=>{
+    remoteRenderDebounceTimer=null;
+    tryFlushRemoteRender();
+  }, 150);
+}
+function tryFlushRemoteRender(){
+  if(!remoteRenderPending) return;
+  if(isTypingInTextField()){
+    // On réessaiera dès que le champ perd le focus (voir listener ci-dessous) —
+    // jamais d'interruption forcée pendant une saisie en cours.
+    if(!remoteRenderBlurListenerAttached){
+      remoteRenderBlurListenerAttached=true;
+      document.addEventListener('focusout', ()=>{
+        setTimeout(tryFlushRemoteRender, 50); // laisse le temps au focus de se stabiliser
+      });
+    }
+    return;
+  }
+  remoteRenderPending=false;
+  if(state.screen==='app') render();
+}
 function startRealtimeSync(){
   db.collection(FIRESTORE_COLLECTION).onSnapshot(snapshot=>{
     let changed=false;
@@ -872,10 +934,10 @@ function startRealtimeSync(){
       if(!change.doc.exists) return;
       try{
         state[FIRESTORE_KEY_MAP[key]] = JSON.parse(change.doc.data().value);
-        changed=true;
+        if(isKeyRelevantToCurrentScreen(key)) changed=true;
       }catch(e){ /* payload invalide, ignoré */ }
     });
-    if(changed && state.screen==='app') render();
+    if(changed) scheduleRemoteRender();
   }, (err)=>{ console.error('Erreur de synchronisation Firestore', err); });
 }
 
