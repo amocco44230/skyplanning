@@ -778,7 +778,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v8.0';
+const APP_VERSION = 'v8.1';
 const APP_VERSION_DATE = '24/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -1689,6 +1689,29 @@ function getDraftCode(username,year,month,day){
   const key=year+'-'+String(month+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
   const dr=state.employeeDrafts[username];
   return dr ? dr[key] : undefined;
+}
+/**
+ * Regroupe le brouillon personnel d'une année en périodes contiguës (jours
+ * consécutifs avec le même code) — pour proposer, dans « Transformer mon
+ * brouillon en désidératas », le choix entre plusieurs périodes distinctes
+ * plutôt qu'un seul bloc si le brouillon a des trous.
+ */
+function getDraftPeriodsForYear(username, year){
+  const dr=state.employeeDrafts[username]||{};
+  const keys=Object.keys(dr).filter(k=>k.startsWith(year+'-')).sort();
+  const periods=[];
+  let current=null;
+  keys.forEach(key=>{
+    const code=dr[key];
+    if(current && current.code===code && dkey(addDays(new Date(current.end+'T00:00:00'),1))===key){
+      current.end=key;
+    } else {
+      if(current) periods.push(current);
+      current={code, start:key, end:key};
+    }
+  });
+  if(current) periods.push(current);
+  return periods.map(p=>({...p, days: Math.round((new Date(p.end+'T00:00:00')-new Date(p.start+'T00:00:00'))/86400000)+1}));
 }
 async function persistEmployeeDrafts(){ await storageSet('employeeDrafts', JSON.stringify(state.employeeDrafts), true); }
 function applyAlternatingCycleInclusive(username, startDate, code, endDate){
@@ -3398,6 +3421,7 @@ function bindSwipeMonthNav(el){
    RENDU — LÉGENDE / PALETTE
    ============================================================ */
 function codeAvailableForService(c, service){
+  if(c.active===false) return false; // désactivé : retiré de toutes les palettes de sélection
   if(!service) return true;
   if(!c.services || c.services.length===0) return true;
   return c.services.includes(service);
@@ -4980,6 +5004,7 @@ function renderMonPlanningAnnuel(){
     ${modeToggleHtml}
     <button class="btn" style="width:100%;background:#FBEAE9;color:var(--danger);margin-bottom:8px;" id="annClearBtn">🗑 Vider mon brouillon ${year}</button>
     ${isFeatureEnabled('desideratas', emp?emp.team:'') ? `<button class="btn btn-primary" id="annDesidBtn">🖐️ Désidératas${state.annualSelectedDay?' — '+fmtDateKeyFr(state.annualSelectedDay):''}</button>` : ''}
+    ${isFeatureEnabled('desideratas', emp?emp.team:'') ? `<button class="btn" style="width:100%;background:var(--primary-light);color:var(--primary-dark);margin-bottom:8px;" id="annDraftToDesidBtn">📤 Transformer mon brouillon en désidératas</button>` : ''}
     ${isFeatureEnabled('echanges', emp?emp.team:'') ? `<button class="btn btn-primary" id="annNewExchBtn">🔄 Swap</button>` : ''}
   `;
   const mobile=isMobileDevice();
@@ -4998,6 +5023,7 @@ function renderMonPlanningAnnuel(){
       ${modeToggleHtml}
       <button class="btn" style="background:#FBEAE9;color:var(--danger);" id="annClearBtn">🗑 Vider</button>
       ${isFeatureEnabled('desideratas', emp?emp.team:'') ? `<button class="btn btn-primary" id="annDesidBtn">🖐️ Désidératas</button>` : ''}
+      ${isFeatureEnabled('desideratas', emp?emp.team:'') ? `<button class="btn" style="background:var(--primary-light);color:var(--primary-dark);" id="annDraftToDesidBtn">📤 Brouillon → désidératas</button>` : ''}
       ${isFeatureEnabled('echanges', emp?emp.team:'') ? `<button class="btn btn-primary" id="annNewExchBtn">🔄 Swap</button>` : ''}
     </div>
     ` : ''}
@@ -5051,6 +5077,11 @@ function renderMonPlanningAnnuel(){
   if(annDesidBtn) annDesidBtn.addEventListener('click',()=>{
     const startDate=state.annualSelectedDay || ymdKey(year,0,1);
     state.modal={type:'new-desiderata', data:{dateStart:startDate, dateEnd:startDate, code:state.codes[0]?state.codes[0].code:'', comment:''}};
+    render();
+  });
+  const annDraftToDesidBtn=document.getElementById('annDraftToDesidBtn');
+  if(annDraftToDesidBtn) annDraftToDesidBtn.addEventListener('click',()=>{
+    state.modal={type:'draft-to-desiderata', year};
     render();
   });
   const annNewExchBtn=document.getElementById('annNewExchBtn');
@@ -5764,17 +5795,18 @@ function renderGestionCodes(){
   const otherCodes=state.codes.filter(c=>!c.isWork);
   const servicesLabel=(c)=> (!c.services || c.services.length===0) ? '<span class="helper" style="margin:0;">Tous services</span>' : c.services.map(s=>escapeHtml(s)).join(', ');
   const rowHtml=(c,showDuree)=>`
-    <div class="code-row">
+    <div class="code-row ${c.active===false?'code-row-inactive':''}">
       <div class="col-code">${c.code}</div>
-      <div class="col-libelle">${c.label}</div>
+      <div class="col-libelle">${c.label}${c.active===false?' <span class="badge-inactive" style="margin-left:6px;">Désactivé</span>':''}</div>
       <div class="col-couleur"><div class="swatch" style="background:${c.color}"></div></div>
       ${showDuree?`<div class="col-duree">${computeDuration(c.startTime,c.endTime)}</div>`:''}
       ${showDuree?`<div class="col-horaires">${c.startTime&&c.endTime?c.startTime+' - '+c.endTime:'—'}</div>`:''}
       <div class="col-desc">${c.description||'—'}</div>
       <div class="col-services" style="font-size:12px;">${servicesLabel(c)}</div>
       <div class="col-actions">
+        <button class="code-act-btn" data-toggle-active-code="${c.code}" title="${c.active===false?'Réactiver':'Désactiver'}">${c.active===false?'👁️':'🚫'}</button>
         <button class="code-act-btn" data-edit-code="${c.code}" title="Modifier">✎</button>
-        <button class="code-act-btn del" data-del-code="${c.code}" title="Supprimer">🗑</button>
+        <button class="code-act-btn del" data-del-code="${c.code}" title="Supprimer définitivement">🗑</button>
       </div>
     </div>`;
   const headRow=(showDuree)=>`
@@ -5795,6 +5827,7 @@ function renderGestionCodes(){
       <button class="btn btn-primary" id="addCodeBtn2" style="width:auto;margin:0;">+ Ajouter un code</button>
     </div>
     <div class="legend-hint">Un code sans service coché reste disponible pour tous les services. Cochez un ou plusieurs services pour le réserver à ces services précis (ex : « ADH » utilisable seulement par LOG) — il n'apparaîtra plus dans la palette des autres services.</div>
+    <div class="legend-hint">🚫 <b>Désactiver</b> un code le retire du bandeau de sélection partout dans l'appli, sans rien effacer : les jours déjà attribués avec ce code restent affichés normalement, avec leur couleur. Utilisez ça plutôt que « Supprimer » pour un code qu'on n'utilise plus, afin de garder l'historique intact.</div>
     <div class="codes-section">
       <h3>Codes de travail (${workCodes.length})</h3>
       <div class="codes-table">
@@ -5817,6 +5850,16 @@ function renderGestionCodes(){
     btn.addEventListener('click',()=>{
       const c=state.codes.find(x=>x.code===btn.dataset.editCode);
       state.modal={type:'code', isNew:false, data:Object.assign({services:[]},c)};
+      render();
+    });
+  });
+  document.querySelectorAll('[data-toggle-active-code]').forEach(btn=>{
+    btn.addEventListener('click', async()=>{
+      const c=state.codes.find(x=>x.code===btn.dataset.toggleActiveCode);
+      if(!c) return;
+      c.active = c.active===false ? true : false;
+      await persistCodes();
+      toast(c.active===false ? 'Code désactivé — retiré des palettes, historique conservé.' : 'Code réactivé.');
       render();
     });
   });
@@ -6828,7 +6871,7 @@ function renderModal(){
 
   if(state.modal.type==='new-desiderata'){
     const nd=state.modal.data;
-    const codeOptions=state.codes.map(c=>`<option value="${c.code}" ${nd.code===c.code?'selected':''}>${c.code} · ${c.label}</option>`).join('');
+    const codeOptions=state.codes.filter(c=>c.active!==false).map(c=>`<option value="${c.code}" ${nd.code===c.code?'selected':''}>${c.code} · ${c.label}</option>`).join('');
     overlay.innerHTML=`
     <div class="modal" style="max-width:440px;">
       <h3>Nouvelle demande de désidérata</h3>
@@ -6874,6 +6917,70 @@ function renderModal(){
       await createDesiderata(state.currentUser.username, state.currentUser.name, start, end, code, comment);
       toast('Demande envoyée à l\u2019administrateur.');
       state.desidFilterStatus='pending';
+      closeModal();
+    });
+  }
+
+  if(state.modal.type==='draft-to-desiderata'){
+    const year=state.modal.year;
+    const username=state.currentUser.username;
+    const emp=state.users.find(u=>u.username===username);
+    const periods=getDraftPeriodsForYear(username, year);
+    if(!Array.isArray(state.modal.selected)) state.modal.selected=periods.map((p,i)=>i); // toutes cochées par défaut
+    const selected=state.modal.selected;
+    overlay.innerHTML=`
+    <div class="modal" style="max-width:480px;">
+      <h3>📤 Transformer mon brouillon en désidératas</h3>
+      <div class="helper" style="margin:-6px 0 14px;">Votre brouillon ${year} a été regroupé en période(s) — cochez celle(s) que vous voulez envoyer comme vraie(s) demande(s) de désidérata à l'administrateur. Une fois envoyée, chaque période est retirée du brouillon (elle devient une demande officielle, plus juste une note personnelle).</div>
+      ${periods.length ? `
+      <div class="list-mgr" style="margin-bottom:14px;">
+        ${periods.map((p,i)=>{
+          const info=codeInfo(p.code);
+          return `<label class="list-mgr-row" style="cursor:pointer;">
+            <span style="display:flex;align-items:center;gap:10px;">
+              <input type="checkbox" class="draft-period-checkbox" data-idx="${i}" ${selected.includes(i)?'checked':''} style="width:16px;height:16px;">
+              <span class="chip" style="background:${info?info.color:'#EDEFF2'};color:${info?info.text:'#333'};margin:0;">${p.code}</span>
+            </span>
+            <span style="font-size:12.5px;color:var(--ink-soft);font-weight:600;">${fmtDateKeyFr(p.start)} → ${fmtDateKeyFr(p.end)} (${p.days} jour${p.days>1?'s':''})</span>
+          </label>`;
+        }).join('')}
+      </div>
+      <div class="field"><label>Commentaire (optionnel, pour toutes les périodes envoyées)</label>
+        <textarea id="draftDesidComment" rows="2" placeholder="Ex : vacances déjà réservées" style="width:100%;border:1.5px solid var(--border);border-radius:9px;padding:10px 12px;font-family:inherit;font-size:13.5px;resize:vertical;">${escapeHtml(state.modal.comment||'')}</textarea>
+      </div>
+      ` : `<div class="empty-state">Aucun jour dans votre brouillon ${year} pour l'instant — peignez d'abord des jours dans le calendrier ci-dessous avant de les transformer en désidératas.</div>`}
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="draftDesidCancel">Annuler</button>
+        ${periods.length ? `<button class="btn btn-primary" id="draftDesidSubmit">Envoyer ${selected.length} demande${selected.length>1?'s':''}</button>` : ''}
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('draftDesidCancel').addEventListener('click',closeModal);
+    document.querySelectorAll('.draft-period-checkbox').forEach(chk=>{
+      chk.addEventListener('change',()=>{
+        const idx=Number(chk.dataset.idx);
+        if(chk.checked){ if(!state.modal.selected.includes(idx)) state.modal.selected.push(idx); }
+        else { state.modal.selected=state.modal.selected.filter(i=>i!==idx); }
+        render();
+      });
+    });
+    const commentInput=document.getElementById('draftDesidComment');
+    if(commentInput) commentInput.addEventListener('input',e=>{ state.modal.comment=e.target.value; });
+    const submitBtn=document.getElementById('draftDesidSubmit');
+    if(submitBtn) submitBtn.addEventListener('click', async()=>{
+      if(!selected.length){ toast('Cochez au moins une période.', true); return; }
+      const comment=(state.modal.comment||'').trim();
+      const dr=state.employeeDrafts[username]||{};
+      for(const idx of selected){
+        const p=periods[idx];
+        await createDesiderata(username, state.currentUser.name, p.start, p.end, p.code, comment);
+        // La période envoyée sort du brouillon : elle est maintenant une vraie demande.
+        let cursor=new Date(p.start+'T00:00:00');
+        const end=new Date(p.end+'T00:00:00');
+        while(cursor<=end){ delete dr[dkey(cursor)]; cursor=addDays(cursor,1); }
+      }
+      await persistEmployeeDrafts();
+      toast(selected.length+' demande'+(selected.length>1?'s envoyées':' envoyée')+' à l\u2019administrateur.');
       closeModal();
     });
   }
