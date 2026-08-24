@@ -73,6 +73,8 @@
   .sidebar-scroll{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;}
   .main{flex:1;min-width:0;display:flex;flex-direction:column;margin-left:222px;}
   .sidebar-brand{padding:14px 18px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,.08);}
+  .sidebar-last-update{padding:0 18px 12px;font-size:10.5px;font-weight:700;color:rgba(255,255,255,.5);border-bottom:1px solid rgba(255,255,255,.08);margin-bottom:2px;}
+  .content > .sidebar-last-update{color:var(--ink-soft);border-bottom:none;padding:0 0 10px;}
   .sidebar-brand .mark{width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;}
   .sidebar-brand span{font-weight:800;font-size:15px;}
   .sidebar-skyplanning{font-family:'Manrope',sans-serif;font-weight:800;font-size:17px;letter-spacing:.01em;color:#E8342A;}
@@ -388,6 +390,12 @@
   .restricted-daylabel.holiday{color:var(--danger);}
   /* ---------- Statistiques ---------- */
   .stats-filters{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px;}
+  .stats-filters .month-nav{margin-bottom:0;}
+  .stats-period-toggle{display:flex;border:1.5px solid var(--border);border-radius:9px;overflow:hidden;}
+  .stats-period-toggle button{padding:8px 14px;font-size:12.5px;font-weight:700;background:#fff;border:none;color:var(--ink-soft);}
+  .stats-period-toggle button.active{background:var(--primary);color:#fff;}
+  .year-nav{display:flex;align-items:center;gap:10px;}
+  .year-nav .month-label{font-size:15px;font-weight:800;min-width:50px;text-align:center;}
   .stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
   .stats-legend{display:flex;flex-direction:column;gap:8px;flex:1;min-width:160px;}
   .stats-legend-row{display:flex;align-items:center;gap:8px;font-size:13px;}
@@ -750,7 +758,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v6.6';
+const APP_VERSION = 'v6.8';
 const APP_VERSION_DATE = '23/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -788,7 +796,7 @@ const FIRESTORE_KEY_MAP = {
   comments:'comments', fonctions:'fonctions', services:'services', desideratas:'desideratas',
   alertRules:'alertRules', monthValidations:'monthValidations', postValidationChanges:'postValidationChanges',
   cpAllowances:'cpAllowances', employeeDrafts:'employeeDrafts', exchanges:'exchanges',
-  featureFlags:'featureFlags', cycleSettings:'cycleSettings', genRules:'genRules'
+  featureFlags:'featureFlags', cycleSettings:'cycleSettings', genRules:'genRules', lastPlanningUpdate:'lastPlanningUpdate'
 };
 // Enregistrement précoce et silencieux du service worker FCM (permet de recevoir
 // des notifications en arrière-plan même avant que l'utilisateur active les alertes).
@@ -977,6 +985,7 @@ let state={
   genMode:false,
   genSelections:{},
   genRules:[],
+  lastPlanningUpdate:{},
   genActiveRuleId:null,
   cpAllowances:{},
   annualYear:new Date().getFullYear(),
@@ -1118,6 +1127,10 @@ async function loadAll(){
       {id:genId(), name:'Administratif (5 jours ADM + week-end repos)', type:'weekly', weekPattern:['ADM','ADM','ADM','ADM','ADM','O','O']},
     ];
   }
+  try{
+    const lpu=await storageGet('lastPlanningUpdate', true);
+    state.lastPlanningUpdate = lpu ? JSON.parse(lpu.value) : {};
+  }catch(e){ state.lastPlanningUpdate={}; }
   try{
     const ar=await storageGet('alertRules', true);
     state.alertRules = ar ? JSON.parse(ar.value) : null;
@@ -1293,6 +1306,20 @@ async function persistExchanges(){ await storageSet('exchanges', JSON.stringify(
 async function persistFeatureFlags(){ await storageSet('featureFlags', JSON.stringify(state.featureFlags), true); }
 async function persistCycleSettings(){ await storageSet('cycleSettings', JSON.stringify(state.cycleSettings), true); }
 async function persistGenRules(){ await storageSet('genRules', JSON.stringify(state.genRules), true); }
+async function persistLastPlanningUpdate(){ await storageSet('lastPlanningUpdate', JSON.stringify(state.lastPlanningUpdate), true); }
+/**
+ * Marque un service comme mis à jour à l'instant présent — affiché sous
+ * « SKYPLANNING » dans le bandeau, pour que les salariés voient en un coup
+ * d'œil quand leur planning a été modifié pour la dernière fois. Appelé à
+ * chaque fois qu'un code est réellement modifié dans le planning officiel
+ * d'un service (édition directe, validation d'une modification en attente,
+ * génération automatique, échange validé...).
+ */
+async function touchLastPlanningUpdate(service){
+  if(!service) return;
+  state.lastPlanningUpdate[service]=new Date().toISOString();
+  try{ await persistLastPlanningUpdate(); }catch(e){ /* pas bloquant */ }
+}
 /* ============================================================
    CYCLES DE RÉFÉRENCE (heures travaillées sur N jours glissants)
    ============================================================ */
@@ -1355,15 +1382,18 @@ function svgBarChartHtml(items, opts){
   opts=opts||{};
   const unit=opts.unit||'';
   const maxVal=Math.max(1, ...items.map(it=>it.value));
-  const barH=opts.barHeight||26, gap=opts.gap||10, labelW=opts.labelWidth||140, chartW=opts.width||520, valueW=opts.valueWidth||64;
+  const barH=opts.barHeight||26, gap=opts.gap||10, labelW=opts.labelWidth||168, chartW=opts.width||560, valueW=opts.valueWidth||64;
   const barAreaW=chartW-labelW-valueW-16;
   const rowH=barH+gap;
   const totalH=items.length*rowH;
+  // Le SVG ne tronque jamais tout seul un texte trop long — on le fait donc
+  // nous-mêmes, sinon un nom un peu long déborde sur la barre elle-même.
+  const truncate=(str,max)=> str.length>max ? str.slice(0,max-1)+'…' : str;
   const rows=items.map((it,i)=>{
     const y=i*rowH;
     const w=Math.max(2, (it.value/maxVal)*barAreaW);
     return `
-    <text x="0" y="${y+barH/2+4}" font-size="12.5" font-weight="700" fill="var(--ink)">${escapeHtml(it.label)}</text>
+    <text x="0" y="${y+barH/2+4}" font-size="12.5" font-weight="700" fill="var(--ink)"><title>${escapeHtml(it.label)}</title>${escapeHtml(truncate(it.label,20))}</text>
     <rect x="${labelW}" y="${y}" width="${barAreaW}" height="${barH}" rx="6" fill="#F1F3F6"></rect>
     <rect x="${labelW}" y="${y}" width="${w}" height="${barH}" rx="6" fill="${it.color||'var(--primary)'}"></rect>
     <text x="${labelW+barAreaW+10}" y="${y+barH/2+4}" font-size="12.5" font-weight="800" fill="var(--ink)">${it.value}${unit}</text>`;
@@ -1469,6 +1499,7 @@ async function setMonthValidated(service,year,month,validated){
   const key=monthValidationKey(service,year,month);
   state.monthValidations[key]=validated?{validated:true,validatedAt:new Date().toISOString(),validatedBy:state.currentUser.username}:{validated:false};
   await persistMonthValidations();
+  if(validated) await touchLastPlanningUpdate(service);
 }
 
 /* ============================================================
@@ -1548,6 +1579,8 @@ async function generateAutoPlanning(months, ruleId){
       }
     }
     await pushNotification(username, 'Votre planning a été régénéré automatiquement à partir du '+fmtDateKeyFr(sel.date)+' (règle « '+rule.name+' »), pour les '+months+' prochain(s) mois.');
+    const genUser=state.users.find(u=>u.username===username);
+    if(genUser && genUser.team) await touchLastPlanningUpdate(genUser.team);
   }
   await persistSchedules();
   return {employees:entries.length, days:totalDays};
@@ -1832,6 +1865,10 @@ async function validateExchange(id,adminComment){
   if(ex.codeB) state.schedules[ex.requesterUsername][ex.dateA]=ex.codeB; else delete state.schedules[ex.requesterUsername][ex.dateA];
   if(ex.codeA) state.schedules[ex.targetUsername][ex.dateB]=ex.codeA; else delete state.schedules[ex.targetUsername][ex.dateB];
   await persistSchedules();
+  const requesterUser=state.users.find(u=>u.username===ex.requesterUsername);
+  const targetUser=state.users.find(u=>u.username===ex.targetUsername);
+  const exchangeServices=new Set([requesterUser&&requesterUser.team, targetUser&&targetUser.team].filter(Boolean));
+  for(const svc of exchangeServices) await touchLastPlanningUpdate(svc);
   const msgA='Échange validé avec '+ex.targetName+' : '+fmtDateKeyFr(ex.dateA)+' → '+(ex.codeB||'Vide')+'.';
   const msgB='Échange validé avec '+ex.requesterName+' : '+fmtDateKeyFr(ex.dateB)+' → '+(ex.codeA||'Vide')+'.';
   await logExchangeChangeIfNeeded(ex.requesterUsername, ex.dateA, oldA, ex.codeB||null, msgA);
@@ -2399,39 +2436,69 @@ function renderStatistiques(){
   const svcOptions = (scope?'':`<option value="ALL" ${svcFilter==='ALL'?'selected':''}>Tous les services</option>`)
     + availableServices.map(s=>`<option value="${escapeHtml(s)}" ${svcFilter===s?'selected':''}>${escapeHtml(s)}</option>`).join('');
 
+  const periodMode = state.statsPeriodMode || 'month';
+  const statsYear = state.statsYear || new Date().getFullYear();
   const y=state.viewDate.getFullYear(), m=state.viewDate.getMonth();
-  const nDays=daysInMonth(y,m);
+  // En mode « Année », on balaie tous les jours du 1er janvier au 31 décembre
+  // de l'année choisie ; en mode « Mois », uniquement le mois affiché.
+  const periodDays=[];
+  if(periodMode==='year'){
+    let cursor=new Date(statsYear,0,1);
+    const end=new Date(statsYear,11,31);
+    while(cursor<=end){ periodDays.push(new Date(cursor)); cursor=addDays(cursor,1); }
+  } else {
+    const nDays=daysInMonth(y,m);
+    for(let d=1; d<=nDays; d++) periodDays.push(new Date(y,m,d));
+  }
+  const periodLabel = periodMode==='year' ? String(statsYear) : (MOIS[m]+' '+y);
+  const refYear = periodMode==='year' ? statsYear : y, refMonth = periodMode==='year' ? 0 : m;
 
-  const belongsToService=(u,svc)=>affectationsForMonth(u,y,m).some(s=>s.team===svc);
+  const belongsToService=(u,svc)=>affectationsForMonth(u,refYear,refMonth).some(s=>s.team===svc);
   const employees = state.users.filter(u=>!isSuperAdmin(u) && u.role!=='admin' &&
     (svcFilter==='ALL' ? availableServices.some(s=>belongsToService(u,s)) : belongsToService(u,svcFilter))
   ).sort((a,b)=>a.name.localeCompare(b.name));
 
-  // --- Heures travaillées par salarié (mois sélectionné) ---
+  // --- Heures travaillées par salarié (période sélectionnée) ---
   const hoursData=employees.map(u=>{
     let total=0;
-    for(let d=1; d<=nDays; d++){
-      const code=getDayCode(u.username,y,m,d);
+    periodDays.forEach(date=>{
+      const code=getDayCode(u.username,date.getFullYear(),date.getMonth(),date.getDate());
       if(code) total+=codeHoursValue(code);
-    }
+    });
     return {label:u.name, value:Math.round(total*10)/10, color:'var(--primary)'};
   }).sort((a,b)=>b.value-a.value);
   const totalHoursService=hoursData.reduce((s,it)=>s+it.value,0);
 
-  // --- Répartition des codes (tous les salariés du filtre, mois sélectionné) ---
+  // --- Répartition des codes (tous les salariés du filtre, période sélectionnée) ---
   const codeCounts={};
   employees.forEach(u=>{
-    for(let d=1; d<=nDays; d++){
-      const code=getDayCode(u.username,y,m,d);
+    periodDays.forEach(date=>{
+      const code=getDayCode(u.username,date.getFullYear(),date.getMonth(),date.getDate());
       if(code) codeCounts[code]=(codeCounts[code]||0)+1;
-    }
+    });
   });
   const codeDonutData=Object.entries(codeCounts)
     .sort((a,b)=>b[1]-a[1])
     .map(([code,count])=>{ const info=codeInfo(code); return {label:code, value:count, color:info?info.color:'#CBD2DB'}; });
   const totalCodeDays=codeDonutData.reduce((s,it)=>s+it.value,0);
 
-  // --- Équité nuits & week-ends (3 derniers mois glissants) ---
+  // --- Un code précis par salarié (sélectionné dans la liste) ---
+  const selectableCodes=state.codes.filter(c=>c.code!=='VIDE');
+  if(!state.statsSelectedCode || !selectableCodes.some(c=>c.code===state.statsSelectedCode)){
+    state.statsSelectedCode = (selectableCodes.find(c=>c.code==='M')||selectableCodes[0]||{}).code || '';
+  }
+  const selCode=state.statsSelectedCode;
+  const selCodeInfo=codeInfo(selCode);
+  const selCodeData=employees.map(u=>{
+    let count=0;
+    periodDays.forEach(date=>{
+      if(getDayCode(u.username,date.getFullYear(),date.getMonth(),date.getDate())===selCode) count++;
+    });
+    return {label:u.name, value:count, color:selCodeInfo?selCodeInfo.color:'var(--primary)'};
+  }).sort((a,b)=>b.value-a.value);
+  const totalSelCode=selCodeData.reduce((s,it)=>s+it.value,0);
+
+  // --- Équité nuits & week-ends (3 derniers mois glissants, indépendant de la période choisie ci-dessus) ---
   const todayRef=new Date();
   const equityStart=new Date(todayRef.getFullYear(), todayRef.getMonth()-2, 1);
   const equityData=employees.map(u=>{
@@ -2452,20 +2519,32 @@ function renderStatistiques(){
     return {label:u.name, value:nights+weekends, nights, weekends};
   }).sort((a,b)=>b.value-a.value).filter(e=>e.value>0);
 
+  const yearNavHtml = `
+    <div class="year-nav">
+      <button class="nav-arrow" id="statsPrevYear">‹</button>
+      <div class="month-label">${statsYear}</div>
+      <button class="nav-arrow" id="statsNextYear">›</button>
+      <button class="today-btn" id="statsTodayYear">Année en cours</button>
+    </div>`;
+
   const inner=`
     <div class="stats-filters">
       <select id="statsServiceSelect" class="filter-select">${svcOptions}</select>
-      ${monthNavHtml()}
+      <div class="stats-period-toggle">
+        <button id="statsPeriodMonth" class="${periodMode==='month'?'active':''}">Mois</button>
+        <button id="statsPeriodYear" class="${periodMode==='year'?'active':''}">Année</button>
+      </div>
+      ${periodMode==='year' ? yearNavHtml : monthNavHtml()}
     </div>
     ${employees.length===0 ? `<div class="empty-state">Aucun salarié dans ce service.</div>` : `
     <div class="stats-grid">
       <div class="feat-card">
-        <h3>⏱️ Heures travaillées — ${MOIS[m]} ${y}</h3>
+        <h3>⏱️ Heures travaillées — ${escapeHtml(periodLabel)}</h3>
         <div class="helper" style="margin:-4px 0 14px;">${escapeHtml(svcFilter==='ALL'?'Tous services confondus':svcFilter)} · total : <b>${totalHoursService.toFixed(1)} h</b></div>
-        ${hoursData.length ? svgBarChartHtml(hoursData,{unit:' h'}) : '<div class="empty-state">Aucune heure saisie ce mois-ci.</div>'}
+        ${hoursData.length ? svgBarChartHtml(hoursData,{unit:' h'}) : '<div class="empty-state">Aucune heure saisie sur cette période.</div>'}
       </div>
       <div class="feat-card">
-        <h3>🧩 Répartition des codes — ${MOIS[m]} ${y}</h3>
+        <h3>🧩 Répartition des codes — ${escapeHtml(periodLabel)}</h3>
         <div class="helper" style="margin:-4px 0 14px;">${totalCodeDays} jour${totalCodeDays>1?'s':''} au total sur le service</div>
         ${codeDonutData.length ? `
         <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;">
@@ -2473,7 +2552,17 @@ function renderStatistiques(){
           <div class="stats-legend">
             ${codeDonutData.map(it=>`<div class="stats-legend-row"><span class="stats-legend-dot" style="background:${it.color};"></span><b>${escapeHtml(it.label)}</b><span style="color:var(--ink-soft);">${it.value} j · ${Math.round(it.value/totalCodeDays*100)}%</span></div>`).join('')}
           </div>
-        </div>` : '<div class="empty-state">Aucun code saisi ce mois-ci.</div>'}
+        </div>` : '<div class="empty-state">Aucun code saisi sur cette période.</div>'}
+      </div>
+      <div class="feat-card" style="grid-column:1 / -1;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:4px;">
+          <h3 style="margin:0;">🔎 Détail par code — ${escapeHtml(periodLabel)}</h3>
+          <select id="statsCodeSelect" class="filter-select">
+            ${selectableCodes.map(c=>`<option value="${c.code}" ${selCode===c.code?'selected':''}>${c.code} · ${escapeHtml(c.label)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="helper" style="margin:0 0 14px;">Nombre de jours « ${escapeHtml(selCode)} » par salarié sur la période · total : <b>${totalSelCode}</b> jour${totalSelCode>1?'s':''}</div>
+        ${selCodeData.some(it=>it.value>0) ? svgBarChartHtml(selCodeData,{unit:' j'}) : `<div class="empty-state">Aucun jour « ${escapeHtml(selCode)} » sur cette période.</div>`}
       </div>
       <div class="feat-card" style="grid-column:1 / -1;">
         <h3>⚖️ Équité nuits &amp; week-ends — 3 derniers mois</h3>
@@ -2485,7 +2574,16 @@ function renderStatistiques(){
   `;
   renderShell(inner,'Statistiques'+(svcFilter!=='ALL'?' — '+svcFilter:''));
   document.getElementById('statsServiceSelect').addEventListener('change',(e)=>{ state.statsServiceFilter=e.target.value; render(); });
-  bindMonthNav(render);
+  document.getElementById('statsCodeSelect').addEventListener('change',(e)=>{ state.statsSelectedCode=e.target.value; render(); });
+  document.getElementById('statsPeriodMonth').addEventListener('click',()=>{ state.statsPeriodMode='month'; render(); });
+  document.getElementById('statsPeriodYear').addEventListener('click',()=>{ state.statsPeriodMode='year'; render(); });
+  if(periodMode==='year'){
+    document.getElementById('statsPrevYear').addEventListener('click',()=>{ state.statsYear=statsYear-1; render(); });
+    document.getElementById('statsNextYear').addEventListener('click',()=>{ state.statsYear=statsYear+1; render(); });
+    document.getElementById('statsTodayYear').addEventListener('click',()=>{ state.statsYear=new Date().getFullYear(); render(); });
+  } else {
+    bindMonthNav(render);
+  }
 }
 
 function renderCycles(){
@@ -2779,6 +2877,22 @@ function navItems(){
 function initials(name){
   return name.split(' ').map(p=>p[0]).join('').slice(0,2).toUpperCase();
 }
+/**
+ * Affiche sous « SKYPLANNING » la dernière mise à jour du planning du
+ * service de la personne connectée — pour que les salariés (et l'admin,
+ * s'il a lui-même une fiche employé) voient en un coup d'œil quand leur
+ * planning a été modifié pour la dernière fois.
+ */
+function lastPlanningUpdateHtml(){
+  if(!state.currentUser) return '';
+  const me=state.users.find(u=>u.username===state.currentUser.username);
+  const service=me?me.team:'';
+  if(!service) return '';
+  const iso=state.lastPlanningUpdate[service];
+  if(!iso) return '';
+  const full=new Date(iso).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  return `<div class="sidebar-last-update" title="Planning ${escapeHtml(service)} modifié le ${full}">🕒 ${escapeHtml(service)} · MAJ ${timeAgo(iso)}</div>`;
+}
 function timeAgo(iso){
   const diff=Math.max(0, Date.now()-new Date(iso).getTime());
   const min=Math.floor(diff/60000);
@@ -2905,6 +3019,7 @@ function renderShell(innerHtml,title,sidebarExtraHtml){
   <div class="shell">
     <div class="sidebar">
       <div class="sidebar-brand"><span class="sidebar-skyplanning">SKYPLANNING</span></div>
+      ${lastPlanningUpdateHtml()}
       <div class="sidebar-scroll">
       <div class="sidebar-nav">
         ${items.map(it=>{
@@ -2951,7 +3066,7 @@ function renderShell(innerHtml,title,sidebarExtraHtml){
         </div>
       </div>
       <div class="content">
-
+        ${isMobileDevice() ? lastPlanningUpdateHtml() : ''}
         ${notifBannerHtml()}
         ${innerHtml}
       </div>
@@ -4999,6 +5114,7 @@ function renderCalendrierAdmin(){
         chg.acknowledged=true; chg.acknowledgedAt=new Date().toISOString(); chg.acknowledgedBy=state.currentUser.username;
         await persistSchedules();
         await persistPostValidationChanges();
+        await touchLastPlanningUpdate(chg.service);
         await pushNotification(chg.username, chg.message || ('Votre planning de '+MOIS[chg.month]+' '+chg.year+' a été modifié.'));
         toast('Modification validée.');
         render();
@@ -5018,15 +5134,18 @@ function renderCalendrierAdmin(){
   const ackAllBtn=document.getElementById('ackAllChanges');
   if(ackAllBtn) ackAllBtn.addEventListener('click', async()=>{
     const now=new Date().toISOString();
+    const touchedServices=new Set();
     for(const c of changes){
       if(!c.acknowledged){
         applyPendingChangeToSchedule(c);
         c.acknowledged=true; c.acknowledgedAt=now; c.acknowledgedBy=state.currentUser.username;
+        if(c.service) touchedServices.add(c.service);
         await pushNotification(c.username, c.message || ('Votre planning de '+MOIS[c.month]+' '+c.year+' a été modifié.'));
       }
     }
     await persistSchedules();
     await persistPostValidationChanges();
+    for(const svc of touchedServices) await touchLastPlanningUpdate(svc);
     toast('Toutes les modifications ont été validées.');
     render();
   });
