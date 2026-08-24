@@ -73,8 +73,8 @@
   .sidebar-scroll{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;}
   .main{flex:1;min-width:0;display:flex;flex-direction:column;margin-left:222px;}
   .sidebar-brand{padding:14px 18px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,.08);}
-  .sidebar-last-update{padding:0 18px 12px;font-size:10.5px;font-weight:700;color:rgba(255,255,255,.5);border-bottom:1px solid rgba(255,255,255,.08);margin-bottom:2px;}
-  .content > .sidebar-last-update{color:var(--ink-soft);border-bottom:none;padding:0 0 10px;}
+  .sidebar-last-update{padding:0 18px 22px;font-size:10.5px;font-weight:700;color:rgba(255,255,255,.5);border-bottom:1px solid rgba(255,255,255,.08);margin-bottom:2px;}
+  .content > .sidebar-last-update{color:var(--ink-soft);border-bottom:none;padding:0 0 22px;}
   .sidebar-brand .mark{width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;}
   .sidebar-brand span{font-weight:800;font-size:15px;}
   .sidebar-skyplanning{font-family:'Manrope',sans-serif;font-weight:800;font-size:17px;letter-spacing:.01em;color:#E8342A;}
@@ -639,7 +639,7 @@
     .sidebar{display:none;}
     .main{margin-left:0;}
     .content{padding:12px;padding-bottom:70px;}
-    .bell-panel{width:88vw;}
+    .bell-panel{position:fixed;left:50%;right:auto;top:60px;transform:translateX(-50%);width:88vw;max-width:420px;}
     .topbar{padding:0 14px;height:54px;}
     .topbar h2{font-size:14px;}
     .grid-card{-webkit-overflow-scrolling:touch;border-radius:10px;}
@@ -758,8 +758,8 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v6.9';
-const APP_VERSION_DATE = '23/08/2026';
+const APP_VERSION = 'v7.1';
+const APP_VERSION_DATE = '24/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
    ============================================================ */
