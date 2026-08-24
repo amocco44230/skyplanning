@@ -758,7 +758,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v6.8';
+const APP_VERSION = 'v6.9';
 const APP_VERSION_DATE = '23/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -2888,7 +2888,19 @@ function lastPlanningUpdateHtml(){
   const me=state.users.find(u=>u.username===state.currentUser.username);
   const service=me?me.team:'';
   if(!service) return '';
-  const iso=state.lastPlanningUpdate[service];
+  let iso=state.lastPlanningUpdate[service];
+  if(!iso){
+    // Repli : aucune action n'a encore déclenché touchLastPlanningUpdate()
+    // depuis l'ajout de cette fonctionnalité (ex : mois déjà validé avant) —
+    // on reprend alors la date de la validation la plus récente pour ce
+    // service, déjà enregistrée depuis longtemps.
+    Object.keys(state.monthValidations).forEach(key=>{
+      const mv=state.monthValidations[key];
+      if(mv && mv.validated && mv.validatedAt && key.startsWith(service+':')){
+        if(!iso || mv.validatedAt>iso) iso=mv.validatedAt;
+      }
+    });
+  }
   if(!iso) return '';
   const full=new Date(iso).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
   return `<div class="sidebar-last-update" title="Planning ${escapeHtml(service)} modifié le ${full}">🕒 ${escapeHtml(service)} · MAJ ${timeAgo(iso)}</div>`;
