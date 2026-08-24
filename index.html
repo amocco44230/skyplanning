@@ -556,6 +556,13 @@
 
   .rule-list{display:flex;flex-direction:column;gap:10px;}
   .rule-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;}
+  /* ---------- Sélecteur guidé du type de règle d'alerte ---------- */
+  .alert-type-picker{display:flex;flex-direction:column;gap:10px;margin-bottom:16px;}
+  .alert-type-card{display:grid;grid-template-columns:36px 1fr;column-gap:14px;text-align:left;padding:14px 16px;border-radius:12px;border:1.5px solid var(--border);background:#fff;}
+  .alert-type-card:hover{border-color:var(--primary);background:var(--primary-light);}
+  .alert-type-card-icon{grid-row:1 / 3;font-size:24px;text-align:center;}
+  .alert-type-card-title{font-weight:800;font-size:13.5px;}
+  .alert-type-card-desc{font-size:12px;color:var(--ink-soft);margin-top:2px;line-height:1.4;}
   .rule-card.rule-inactive{opacity:.55;}
   .rule-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;}
   .rule-card-title{font-weight:800;font-size:13.5px;}
@@ -794,7 +801,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v8.4';
+const APP_VERSION = 'v8.5';
 const APP_VERSION_DATE = '24/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -2169,10 +2176,52 @@ function computeWeeklyPersonAlerts(rule,year,month){
   }
   return results;
 }
+/**
+ * Repos minimum entre deux services consécutifs — s'appuie sur les horaires
+ * (début/fin) déjà définis par code dans « Gestion des codes ». Gère
+ * naturellement les services de nuit à cheval sur minuit (déjà pris en
+ * compte par codeHoursValue/computeDuration pour la durée elle-même).
+ */
+function computeMinRestAlerts(rule,year,month){
+  const candidates=state.users.filter(u=>!isSuperAdmin(u) && isEmployeeValidForMonth(u,year,month));
+  const nDays=daysInMonth(year,month);
+  const results=[];
+  candidates.forEach(e=>{
+    for(let d=1; d<=nDays; d++){
+      const date1=new Date(year,month,d);
+      const key1=dkey(date1);
+      const aff=affectationAt(e,key1);
+      if(aff.team!==rule.service || !rule.fonctions.includes(aff.fonction)) continue;
+      const code1=state.schedules[e.username] && state.schedules[e.username][key1];
+      if(!code1 || !rule.codes.includes(code1)) continue;
+      const info1=codeInfo(code1);
+      if(!info1 || !info1.startTime || !info1.endTime) continue;
+      const date2=addDays(date1,1);
+      const key2=dkey(date2);
+      const code2=state.schedules[e.username] && state.schedules[e.username][key2];
+      if(!code2 || !rule.codes.includes(code2)) continue;
+      const info2=codeInfo(code2);
+      if(!info2 || !info2.startTime || !info2.endTime) continue;
+      const [sh1,sm1]=info1.startTime.split(':').map(Number);
+      const [eh1,em1]=info1.endTime.split(':').map(Number);
+      let dur1=(eh1*60+em1)-(sh1*60+sm1); if(dur1<=0) dur1+=24*60;
+      const endMinutes1 = sh1*60+sm1+dur1; // fin du service 1, en minutes depuis minuit du jour 1
+      const [sh2,sm2]=info2.startTime.split(':').map(Number);
+      const startMinutes2 = 1440 + sh2*60+sm2; // début du service 2, ramené sur la même échelle
+      const restHours = Math.round(((startMinutes2-endMinutes1)/60)*10)/10;
+      if(rule.min!=null && restHours<rule.min){
+        results.push({rule, kind:'min', employee:e, date:key1, nextDate:key2, code1, code2, restHours, target:rule.min});
+      }
+    }
+  });
+  return results;
+}
 function computeAllAlerts(year,month){
   let all=[];
   state.alertRules.filter(r=>r.active).forEach(r=>{
-    all = all.concat(r.type==='daily_group' ? computeDailyGroupAlerts(r,year,month) : computeWeeklyPersonAlerts(r,year,month));
+    if(r.type==='daily_group') all=all.concat(computeDailyGroupAlerts(r,year,month));
+    else if(r.type==='weekly_person') all=all.concat(computeWeeklyPersonAlerts(r,year,month));
+    else if(r.type==='min_rest') all=all.concat(computeMinRestAlerts(r,year,month));
   });
   return all;
 }
@@ -5207,10 +5256,14 @@ function renderMonPlanningAnnuel(){
    ============================================================ */
 function ruleFonctionsLabel(rule){ return rule.fonctions.join(' + '); }
 function ruleCodesLabel(rule){ return rule.codes.join('/'); }
+function ruleTypeLabel(type){
+  return type==='daily_group' ? 'Effectif par jour' : type==='weekly_person' ? 'Charge hebdomadaire' : 'Repos minimum entre 2 services';
+}
 function ruleThresholdLabel(rule){
+  const unit = rule.type==='min_rest' ? 'h' : '';
   const parts=[];
-  if(rule.min!=null) parts.push('min '+rule.min);
-  if(rule.max!=null) parts.push('max '+rule.max);
+  if(rule.min!=null) parts.push('min '+rule.min+unit);
+  if(rule.max!=null) parts.push('max '+rule.max+unit);
   return parts.join(' · ') || '—';
 }
 function renderAlertes(){
@@ -5231,6 +5284,7 @@ function renderAlertes(){
   const alerts=computeAllAlerts(y,m).filter(a=>(!scope || scope.includes(a.rule.service)) && (svcFilter==='ALL' || a.rule.service===svcFilter));
   const dailyAlerts=alerts.filter(a=>a.rule.type==='daily_group').sort((a,b)=>a.date.localeCompare(b.date));
   const weeklyAlerts=alerts.filter(a=>a.rule.type==='weekly_person').sort((a,b)=>a.weekStart.localeCompare(b.weekStart));
+  const restAlerts=alerts.filter(a=>a.rule.type==='min_rest').sort((a,b)=>a.date.localeCompare(b.date));
 
   const alertCardHtml=(a)=>{
     const kindColor = a.kind==='min' ? {bg:'#FBEAE9',fg:'#C0392B',label:'Sous-effectif'} : {bg:'#FDF2E3',fg:'#B5690A',label:'Sur-effectif'};
@@ -5248,6 +5302,17 @@ function renderAlertes(){
         <span class="status-badge" style="background:${kindColor.bg};color:${kindColor.fg};">${a.rule.label}</span>
       </div>`;
     }
+    if(a.rule.type==='min_rest'){
+      return `
+      <div class="alert-card" data-names="${escapeHtml(a.employee.name.toLowerCase())}">
+        <div class="alert-card-icon" style="background:#FBEAE9;color:#C0392B;">🛌</div>
+        <div class="alert-card-body">
+          <div class="alert-card-title">${escapeHtml(a.employee.name)} — Repos insuffisant</div>
+          <div class="alert-card-sub">${fmtDateKeyFr(a.date)} (${escapeHtml(a.code1)}) → ${fmtDateKeyFr(a.nextDate)} (${escapeHtml(a.code2)}) · <b>${a.restHours} h</b> de repos (minimum requis ${a.target} h)</div>
+        </div>
+        <span class="status-badge" style="background:#FBEAE9;color:#C0392B;">${escapeHtml(a.rule.label)}</span>
+      </div>`;
+    }
     return `
     <div class="alert-card" data-names="${escapeHtml(a.employee.name.toLowerCase())}">
       <div class="alert-card-icon" style="background:${kindColor.bg};color:${kindColor.fg};">⚠</div>
@@ -5259,30 +5324,17 @@ function renderAlertes(){
     </div>`;
   };
 
-  const ruleCardHtml=(r)=>`
-    <div class="rule-card ${r.active?'':'rule-inactive'}">
-      <div class="rule-card-head">
-        <div>
-          <div class="rule-card-title">${escapeHtml(r.label)}</div>
-          <div class="rule-card-sub">${r.type==='daily_group'?'Effectif par jour':'Charge hebdomadaire par salarié'} · ${escapeHtml(r.service)} · ${escapeHtml(ruleFonctionsLabel(r))} · codes ${escapeHtml(ruleCodesLabel(r))} · ${ruleThresholdLabel(r)}</div>
-        </div>
-        <label class="switch"><input type="checkbox" data-toggle-rule="${r.id}" ${r.active?'checked':''}><span class="switch-track"></span></label>
-      </div>
-      <div class="rule-card-actions">
-        <button class="icon-btn" data-edit-rule="${r.id}">Modifier</button>
-        <button class="icon-btn" style="color:var(--danger);" data-del-rule="${r.id}">Supprimer</button>
-      </div>
-    </div>`;
-
   const inner=`
     ${monthNavHtml()}
     <div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px;margin-bottom:6px;">
       <span style="font-size:13.5px;font-weight:700;color:var(--ink-soft);">Service :</span>
       <select id="alertServiceSelect" class="filter-select">${svcOptions}</select>
+      <button class="icon-btn" id="goToConfigAlertsBtn" style="margin-left:auto;">⚙ Configurer les règles</button>
     </div>
     <div class="alert-summary-row">
       <div class="alert-summary-card daily"><b>${dailyAlerts.length}</b><span>Alertes d'effectif (jour)</span></div>
       <div class="alert-summary-card weekly"><b>${weeklyAlerts.length}</b><span>Alertes de charge (semaine)</span></div>
+      <div class="alert-summary-card daily"><b>${restAlerts.length}</b><span>Alertes de repos insuffisant</span></div>
       <div class="alert-summary-card rules"><b>${state.alertRules.filter(r=>r.active && (!scope||scope.includes(r.service)) && (svcFilter==='ALL'||r.service===svcFilter)).length}</b><span>Règles actives</span></div>
     </div>
 
@@ -5290,23 +5342,16 @@ function renderAlertes(){
       <h3 style="margin:0;font-size:14px;font-weight:800;">Alertes détectées — ${MOIS[m]} ${y}${svcFilter==='ALL'?'':' — '+escapeHtml(svcFilter)}</h3>
       <input type="text" id="alertNameFilter" placeholder="🔎 Filtrer par nom…" class="filter-select" style="min-width:200px;">
     </div>
-    <div class="desid-list" style="margin-bottom:32px;" id="alertCardsList">
-      ${alerts.length ? [...dailyAlerts,...weeklyAlerts].map(alertCardHtml).join('') : `<div class="empty-state">✅ Aucune alerte ce mois-ci${svcFilter==='ALL'?'':' pour '+escapeHtml(svcFilter)} — les effectifs respectent toutes les règles actives.</div>`}
+    <div class="desid-list" id="alertCardsList">
+      ${alerts.length ? [...dailyAlerts,...weeklyAlerts,...restAlerts].map(alertCardHtml).join('') : `<div class="empty-state">✅ Aucune alerte ce mois-ci${svcFilter==='ALL'?'':' pour '+escapeHtml(svcFilter)} — tout respecte les règles actives.</div>`}
     </div>
     <div class="empty-state" id="alertNoMatch" style="display:none;">Aucune alerte pour ce nom.</div>
-
-    <div class="toolbar">
-      <h3 style="margin:0;font-size:14px;font-weight:800;">Règles configurées${svcFilter==='ALL'?'':' — '+escapeHtml(svcFilter)}</h3>
-      <button class="btn btn-primary" id="addRuleBtn" style="width:auto;margin:0;">+ Nouvelle règle</button>
-    </div>
-    <div class="rule-list">
-      ${(()=>{ const visibleRules=state.alertRules.filter(r=>(!scope||scope.includes(r.service)) && (svcFilter==='ALL'||r.service===svcFilter)); return visibleRules.length? visibleRules.map(ruleCardHtml).join('') : `<div class="empty-state">Aucune règle configurée${svcFilter==='ALL'?'':' pour ce service'}.</div>`; })()}
-    </div>
   `;
   renderShell(inner,'Alertes');
   bindMonthNav(render);
   const alertServiceSelect=document.getElementById('alertServiceSelect');
   if(alertServiceSelect) alertServiceSelect.addEventListener('change',(e)=>{ state.alertesServiceFilter=e.target.value; render(); });
+  document.getElementById('goToConfigAlertsBtn').addEventListener('click',()=>{ state.tab='config-alertes'; render(); });
   const nameFilterInput=document.getElementById('alertNameFilter');
   if(nameFilterInput){
     nameFilterInput.addEventListener('input',(e)=>{
@@ -5321,31 +5366,98 @@ function renderAlertes(){
       if(noMatchEl) noMatchEl.style.display = (q && !anyVisible) ? '' : 'none';
     });
   }
+}
+
+/* ============================================================
+   ÉCRAN — CONFIGURATION DES ALERTES (admin) : gestion des règles, séparée
+   du tableau de bord « Alertes » pour rester simple à consulter au quotidien.
+   ============================================================ */
+const ALERT_TYPE_INFO = {
+  daily_group: {icon:'👥', title:'Effectif par jour', desc:'Vérifie chaque jour qu\u2019un groupe de salariés (par fonction) a un nombre suffisant — ou pas trop — de personnes sur un code donné.'},
+  weekly_person: {icon:'📆', title:'Charge hebdomadaire', desc:'Vérifie, chaque semaine, que chaque salarié d\u2019un groupe a un nombre correct de jours sur un code donné.'},
+  min_rest: {icon:'🛌', title:'Repos minimum entre 2 services', desc:'Vérifie que chaque salarié a assez d\u2019heures de repos entre la fin d\u2019un service et le début du suivant (ex : 11h minimum).'},
+};
+function renderConfigAlertes(){
+  if(!adminCanAccessFeature('alertes')){ state.tab='calendrier'; render(); return; }
+  const scope=getAdminScope(state.currentUser);
+  const availableServices = scope || state.services;
+  if(state.alertesServiceFilter===undefined || (scope && !scope.includes(state.alertesServiceFilter) && state.alertesServiceFilter!=='ALL')){
+    state.alertesServiceFilter = 'ALL';
+  }
+  const svcFilter=state.alertesServiceFilter;
+  const svcOptions = `<option value="ALL" ${svcFilter==='ALL'?'selected':''}>${scope?'Tous mes services':'Tous les services'}</option>`
+    + availableServices.map(s=>`<option value="${escapeHtml(s)}" ${svcFilter===s?'selected':''}>${escapeHtml(s)}</option>`).join('');
+
+  const ruleCardHtml=(r)=>`
+    <div class="rule-card ${r.active?'':'rule-inactive'}">
+      <div class="rule-card-head">
+        <div>
+          <div class="rule-card-title">${ALERT_TYPE_INFO[r.type].icon} ${escapeHtml(r.label)}</div>
+          <div class="rule-card-sub">${ruleTypeLabel(r.type)} · ${escapeHtml(r.service)} · ${escapeHtml(ruleFonctionsLabel(r))} · codes ${escapeHtml(ruleCodesLabel(r))} · ${ruleThresholdLabel(r)}</div>
+        </div>
+        <label class="switch"><input type="checkbox" data-toggle-rule="${r.id}" ${r.active?'checked':''}><span class="switch-track"></span></label>
+      </div>
+      <div class="rule-card-actions">
+        <button class="icon-btn" data-edit-rule="${r.id}">Modifier</button>
+        <button class="icon-btn" data-dup-rule="${r.id}">Dupliquer</button>
+        <button class="icon-btn" style="color:var(--danger);" data-del-rule="${r.id}">Supprimer</button>
+      </div>
+    </div>`;
+
+  const visibleRules=state.alertRules.filter(r=>(!scope||scope.includes(r.service)) && (svcFilter==='ALL'||r.service===svcFilter));
+
+  const inner=`
+    <div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px;margin-bottom:16px;">
+      <button class="icon-btn" id="backToAlertsBtn">← Retour au tableau de bord</button>
+      <span style="font-size:13.5px;font-weight:700;color:var(--ink-soft);margin-left:auto;">Service :</span>
+      <select id="alertServiceSelect" class="filter-select">${svcOptions}</select>
+    </div>
+    <div class="toolbar">
+      <h3 style="margin:0;font-size:14px;font-weight:800;">Règles configurées${svcFilter==='ALL'?'':' — '+escapeHtml(svcFilter)} (${visibleRules.length})</h3>
+      <button class="btn btn-primary" id="addRuleBtn" style="width:auto;margin:0;">+ Nouvelle règle</button>
+    </div>
+    <div class="rule-list">
+      ${visibleRules.length? visibleRules.map(ruleCardHtml).join('') : `<div class="empty-state">Aucune règle configurée${svcFilter==='ALL'?'':' pour ce service'}. Cliquez sur « + Nouvelle règle » pour commencer.</div>`}
+    </div>
+  `;
+  renderShell(inner,'Configuration des alertes');
+  document.getElementById('backToAlertsBtn').addEventListener('click',()=>{ state.tab='alertes'; render(); });
+  const alertServiceSelect=document.getElementById('alertServiceSelect');
+  if(alertServiceSelect) alertServiceSelect.addEventListener('change',(e)=>{ state.alertesServiceFilter=e.target.value; render(); });
   document.getElementById('addRuleBtn').addEventListener('click',()=>{
-    state.modal={type:'alert-rule', isNew:true, data:{label:'',type:'daily_group',service:(scope||state.services)[0]||'',fonctions:[],codes:[],min:null,max:null,active:true}};
+    state.modal={type:'alert-rule-type-picker'};
     render();
   });
   document.querySelectorAll('[data-edit-rule]').forEach(btn=>{
     btn.addEventListener('click',()=>{
       const r=state.alertRules.find(x=>x.id===btn.dataset.editRule);
-      state.modal={type:'alert-rule', isNew:false, data:JSON.parse(JSON.stringify(r))};
+      state.modal={type:'alert-rule', isNew:false, data:Object.assign({excludeCodes:[]}, JSON.parse(JSON.stringify(r)))};
       render();
+    });
+  });
+  document.querySelectorAll('[data-dup-rule]').forEach(btn=>{
+    btn.addEventListener('click', async()=>{
+      const r=state.alertRules.find(x=>x.id===btn.dataset.dupRule);
+      if(!r) return;
+      const copy=Object.assign({}, JSON.parse(JSON.stringify(r)), {id:genId(), label:r.label+' (copie)'});
+      state.alertRules.push(copy);
+      await persistAlertRules();
+      toast('Règle dupliquée — pensez à ajuster son nom/service si besoin.');
+      render();
+    });
+  });
+  document.querySelectorAll('[data-toggle-rule]').forEach(chk=>{
+    chk.addEventListener('change', async()=>{
+      const r=state.alertRules.find(x=>x.id===chk.dataset.toggleRule);
+      if(r){ r.active=chk.checked; await persistAlertRules(); toast(r.active?'Règle activée.':'Règle désactivée.'); render(); }
     });
   });
   document.querySelectorAll('[data-del-rule]').forEach(btn=>{
-    btn.addEventListener('click',async()=>{
-      if(!confirm('Supprimer cette règle d\u2019alerte ?')) return;
+    btn.addEventListener('click', async()=>{
+      if(!confirm('Supprimer définitivement cette règle ?')) return;
       state.alertRules=state.alertRules.filter(x=>x.id!==btn.dataset.delRule);
       await persistAlertRules();
       toast('Règle supprimée.');
-      render();
-    });
-  });
-  document.querySelectorAll('[data-toggle-rule]').forEach(cb=>{
-    cb.addEventListener('change',async()=>{
-      const r=state.alertRules.find(x=>x.id===cb.dataset.toggleRule);
-      r.active=cb.checked;
-      await persistAlertRules();
       render();
     });
   });
@@ -6647,19 +6759,42 @@ function renderModal(){
     });
   }
 
+  if(state.modal.type==='alert-rule-type-picker'){
+    overlay.innerHTML=`
+    <div class="modal" style="max-width:480px;">
+      <h3>Quel type de règle voulez-vous créer ?</h3>
+      <div class="alert-type-picker">
+        ${Object.entries(ALERT_TYPE_INFO).map(([type,info])=>`
+        <button class="alert-type-card" data-pick-type="${type}">
+          <span class="alert-type-card-icon">${info.icon}</span>
+          <span class="alert-type-card-title">${info.title}</span>
+          <span class="alert-type-card-desc">${info.desc}</span>
+        </button>`).join('')}
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="atpCancel">Annuler</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('atpCancel').addEventListener('click',closeModal);
+    document.querySelectorAll('[data-pick-type]').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        const scope=getAdminScope(state.currentUser);
+        state.modal={type:'alert-rule', isNew:true, data:{label:'',type:btn.dataset.pickType,service:(scope||state.services)[0]||'',fonctions:[],codes:[],excludeCodes:[],min:null,max:null,active:true}};
+        render();
+      });
+    });
+  }
+
   if(state.modal.type==='alert-rule'){
     const rd=state.modal.data;
     const fonctionsForSvc=getFonctionsForService(rd.service);
+    const isMinRest = rd.type==='min_rest';
     overlay.innerHTML=`
     <div class="modal" style="max-width:480px;">
-      <h3>${state.modal.isNew?'Nouvelle règle d\u2019alerte':'Modifier la règle'}</h3>
+      <h3>${ALERT_TYPE_INFO[rd.type].icon} ${state.modal.isNew?'Nouvelle règle — '+ALERT_TYPE_INFO[rd.type].title:'Modifier la règle'}</h3>
+      <div class="legend-hint" style="margin:-6px 0 14px;">${ALERT_TYPE_INFO[rd.type].desc}</div>
       <div class="field"><label>Nom de la règle</label><input id="arLabel" value="${escapeHtml(rd.label)}" placeholder="Ex : Effectif Matin CDQ+Responsables"></div>
-      <div class="field"><label>Type de règle</label>
-        <select id="arType" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14.5px;background:#FBFCFE;">
-          <option value="daily_group" ${rd.type==='daily_group'?'selected':''}>Effectif minimum/maximum par jour (groupe)</option>
-          <option value="weekly_person" ${rd.type==='weekly_person'?'selected':''}>Charge de travail par semaine (par salarié)</option>
-        </select>
-      </div>
       <div class="field"><label>Service</label>
         <select id="arService" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14.5px;background:#FBFCFE;">
           ${(getAdminScope(state.currentUser)||state.services).map(s=>`<option value="${escapeHtml(s)}" ${rd.service===s?'selected':''}>${escapeHtml(s)}</option>`).join('')}
@@ -6671,10 +6806,11 @@ function renderModal(){
         </div>
         <div class="helper">Sélectionnez plusieurs fonctions pour additionner leurs effectifs (ex : CDQ + Responsables).</div>
       </div>
-      <div class="field"><label>Code(s) comptabilisé(s)</label>
+      <div class="field"><label>Code(s) ${isMinRest?'considérés comme un service travaillé':'comptabilisé(s)'}</label>
         <div class="check-list" id="arCodes">
           ${state.codes.map(c=>`<label class="check-item"><input type="checkbox" value="${c.code}" ${rd.codes.includes(c.code)?'checked':''}> ${c.code} · ${c.label}</label>`).join('')}
         </div>
+        ${isMinRest?'<div class="helper">Uniquement les codes avec des horaires définis (dans Gestion des codes) peuvent être utilisés ici.</div>':''}
       </div>
       <div class="field" id="arExcludeWrap" style="${rd.type==='weekly_person'?'':'display:none;'}">
         <label>Codes qui suspendent la règle cette semaine-là (optionnel)</label>
@@ -6683,10 +6819,15 @@ function renderModal(){
         </div>
         <div class="helper">Si le salarié a l'un de ces codes (ex : CPA, congé) au moins un jour dans la semaine, il ne sera pas compté comme en infraction cette semaine-là — même si son nombre de jours travaillés est bas.</div>
       </div>
+      ${isMinRest ? `
+      <div class="field"><label>Repos minimum requis (en heures)</label><input type="number" id="arMin" min="0" step="0.5" value="${rd.min!=null?rd.min:'11'}" placeholder="11"></div>
+      <input type="hidden" id="arMax" value="">
+      ` : `
       <div class="row2">
         <div class="field"><label>Seuil minimum (optionnel)</label><input type="number" id="arMin" min="0" value="${rd.min!=null?rd.min:''}" placeholder="—"></div>
         <div class="field"><label>Seuil maximum (optionnel)</label><input type="number" id="arMax" min="0" value="${rd.max!=null?rd.max:''}" placeholder="—"></div>
       </div>
+      `}
       <div id="arError" style="color:var(--danger);font-size:12.5px;font-weight:600;display:none;margin-bottom:6px;"></div>
       <div class="modal-actions">
         <button class="btn btn-ghost" id="arCancel">Annuler</button>
@@ -6701,25 +6842,23 @@ function renderModal(){
       const opts=getFonctionsForService(rd.service);
       box.innerHTML=opts.map(f=>`<label class="check-item"><input type="checkbox" value="${escapeHtml(f)}"> ${escapeHtml(f)}</label>`).join('') || '<div class="helper">Aucune fonction pour ce service.</div>';
     });
-    document.getElementById('arType').addEventListener('change',(e)=>{
-      document.getElementById('arExcludeWrap').style.display = e.target.value==='weekly_person' ? '' : 'none';
-    });
     document.getElementById('arSave').addEventListener('click',async()=>{
       const label=document.getElementById('arLabel').value.trim();
-      const type=document.getElementById('arType').value;
+      const type=rd.type;
       const service=document.getElementById('arService').value;
       const fonctions=[...document.querySelectorAll('#arFonctions input:checked')].map(i=>i.value);
       const codes=[...document.querySelectorAll('#arCodes input:checked')].map(i=>i.value);
       const excludeCodes=[...document.querySelectorAll('#arExclude input:checked')].map(i=>i.value);
       const minRaw=document.getElementById('arMin').value;
-      const maxRaw=document.getElementById('arMax').value;
-      const min=minRaw===''?null:parseInt(minRaw,10);
+      const maxRaw=document.getElementById('arMax') ? document.getElementById('arMax').value : '';
+      const min=minRaw===''?null:(isMinRest?parseFloat(minRaw):parseInt(minRaw,10));
       const max=maxRaw===''?null:parseInt(maxRaw,10);
       const err=document.getElementById('arError');
       if(!label){ err.textContent='Merci de donner un nom à la règle.'; err.style.display='block'; return; }
       if(!fonctions.length){ err.textContent='Sélectionnez au moins une fonction.'; err.style.display='block'; return; }
       if(!codes.length){ err.textContent='Sélectionnez au moins un code.'; err.style.display='block'; return; }
-      if(min==null && max==null){ err.textContent='Renseignez au moins un seuil (minimum ou maximum).'; err.style.display='block'; return; }
+      if(isMinRest && min==null){ err.textContent='Renseignez le nombre d\u2019heures de repos minimum requis.'; err.style.display='block'; return; }
+      if(!isMinRest && min==null && max==null){ err.textContent='Renseignez au moins un seuil (minimum ou maximum).'; err.style.display='block'; return; }
       if(state.modal.isNew){
         state.alertRules.push({id:genId(), label, type, service, fonctions, codes, excludeCodes, min, max, active:true});
       } else {
@@ -7274,6 +7413,7 @@ function render(){
     else if(state.tab==='desideratas') renderAdminDesiderata();
     else if(state.tab==='echanges') renderAdminEchanges();
     else if(state.tab==='alertes') renderAlertes();
+    else if(state.tab==='config-alertes') renderConfigAlertes();
     else if(state.tab==='cycles') renderCycles();
     else if(state.tab==='statistiques') renderStatistiques();
     else if(state.tab==='historique') renderHistorique();
