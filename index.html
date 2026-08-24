@@ -221,6 +221,7 @@
   table.grid td.day-cell.invalid-day{background:repeating-linear-gradient(45deg,#EDEFF2,#EDEFF2 6px,#E2E5EB 6px,#E2E5EB 12px);cursor:not-allowed;}
   table.grid td.day-cell.invalid-day:hover .code-badge{outline:none;}
   table.grid td.fonction-head{background:var(--primary-dark);color:#fff;font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:6.5px 13px;}
+  table.grid tr.subgroup-sep-row td{background:#F4F5F7;color:var(--ink-soft);font-weight:700;font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;padding:3px 13px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);}
   table.grid td.service-head{background:#8A96AE;color:#fff;font-weight:800;font-size:12px;text-transform:uppercase;letter-spacing:.06em;padding:8.5px 13px;}
   .alert-badge{display:inline-flex;align-items:center;gap:3px;background:#E8615A;color:#fff;font-size:10px;font-weight:800;padding:2px 8px;border-radius:20px;margin-left:10px;text-transform:none;letter-spacing:0;vertical-align:middle;}
   .alert-badge-dot{display:inline-block;color:var(--danger);font-size:11px;margin-left:5px;cursor:help;}
@@ -400,6 +401,14 @@
   .stats-legend{display:flex;flex-direction:column;gap:8px;flex:1;min-width:160px;}
   .stats-legend-row{display:flex;align-items:center;gap:8px;font-size:13px;}
   .stats-legend-dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;}
+  /* ---------- Historique ---------- */
+  .hist-card{padding:4px;}
+  .hist-row{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border);}
+  .hist-row:last-child{border-bottom:none;}
+  .hist-icon{font-size:16px;flex-shrink:0;width:26px;text-align:center;line-height:1.4;}
+  .hist-body{flex:1;min-width:0;}
+  .hist-summary{font-size:13.5px;font-weight:600;color:var(--ink);line-height:1.4;}
+  .hist-meta{font-size:11.5px;color:var(--ink-soft);margin-top:3px;}
   @media(max-width:900px){
     .stats-grid{grid-template-columns:1fr;}
   }
@@ -482,6 +491,7 @@
   .filter-select{padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font-weight:600;font-size:12.5px;color:var(--ink);background:#fff;}
   .fonction-section{margin-bottom:20px;}
   .fonction-section-head{background:var(--primary-dark);color:#fff;font-weight:800;font-size:12px;text-transform:uppercase;letter-spacing:.05em;padding:9px 16px;border-radius:10px 10px 0 0;}
+  .subgroup-sep{background:#F4F5F7;color:var(--ink-soft);font-weight:700;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;padding:5px 16px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);}
   .fonction-section .emp-list{border-radius:0 0 14px 14px;min-height:20px;transition:background .15s;}
   .service-block{margin-bottom:28px;}
   .service-block-head{background:#8A96AE;color:#fff;font-weight:800;font-size:13px;text-transform:uppercase;letter-spacing:.06em;padding:10px 16px;border-radius:12px;margin-bottom:10px;}
@@ -758,7 +768,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v7.2';
+const APP_VERSION = 'v7.4';
 const APP_VERSION_DATE = '24/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -796,7 +806,7 @@ const FIRESTORE_KEY_MAP = {
   comments:'comments', fonctions:'fonctions', services:'services', desideratas:'desideratas',
   alertRules:'alertRules', monthValidations:'monthValidations', postValidationChanges:'postValidationChanges',
   cpAllowances:'cpAllowances', employeeDrafts:'employeeDrafts', exchanges:'exchanges',
-  featureFlags:'featureFlags', cycleSettings:'cycleSettings', genRules:'genRules', lastPlanningUpdate:'lastPlanningUpdate'
+  featureFlags:'featureFlags', cycleSettings:'cycleSettings', genRules:'genRules', lastPlanningUpdate:'lastPlanningUpdate', auditLog:'auditLog'
 };
 // Enregistrement précoce et silencieux du service worker FCM (permet de recevoir
 // des notifications en arrière-plan même avant que l'utilisateur active les alertes).
@@ -976,7 +986,7 @@ let state={
   comments:{},
   desideratas:[],
   exchanges:[],
-  featureFlags:{desideratas:true, echanges:true, alertes:true, genAuto:true, impression:true, photos:true, cycles:false, stats:false, perService:{}},
+  featureFlags:{desideratas:true, echanges:true, alertes:true, genAuto:true, impression:true, photos:true, cycles:false, stats:false, historique:false, perService:{}},
   cycleSettings:{},
   alertRules:[],
   monthValidations:{},
@@ -986,6 +996,7 @@ let state={
   genSelections:{},
   genRules:[],
   lastPlanningUpdate:{},
+  auditLog:[],
   genActiveRuleId:null,
   cpAllowances:{},
   annualYear:new Date().getFullYear(),
@@ -1104,7 +1115,7 @@ async function loadAll(){
     // par une mise à jour de l'appli reste activée par défaut si l'admin n'a
     // encore rien configuré explicitement.
     state.featureFlags = Object.assign(
-      {desideratas:true, echanges:true, alertes:true, genAuto:true, impression:true, photos:true, cycles:false, stats:false, perService:{}},
+      {desideratas:true, echanges:true, alertes:true, genAuto:true, impression:true, photos:true, cycles:false, stats:false, historique:false, perService:{}},
       parsed||{}
     );
     if(!state.featureFlags.perService) state.featureFlags.perService={};
@@ -1131,6 +1142,10 @@ async function loadAll(){
     const lpu=await storageGet('lastPlanningUpdate', true);
     state.lastPlanningUpdate = lpu ? JSON.parse(lpu.value) : {};
   }catch(e){ state.lastPlanningUpdate={}; }
+  try{
+    const al=await storageGet('auditLog', true);
+    state.auditLog = al ? JSON.parse(al.value) : [];
+  }catch(e){ state.auditLog=[]; }
   try{
     const ar=await storageGet('alertRules', true);
     state.alertRules = ar ? JSON.parse(ar.value) : null;
@@ -1320,6 +1335,29 @@ async function touchLastPlanningUpdate(service){
   state.lastPlanningUpdate[service]=new Date().toISOString();
   try{ await persistLastPlanningUpdate(); }catch(e){ /* pas bloquant */ }
 }
+async function persistAuditLog(){ await storageSet('auditLog', JSON.stringify(state.auditLog), true); }
+/**
+ * Journal d'audit unifié — page « Historique » (admin/super admin
+ * uniquement). Un seul flux chronologique, plutôt que de recomposer
+ * l'historique à partir de plusieurs listes séparées (certaines, comme la
+ * validation des mois, écrasent l'ancienne donnée et perdraient sinon la
+ * trace d'une dévalidation par ex.).
+ * @param type      'month_validated' | 'month_devalidated' | 'desiderata_submitted' |
+ *                  'desiderata_validated' | 'desiderata_refused' | 'exchange_submitted' |
+ *                  'exchange_validated' | 'exchange_refused' | 'schedule_changed' | 'schedule_generated'
+ * @param service   service concerné (pour le filtre par service)
+ * @param username  salarié concerné (pour le filtre par agent) — peut être null
+ * @param summary   texte prêt à afficher, déjà formulé en français
+ * @param details   objet libre avec le détail complet (ancien/nouveau code, dates, motif...)
+ */
+async function logAudit(type, service, username, summary, details){
+  state.auditLog.push({
+    id:genId(), type, service:service||'', username:username||'',
+    actorUsername:state.currentUser?state.currentUser.username:'', actorName:state.currentUser?state.currentUser.name:'',
+    timestamp:new Date().toISOString(), summary, details:details||{}
+  });
+  try{ await persistAuditLog(); }catch(e){ /* pas bloquant */ }
+}
 /* ============================================================
    CYCLES DE RÉFÉRENCE (heures travaillées sur N jours glissants)
    ============================================================ */
@@ -1499,7 +1537,12 @@ async function setMonthValidated(service,year,month,validated){
   const key=monthValidationKey(service,year,month);
   state.monthValidations[key]=validated?{validated:true,validatedAt:new Date().toISOString(),validatedBy:state.currentUser.username}:{validated:false};
   await persistMonthValidations();
-  if(validated) await touchLastPlanningUpdate(service);
+  if(validated){
+    await touchLastPlanningUpdate(service);
+    await logAudit('month_validated', service, null, 'Mois de '+MOIS[month]+' '+year+' validé pour '+service+'.', {year, month});
+  } else {
+    await logAudit('month_devalidated', service, null, 'Mois de '+MOIS[month]+' '+year+' dévalidé pour '+service+'.', {year, month});
+  }
 }
 
 /* ============================================================
@@ -1581,6 +1624,9 @@ async function generateAutoPlanning(months, ruleId){
     await pushNotification(username, 'Votre planning a été régénéré automatiquement à partir du '+fmtDateKeyFr(sel.date)+' (règle « '+rule.name+' »), pour les '+months+' prochain(s) mois.');
     const genUser=state.users.find(u=>u.username===username);
     if(genUser && genUser.team) await touchLastPlanningUpdate(genUser.team);
+    await logAudit('schedule_generated', genUser?genUser.team:'', username,
+      'Planning de '+(genUser?genUser.name:username)+' régénéré automatiquement à partir du '+fmtDateKeyFr(sel.date)+' (règle « '+rule.name+' », '+months+' mois).',
+      {startDate:sel.date, ruleName:rule.name, months});
   }
   await persistSchedules();
   return {employees:entries.length, days:totalDays};
@@ -1781,6 +1827,10 @@ async function createDesiderata(username,name,dateStart,dateEnd,code,comment){
     createdAt:new Date().toISOString(), processedAt:null
   });
   await persistDesideratas();
+  const dInfo=codeInfo(code);
+  await logAudit('desiderata_submitted', (state.users.find(u=>u.username===username)||{}).team, username,
+    name+' a déposé une demande de désidérata du '+fmtDateKeyFr(dateStart)+' au '+fmtDateKeyFr(dateEnd)+' ('+(dInfo?dInfo.label:code)+').',
+    {dateStart, dateEnd, code});
 }
 async function cancelDesiderata(id){
   state.desideratas=state.desideratas.filter(d=>d.id!==id);
@@ -1800,6 +1850,9 @@ async function validateDesiderata(id,adminComment){
   await persistDesideratas();
   const info=codeInfo(d.code);
   await pushNotification(d.username, 'Votre désidérata du '+fmtDateKeyFr(d.dateStart)+' au '+fmtDateKeyFr(d.dateEnd)+' a été validé ('+(info?info.label:d.code)+').');
+  await logAudit('desiderata_validated', (state.users.find(u=>u.username===d.username)||{}).team, d.username,
+    'Désidérata de '+d.name+' validé ('+fmtDateKeyFr(d.dateStart)+' → '+fmtDateKeyFr(d.dateEnd)+', '+(info?info.label:d.code)+').',
+    {dateStart:d.dateStart, dateEnd:d.dateEnd, code:d.code, adminComment});
 }
 async function refuseDesiderata(id,adminComment){
   const d=state.desideratas.find(x=>x.id===id);
@@ -1807,6 +1860,9 @@ async function refuseDesiderata(id,adminComment){
   d.status='refused'; d.adminComment=adminComment||''; d.processedAt=new Date().toISOString();
   await persistDesideratas();
   await pushNotification(d.username, 'Votre désidérata du '+fmtDateKeyFr(d.dateStart)+' au '+fmtDateKeyFr(d.dateEnd)+' a été refusé.'+(adminComment?' Motif : '+adminComment:''));
+  await logAudit('desiderata_refused', (state.users.find(u=>u.username===d.username)||{}).team, d.username,
+    'Désidérata de '+d.name+' refusé ('+fmtDateKeyFr(d.dateStart)+' → '+fmtDateKeyFr(d.dateEnd)+').'+(adminComment?' Motif : '+adminComment:''),
+    {dateStart:d.dateStart, dateEnd:d.dateEnd, code:d.code, adminComment});
 }
 function desiderataForCell(username,dateKey){
   const matches=state.desideratas.filter(d=>d.username===username && !d.archived && dateKey>=d.dateStart && dateKey<=d.dateEnd);
@@ -1849,6 +1905,9 @@ async function createExchange(requesterUsername,requesterName,targetUsername,tar
   });
   await persistExchanges();
   await pushNotification(targetUsername, requesterName+' vous propose un échange de journée : '+fmtDateKeyFr(dateA)+' ↔ '+fmtDateKeyFr(dateB)+'. En attente de validation par l\u2019administrateur.');
+  await logAudit('exchange_submitted', (state.users.find(u=>u.username===requesterUsername)||{}).team, requesterUsername,
+    requesterName+' propose un échange avec '+targetName+' : '+fmtDateKeyFr(dateA)+' ↔ '+fmtDateKeyFr(dateB)+'.',
+    {targetUsername, dateA, dateB});
 }
 async function cancelExchange(id){
   state.exchanges=state.exchanges.filter(x=>x.id!==id);
@@ -1876,6 +1935,9 @@ async function validateExchange(id,adminComment){
   await persistExchanges();
   await pushNotification(ex.requesterUsername, 'Votre échange avec '+ex.targetName+' a été validé par l\u2019administrateur.');
   await pushNotification(ex.targetUsername, 'L\u2019échange avec '+ex.requesterName+' a été validé par l\u2019administrateur.');
+  await logAudit('exchange_validated', requesterUser?requesterUser.team:'', ex.requesterUsername,
+    'Échange entre '+ex.requesterName+' et '+ex.targetName+' validé : '+fmtDateKeyFr(ex.dateA)+' ('+(oldA||'Vide')+' → '+(ex.codeB||'Vide')+') ↔ '+fmtDateKeyFr(ex.dateB)+' ('+(oldB||'Vide')+' → '+(ex.codeA||'Vide')+').',
+    {targetUsername:ex.targetUsername, dateA:ex.dateA, dateB:ex.dateB, oldA, newA:ex.codeB, oldB, newB:ex.codeA, adminComment});
 }
 async function refuseExchange(id,adminComment){
   const ex=state.exchanges.find(x=>x.id===id);
@@ -1884,6 +1946,10 @@ async function refuseExchange(id,adminComment){
   await persistExchanges();
   await pushNotification(ex.requesterUsername, 'Votre demande d\u2019échange avec '+ex.targetName+' a été refusée.'+(adminComment?' Motif : '+adminComment:''));
   await pushNotification(ex.targetUsername, 'La demande d\u2019échange proposée par '+ex.requesterName+' a été refusée.');
+  const requesterUser=state.users.find(u=>u.username===ex.requesterUsername);
+  await logAudit('exchange_refused', requesterUser?requesterUser.team:'', ex.requesterUsername,
+    'Échange entre '+ex.requesterName+' et '+ex.targetName+' refusé.'+(adminComment?' Motif : '+adminComment:''),
+    {targetUsername:ex.targetUsername, dateA:ex.dateA, dateB:ex.dateB, adminComment});
 }
 function exchangeStatusLabel(s){ return s==='pending'?'En attente':s==='validated'?'Validé':'Refusé'; }
 function exchangeStatusColor(s){ return desidStatusColor(s); }
@@ -2360,11 +2426,17 @@ async function paintCell(username,year,month,day){
       existingPending.message=message;
       existingPending.changedAt=new Date().toISOString();
       existingPending.changedBy=state.currentUser.username;
+      await logAudit('schedule_changed', cellTeam, username,
+        'Modification du '+dateStr+' pour '+emp.name+' (mois déjà validé) : '+(officialCode||'Vide')+' → '+(newCode||'Vide')+'.',
+        {year, month, day, oldCode:officialCode, newCode});
     } else {
       state.postValidationChanges.push({
         id:genId(), service:cellTeam, year, month, day, username, name:emp.name,
         oldCode:officialCode, newCode, message, changedAt:new Date().toISOString(), changedBy:state.currentUser.username, acknowledged:false
       });
+      await logAudit('schedule_changed', cellTeam, username,
+        'Modification du '+dateStr+' pour '+emp.name+' (mois déjà validé) : '+(officialCode||'Vide')+' → '+(newCode||'Vide')+'.',
+        {year, month, day, oldCode:officialCode, newCode});
     }
     render();
     try{ await persistPostValidationChanges(); }catch(e){ toast('Erreur de sauvegarde','err'); }
@@ -2425,6 +2497,101 @@ function cycleEmployeeRowHtml(ec, settings, expanded){
 /* ============================================================
    ÉCRAN — STATISTIQUES (admin) : heures, répartition des codes, équité
    ============================================================ */
+/* ============================================================
+   ÉCRAN — HISTORIQUE (admin/super admin) : journal d'audit complet
+   ============================================================ */
+const AUDIT_TYPE_META = {
+  month_validated:     {icon:'✅', label:'Mois validé'},
+  month_devalidated:   {icon:'🔓', label:'Mois dévalidé'},
+  desiderata_submitted:{icon:'🖐️', label:'Désidérata déposé'},
+  desiderata_validated:{icon:'🖐️✅', label:'Désidérata validé'},
+  desiderata_refused:  {icon:'🖐️✕', label:'Désidérata refusé'},
+  exchange_submitted:  {icon:'🔄', label:'Échange déposé'},
+  exchange_validated:  {icon:'🔄✅', label:'Échange validé'},
+  exchange_refused:    {icon:'🔄✕', label:'Échange refusé'},
+  schedule_changed:    {icon:'✎', label:'Planning modifié'},
+  schedule_generated:  {icon:'🪄', label:'Planning généré'},
+};
+function renderHistorique(){
+  if(!(state.currentUser.role==='admin' && adminCanAccessFeature('historique'))){ state.tab='calendrier'; render(); return; }
+  const scope=getAdminScope(state.currentUser);
+  const availableServices = scope || state.services;
+  if(state.histServiceFilter===undefined || (scope && !scope.includes(state.histServiceFilter) && state.histServiceFilter!=='ALL')){
+    state.histServiceFilter = scope ? (availableServices.includes('CCO') ? 'CCO' : (availableServices[0] || 'ALL')) : (availableServices[0] || 'ALL');
+  }
+  const svcFilter=state.histServiceFilter;
+  const svcOptions = (scope?'':`<option value="ALL" ${svcFilter==='ALL'?'selected':''}>Tous les services</option>`)
+    + availableServices.map(s=>`<option value="${escapeHtml(s)}" ${svcFilter===s?'selected':''}>${escapeHtml(s)}</option>`).join('');
+
+  // Filtre agent : dépend du service choisi (vidé/reconstruit si le service change)
+  const agentPool = svcFilter==='ALL'
+    ? state.users.filter(u=>!isSuperAdmin(u) && u.role!=='admin' && availableServices.includes(u.team))
+    : state.users.filter(u=>!isSuperAdmin(u) && u.role!=='admin' && u.team===svcFilter);
+  const agentFilter = state.histAgentFilter && agentPool.some(u=>u.username===state.histAgentFilter) ? state.histAgentFilter : 'ALL';
+  const agentOptions = `<option value="ALL" ${agentFilter==='ALL'?'selected':''}>Tout le service</option>`
+    + agentPool.sort((a,b)=>a.name.localeCompare(b.name)).map(u=>`<option value="${u.username}" ${agentFilter===u.username?'selected':''}>${escapeHtml(u.name)}</option>`).join('');
+
+  const periodMode = state.histPeriodMode || 'month';
+  const y=state.viewDate.getFullYear(), m=state.viewDate.getMonth();
+  const histDay = state.histDay || dkey(new Date());
+
+  // --- Filtrage du journal ---
+  let entries = state.auditLog.filter(e=>{
+    if(svcFilter!=='ALL' && e.service!==svcFilter) return false;
+    if(agentFilter!=='ALL' && e.username!==agentFilter) return false;
+    const d=new Date(e.timestamp);
+    if(periodMode==='day'){
+      if(dkey(d)!==histDay) return false;
+    } else if(periodMode==='month'){
+      if(d.getFullYear()!==y || d.getMonth()!==m) return false;
+    }
+    // periodMode==='all' : aucun filtre de date
+    return true;
+  }).sort((a,b)=>b.timestamp.localeCompare(a.timestamp));
+
+  const periodLabel = periodMode==='day' ? fmtDateKeyFr(histDay) : periodMode==='month' ? (MOIS[m]+' '+y) : 'Toute la période';
+
+  const rowHtml=(e)=>{
+    const meta=AUDIT_TYPE_META[e.type]||{icon:'•',label:e.type};
+    const d=new Date(e.timestamp);
+    const full=d.toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+    return `<div class="hist-row">
+      <div class="hist-icon">${meta.icon}</div>
+      <div class="hist-body">
+        <div class="hist-summary">${escapeHtml(e.summary)}</div>
+        <div class="hist-meta">${escapeHtml(meta.label)}${e.service?' · '+escapeHtml(e.service):''} · par <b>${escapeHtml(e.actorName||e.actorUsername||'—')}</b> · <span title="${full}">${timeAgo(e.timestamp)}</span></div>
+      </div>
+    </div>`;
+  };
+
+  const inner=`
+    <div class="stats-filters">
+      <select id="histServiceSelect" class="filter-select">${svcOptions}</select>
+      <select id="histAgentSelect" class="filter-select">${agentOptions}</select>
+      <div class="stats-period-toggle">
+        <button id="histPeriodDay" class="${periodMode==='day'?'active':''}">Jour</button>
+        <button id="histPeriodMonth" class="${periodMode==='month'?'active':''}">Mois</button>
+        <button id="histPeriodAll" class="${periodMode==='all'?'active':''}">Tout</button>
+      </div>
+      ${periodMode==='day' ? `<input type="date" id="histDayPicker" value="${histDay}" style="padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font-weight:600;font-size:12.5px;">` : ''}
+      ${periodMode==='month' ? monthNavHtml() : ''}
+    </div>
+    <div class="helper" style="margin:-8px 0 14px;">${entries.length} événement${entries.length>1?'s':''} · ${escapeHtml(periodLabel)}${svcFilter!=='ALL'?' · '+escapeHtml(svcFilter):''}${agentFilter!=='ALL'?' · '+escapeHtml((agentPool.find(u=>u.username===agentFilter)||{}).name||''):''}</div>
+    <div class="feat-card hist-card">
+      ${entries.length ? entries.map(rowHtml).join('') : '<div class="empty-state">Aucun événement sur cette période.</div>'}
+    </div>
+  `;
+  renderShell(inner,'Historique'+(svcFilter!=='ALL'?' — '+svcFilter:''));
+  document.getElementById('histServiceSelect').addEventListener('change',(e)=>{ state.histServiceFilter=e.target.value; state.histAgentFilter='ALL'; render(); });
+  document.getElementById('histAgentSelect').addEventListener('change',(e)=>{ state.histAgentFilter=e.target.value; render(); });
+  document.getElementById('histPeriodDay').addEventListener('click',()=>{ state.histPeriodMode='day'; render(); });
+  document.getElementById('histPeriodMonth').addEventListener('click',()=>{ state.histPeriodMode='month'; render(); });
+  document.getElementById('histPeriodAll').addEventListener('click',()=>{ state.histPeriodMode='all'; render(); });
+  const dayPicker=document.getElementById('histDayPicker');
+  if(dayPicker) dayPicker.addEventListener('change',(e)=>{ state.histDay=e.target.value; render(); });
+  if(periodMode==='month') bindMonthNav(render);
+}
+
 function renderStatistiques(){
   if(!(state.currentUser.role==='admin' && adminCanAccessFeature('stats'))){ state.tab='calendrier'; render(); return; }
   const scope=getAdminScope(state.currentUser);
@@ -2702,6 +2869,7 @@ function renderFonctionnalites(){
       ${globalToggle('photos','Photo de profil','Permet aux salariés d\u2019ajouter une photo depuis « Mon compte ».')}
       ${globalToggle('cycles','Cycles (heures travaillées)','Calcule les heures travaillées de chaque salarié sur des cycles glissants (ex : 8 semaines) et alerte en cas de dépassement. Visible uniquement par les comptes admin, jamais par les salariés.')}
       ${globalToggle('stats','Statistiques','Tableau de bord : heures travaillées, répartition des codes, équité nuits/week-ends. Visible uniquement par les comptes admin, jamais par les salariés.')}
+      ${globalToggle('historique','Historique','Journal complet : validations/dévalidations de mois, désidératas et échanges déposés/traités, modifications du planning après validation — qui, quand, quoi. Visible uniquement par les comptes admin, jamais par les salariés.')}
     </div>
     <div class="feat-card">
       <h3>Droits par service</h3>
@@ -2860,6 +3028,7 @@ function navItems(){
     if(adminCanAccessFeature('alertes')) items.push({id:'alertes', label:'Alertes', icon:'⚠️'});
     if(adminCanAccessFeature('cycles')) items.push({id:'cycles', label:'Cycles', icon:'📊'});
     if(adminCanAccessFeature('stats')) items.push({id:'statistiques', label:'Statistiques', icon:'📈'});
+    if(adminCanAccessFeature('historique')) items.push({id:'historique', label:'Historique', icon:'📜'});
     if(isSuperAdmin(state.currentUser)) items.push({id:'fonctionnalites', label:'Fonctionnalités', icon:'🧩'});
     return items;
   }
@@ -3256,7 +3425,13 @@ function gridHtml({employees, readonly, alerts, changes, serviceContext}){
         bodyRows+=`<tr><td class="fonction-head" colspan="${nDays+1}">${escapeHtml(label)}${alertBadge}</td></tr>`;
       }
       const groupAlertDays=new Set(alerts.filter(a=>a.rule.type==='daily_group' && a.rule.service===svcGroup.service && (group.fonction===null||a.rule.fonctions.includes(group.fonction))).map(a=>a.date+'|'+a.kind));
+      let prevSubGroup=undefined; // ligne de séparation dès que le sous-groupe change (voir « Gestion des salariés »)
       group.list.forEach(emp=>{
+    const empSubGroup=emp.subGroup||'';
+    if(prevSubGroup!==undefined && empSubGroup!==prevSubGroup){
+      bodyRows+=`<tr class="subgroup-sep-row"><td colspan="${nDays+1}">${empSubGroup?escapeHtml(empSubGroup):''}</td></tr>`;
+    }
+    prevSubGroup=empSubGroup;
     const empWeeklyAlerts = alerts.filter(a=>a.rule.type==='weekly_person' && a.employee && a.employee.username===emp.username);
     const empAlertBadge = empWeeklyAlerts.length ? `<span class="alert-badge-dot" title="${escapeHtml(formatWeeklyAlertTooltip(empWeeklyAlerts))}">⚠</span>` : '';
     let row=`<tr data-user="${emp.username}"><td class="emp-col">${emp.photoUrl?`<span class="grid-emp-avatar"><img src="${emp.photoUrl}" alt=""></span>`:''}${emp.name}${empAlertBadge}</td>`;
@@ -5330,11 +5505,21 @@ function renderGestionSalaries(){
   const fonctionSectionHtml=(svcKey, group)=>{
     const label = group.fonction==='__none__' ? 'Sans fonction' : group.fonction;
     const fonctionZone = group.fonction==='__none__' ? '' : escapeHtml(group.fonction);
+    let rowsHtml='';
+    let prevSubGroup=undefined;
+    group.list.forEach(emp=>{
+      const empSubGroup=emp.subGroup||'';
+      if(prevSubGroup!==undefined && empSubGroup!==prevSubGroup){
+        rowsHtml+=`<div class="subgroup-sep">${empSubGroup?escapeHtml(empSubGroup):''}</div>`;
+      }
+      prevSubGroup=empSubGroup;
+      rowsHtml+=empRowHtml(emp);
+    });
     return `
     <div class="fonction-section" data-service-zone="${svcKey}" data-fonction-zone="${fonctionZone}">
       <div class="fonction-section-head">${escapeHtml(label)} <span style="font-weight:600;color:rgba(255,255,255,.7);">(${group.list.length})</span></div>
       <div class="emp-list drop-zone" data-service-zone="${svcKey}" data-fonction-zone="${fonctionZone}">
-        ${group.list.map(empRowHtml).join('') || '<div class="empty-state" style="padding:18px;font-size:12.5px;">Glissez un salarié ici.</div>'}
+        ${rowsHtml || '<div class="empty-state" style="padding:18px;font-size:12.5px;">Glissez un salarié ici.</div>'}
       </div>
     </div>`;
   };
@@ -5634,6 +5819,10 @@ function renderModal(){
         </div>
       </div>
       <div class="helper" style="margin:-10px 0 14px;">Le service détermine qui voit qui sur « Planning équipe ». La liste des fonctions dépend du service choisi (gérée dans « Gestion des salariés »).</div>
+      <div class="field"><label>Sous-groupe au sein de la fonction (optionnel)</label>
+        <input id="mSubGroup" value="${escapeHtml(d.subGroup||'')}" placeholder="Ex : Équipe A, Équipe B...">
+        <div class="helper">Ajoute une ligne de séparation dans la liste des salariés (« Gestion des salariés » et plannings) dès que le sous-groupe change — utile quand une même fonction (ex : Techniciens) regroupe en réalité plusieurs équipes distinctes. Laissez vide pour ne rien changer.</div>
+      </div>
       <div class="field admin-rights-field">
         <label class="admin-rights-toggle"><input type="checkbox" id="mIsAdministratif" ${d.isAdministratif?'checked':''}> <b>Personnel administratif</b></label>
         <div class="helper">Coché, ce salarié est proposé par défaut pour les règles de génération automatique de type « Administratif » (Fonctionnalités → Règles de génération). Purement informatif, ne change rien d'autre.</div>
@@ -5783,6 +5972,7 @@ function renderModal(){
       const extraTeams=[...document.querySelectorAll('#mExtraTeams input:checked')].map(i=>i.value).filter(s=>s!==team);
       const alsoShowInServices=[...document.querySelectorAll('#mAlsoShowIn input:checked')].map(i=>i.value).filter(s=>s!==team);
       const isAdministratif=document.getElementById('mIsAdministratif').checked;
+      const subGroup=document.getElementById('mSubGroup').value.trim();
       let role='employee', adminServices=[];
       const mIsAdminChk=document.getElementById('mIsAdmin');
       if(mIsAdminChk){
@@ -5795,13 +5985,13 @@ function renderModal(){
         role=d.role; adminServices=d.adminServices||[];
       }
       if(state.modal.isNew){
-        const newEmp={username,password,name,role,startDate,endDate,team,fonction,email,adminServices,extraTeams,alsoShowInServices,isAdministratif};
+        const newEmp={username,password,name,role,startDate,endDate,team,fonction,email,adminServices,extraTeams,alsoShowInServices,isAdministratif,subGroup};
         newEmp.affectations=[{id:genId(), startDate: startDate||dkey(new Date()), team, fonction}];
         state.users.push(newEmp);
       } else {
         const emp=state.users.find(u=>u.username===d.username);
         emp.name=name; emp.password=password; emp.startDate=startDate; emp.endDate=endDate; emp.email=email;
-        emp.role=role; emp.adminServices=adminServices; emp.extraTeams=extraTeams; emp.alsoShowInServices=alsoShowInServices; emp.isAdministratif=isAdministratif;
+        emp.role=role; emp.adminServices=adminServices; emp.extraTeams=extraTeams; emp.alsoShowInServices=alsoShowInServices; emp.isAdministratif=isAdministratif; emp.subGroup=subGroup;
         if(team!==(d.team||'') || fonction!==(d.fonction||'')){
           setImmediateAffectation(emp, team, fonction);
         } else {
@@ -6777,6 +6967,9 @@ function render(){
   if(state.previousTab!=='statistiques' && state.tab==='statistiques' && state.currentUser.role==='admin' && !isSuperAdmin(state.currentUser)){
     state.statsServiceFilter=undefined;
   }
+  if(state.previousTab!=='historique' && state.tab==='historique' && state.currentUser.role==='admin' && !isSuperAdmin(state.currentUser)){
+    state.histServiceFilter=undefined;
+  }
   state.previousTab=state.tab;
   if(state.currentUser.role==='admin'){
     if(state.tab==='salaries') renderGestionSalaries();
@@ -6786,6 +6979,7 @@ function render(){
     else if(state.tab==='alertes') renderAlertes();
     else if(state.tab==='cycles') renderCycles();
     else if(state.tab==='statistiques') renderStatistiques();
+    else if(state.tab==='historique') renderHistorique();
     else if(state.tab==='fonctionnalites') renderFonctionnalites();
     else renderCalendrierAdmin();
   } else {
