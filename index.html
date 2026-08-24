@@ -601,6 +601,8 @@
   table.annual-grid .annual-cell-official{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:8.5px;font-weight:800;}
   table.annual-grid .annual-holiday-mark{position:absolute;top:1px;left:2px;font-size:9.5px;font-weight:900;color:var(--danger);line-height:1;z-index:3;pointer-events:none;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 2px #fff,0 0 2px #fff;}
   table.annual-grid .annual-draft-bubble{position:absolute;bottom:-2px;right:-2px;width:14px;height:14px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:7.2px;font-weight:900;box-shadow:0 0 0 1.5px #fff,0 1px 2px rgba(0,0,0,.2);z-index:3;pointer-events:none;}
+  table.annual-grid .annual-desid-mark{position:absolute;top:-2px;right:-2px;width:13px;height:13px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:900;box-shadow:0 0 0 1.5px #fff,0 1px 2px rgba(0,0,0,.2);z-index:4;pointer-events:none;}
+  table.annual-grid td.annual-cell.desid-approved{outline:2px solid #1E7B3C;outline-offset:-1px;}
   table.annual-grid td.annual-cell:hover .annual-cell-official{outline:2px solid var(--primary);outline-offset:-2px;}
   /* ---------- Mon planning annuel : grille compacte (mois en lignes) ---------- */
   .annual-compact-card{overflow:auto;}
@@ -637,6 +639,7 @@
     .annual-month-block-title{font-size:12px;}
     .annual-cell-official{font-size:7.5px;}
     .annual-draft-bubble{width:14px;height:14px;font-size:6.1px;}
+    .annual-desid-mark{width:12px;height:12px;font-size:6px;}
     .annual-holiday-mark{font-size:7.5px;}
     .cp-form-body{flex-direction:column;align-items:stretch;}
   }
@@ -780,7 +783,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v8.2';
+const APP_VERSION = 'v8.3';
 const APP_VERSION_DATE = '24/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -4918,10 +4921,16 @@ function renderMonPlanningAnnuel(){
     if(!dayValid){
       return `<td class="annual-cell invalid" title="${dateKeyStr} — hors période de validité"></td>`;
     }
-    // Planning VALIDÉ (officiel, admin) — affiché en grand UNIQUEMENT si ce mois a été
-    // validé pour le service du salarié (même verrou que « Mon planning » / « Planning équipe »)
+    // Planning VALIDÉ (officiel, admin) — affiché en grand si ce mois a été
+    // validé pour le service du salarié (même verrou que « Mon planning » /
+    // « Planning équipe »), OU si une désidérata précise a déjà été validée
+    // pour CE jour précis (elle a bien été écrite dans le planning officiel
+    // au moment de sa validation — voir validateDesiderata) : dans ce cas on
+    // l'affiche quand même, indépendamment de la validation globale du mois.
+    const desid=desiderataForCell(username,dateKeyStr);
+    const desidApproved = !!(desid && desid.status==='validated');
     const monthValidatedForCell = isMonthValidated(emp?emp.team:'', year, monthIdx);
-    const officialCode = monthValidatedForCell ? getDayCode(username,year,monthIdx,day) : undefined;
+    const officialCode = (monthValidatedForCell || desidApproved) ? getDayCode(username,year,monthIdx,day) : undefined;
     const officialInfo=officialCode?codeInfo(officialCode):null;
     const officialStyle=officialInfo?`background:${officialInfo.color};color:${officialInfo.text};`:(isWeekend?'background:#F3F0FA;':'');
     const holidayMark=isHoliday?`<span class="annual-holiday-mark" title="${escapeHtml(holidays[dateKeyStr])}">F</span>`:'';
@@ -4929,10 +4938,21 @@ function renderMonPlanningAnnuel(){
     const draftCode=getDraftCode(username,year,monthIdx,day);
     const draftInfo=draftCode?codeInfo(draftCode):null;
     const draftHtml=draftCode?`<span class="annual-draft-bubble" style="background:${draftInfo?draftInfo.color:'#DDD'};color:${draftInfo?draftInfo.text:'#333'};" title="Mon brouillon : ${escapeHtml(draftCode)}">${draftCode}</span>`:'';
+    // Désidérata — petit repère en haut à gauche, pour toujours savoir où en
+    // est ma demande (en attente / validée / refusée), même avant que le
+    // mois entier ne soit officiellement validé par l'admin.
+    let desidMarkHtml='';
+    if(desid){
+      const dInfo=codeInfo(desid.code);
+      const sc=desidStatusColor(desid.status);
+      const icon = desid.status==='pending' ? '⏳' : desid.status==='validated' ? '✓' : '✕';
+      desidMarkHtml=`<span class="annual-desid-mark" style="background:${sc.bg};color:${sc.fg};" title="Désidérata (${desidStatusLabel(desid.status)}) : ${dInfo?dInfo.label:desid.code}${desid.comment?' — '+escapeHtml(desid.comment):''}">${icon}</span>`;
+    }
     const selected=genMode && state.annualSelectedDay===dateKeyStr;
-    return `<td class="annual-cell ${selected?'selected':''}" data-date="${dateKeyStr}" title="${dateKeyStr}${officialCode?' — validé : '+officialCode:''}${draftCode?' — brouillon : '+draftCode:''}${isHoliday?' — '+holidays[dateKeyStr]:''}">
+    return `<td class="annual-cell ${selected?'selected':''} ${desidApproved?'desid-approved':''}" data-date="${dateKeyStr}" title="${dateKeyStr}${officialCode?' — validé : '+officialCode:''}${draftCode?' — brouillon : '+draftCode:''}${isHoliday?' — '+holidays[dateKeyStr]:''}">
       <div class="annual-cell-inner">
         ${holidayMark}
+        ${desidMarkHtml}
         <div class="annual-cell-official" style="${officialStyle}">${officialCode||''}</div>
         ${draftHtml}
       </div>
