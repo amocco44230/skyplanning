@@ -386,6 +386,15 @@
   .restricted-daylabel{background:transparent;color:var(--ink-soft);font-size:10px;font-weight:700;}
   .restricted-daylabel.weekend{color:#8A6FE0;}
   .restricted-daylabel.holiday{color:var(--danger);}
+  /* ---------- Statistiques ---------- */
+  .stats-filters{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px;}
+  .stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  .stats-legend{display:flex;flex-direction:column;gap:8px;flex:1;min-width:160px;}
+  .stats-legend-row{display:flex;align-items:center;gap:8px;font-size:13px;}
+  .stats-legend-dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;}
+  @media(max-width:900px){
+    .stats-grid{grid-template-columns:1fr;}
+  }
   .indiv-today-card{border-radius:14px;padding:14px 16px;margin-top:4px;box-shadow:0 2px 6px rgba(0,0,0,.08);}
   .indiv-today-card-label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;opacity:.75;margin-bottom:3px;}
   .indiv-today-card-value{font-size:14px;font-weight:800;}
@@ -741,7 +750,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v6.5';
+const APP_VERSION = 'v6.6';
 const APP_VERSION_DATE = '23/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -959,7 +968,7 @@ let state={
   comments:{},
   desideratas:[],
   exchanges:[],
-  featureFlags:{desideratas:true, echanges:true, alertes:true, genAuto:true, impression:true, photos:true, cycles:false, perService:{}},
+  featureFlags:{desideratas:true, echanges:true, alertes:true, genAuto:true, impression:true, photos:true, cycles:false, stats:false, perService:{}},
   cycleSettings:{},
   alertRules:[],
   monthValidations:{},
@@ -1086,7 +1095,7 @@ async function loadAll(){
     // par une mise à jour de l'appli reste activée par défaut si l'admin n'a
     // encore rien configuré explicitement.
     state.featureFlags = Object.assign(
-      {desideratas:true, echanges:true, alertes:true, genAuto:true, impression:true, photos:true, cycles:false, perService:{}},
+      {desideratas:true, echanges:true, alertes:true, genAuto:true, impression:true, photos:true, cycles:false, stats:false, perService:{}},
       parsed||{}
     );
     if(!state.featureFlags.perService) state.featureFlags.perService={};
@@ -1337,6 +1346,50 @@ function currentCycleFor(cycles){
   if(inProgress) return inProgress;
   const past=[...cycles].reverse().find(c=>c.end<todayKey);
   return past || cycles[0];
+}
+/* ============================================================
+   PETITS GRAPHIQUES SVG MAISON (aucune librairie externe disponible dans
+   ce fichier unique) — réutilisés par la page Statistiques.
+   ============================================================ */
+function svgBarChartHtml(items, opts){
+  opts=opts||{};
+  const unit=opts.unit||'';
+  const maxVal=Math.max(1, ...items.map(it=>it.value));
+  const barH=opts.barHeight||26, gap=opts.gap||10, labelW=opts.labelWidth||140, chartW=opts.width||520, valueW=opts.valueWidth||64;
+  const barAreaW=chartW-labelW-valueW-16;
+  const rowH=barH+gap;
+  const totalH=items.length*rowH;
+  const rows=items.map((it,i)=>{
+    const y=i*rowH;
+    const w=Math.max(2, (it.value/maxVal)*barAreaW);
+    return `
+    <text x="0" y="${y+barH/2+4}" font-size="12.5" font-weight="700" fill="var(--ink)">${escapeHtml(it.label)}</text>
+    <rect x="${labelW}" y="${y}" width="${barAreaW}" height="${barH}" rx="6" fill="#F1F3F6"></rect>
+    <rect x="${labelW}" y="${y}" width="${w}" height="${barH}" rx="6" fill="${it.color||'var(--primary)'}"></rect>
+    <text x="${labelW+barAreaW+10}" y="${y+barH/2+4}" font-size="12.5" font-weight="800" fill="var(--ink)">${it.value}${unit}</text>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${chartW} ${totalH}" width="100%" height="${totalH}" style="overflow:visible;font-family:inherit;">${rows}</svg>`;
+}
+function svgDonutChartHtml(items, opts){
+  opts=opts||{};
+  const size=opts.size||180, stroke=opts.stroke||26, cx=size/2, cy=size/2, r=(size-stroke)/2;
+  const total=items.reduce((s,it)=>s+it.value,0) || 1;
+  let angleStart=-90;
+  const circumference=2*Math.PI*r;
+  const arcs=items.map(it=>{
+    const frac=it.value/total;
+    const dash=frac*circumference;
+    const gapLen=circumference-dash;
+    const rotate=angleStart;
+    angleStart+=frac*360;
+    return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${it.color}" stroke-width="${stroke}" stroke-dasharray="${dash} ${gapLen}" transform="rotate(${rotate} ${cx} ${cy})"><title>${escapeHtml(it.label)} : ${it.value} (${Math.round(frac*100)}%)</title></circle>`;
+  }).join('');
+  const centerLabel = opts.centerLabel || (total+(opts.centerUnit||''));
+  return `<svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" style="overflow:visible;">
+    ${arcs}
+    <text x="${cx}" y="${cy-2}" text-anchor="middle" font-size="20" font-weight="800" fill="var(--ink)">${escapeHtml(String(centerLabel))}</text>
+    <text x="${cx}" y="${cy+16}" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--ink-soft)">${escapeHtml(opts.centerSub||'')}</text>
+  </svg>`;
 }
 async function resetTestData(){
   state.desideratas=[];
@@ -2332,6 +2385,109 @@ function cycleEmployeeRowHtml(ec, settings, expanded){
     </div>` : ''}
   </div>`;
 }
+/* ============================================================
+   ÉCRAN — STATISTIQUES (admin) : heures, répartition des codes, équité
+   ============================================================ */
+function renderStatistiques(){
+  if(!(state.currentUser.role==='admin' && adminCanAccessFeature('stats'))){ state.tab='calendrier'; render(); return; }
+  const scope=getAdminScope(state.currentUser);
+  const availableServices = scope || state.services;
+  if(state.statsServiceFilter===undefined || (scope && !scope.includes(state.statsServiceFilter) && state.statsServiceFilter!=='ALL')){
+    state.statsServiceFilter = scope ? (availableServices.includes('CCO') ? 'CCO' : (availableServices[0] || 'ALL')) : (availableServices[0] || 'ALL');
+  }
+  const svcFilter=state.statsServiceFilter;
+  const svcOptions = (scope?'':`<option value="ALL" ${svcFilter==='ALL'?'selected':''}>Tous les services</option>`)
+    + availableServices.map(s=>`<option value="${escapeHtml(s)}" ${svcFilter===s?'selected':''}>${escapeHtml(s)}</option>`).join('');
+
+  const y=state.viewDate.getFullYear(), m=state.viewDate.getMonth();
+  const nDays=daysInMonth(y,m);
+
+  const belongsToService=(u,svc)=>affectationsForMonth(u,y,m).some(s=>s.team===svc);
+  const employees = state.users.filter(u=>!isSuperAdmin(u) && u.role!=='admin' &&
+    (svcFilter==='ALL' ? availableServices.some(s=>belongsToService(u,s)) : belongsToService(u,svcFilter))
+  ).sort((a,b)=>a.name.localeCompare(b.name));
+
+  // --- Heures travaillées par salarié (mois sélectionné) ---
+  const hoursData=employees.map(u=>{
+    let total=0;
+    for(let d=1; d<=nDays; d++){
+      const code=getDayCode(u.username,y,m,d);
+      if(code) total+=codeHoursValue(code);
+    }
+    return {label:u.name, value:Math.round(total*10)/10, color:'var(--primary)'};
+  }).sort((a,b)=>b.value-a.value);
+  const totalHoursService=hoursData.reduce((s,it)=>s+it.value,0);
+
+  // --- Répartition des codes (tous les salariés du filtre, mois sélectionné) ---
+  const codeCounts={};
+  employees.forEach(u=>{
+    for(let d=1; d<=nDays; d++){
+      const code=getDayCode(u.username,y,m,d);
+      if(code) codeCounts[code]=(codeCounts[code]||0)+1;
+    }
+  });
+  const codeDonutData=Object.entries(codeCounts)
+    .sort((a,b)=>b[1]-a[1])
+    .map(([code,count])=>{ const info=codeInfo(code); return {label:code, value:count, color:info?info.color:'#CBD2DB'}; });
+  const totalCodeDays=codeDonutData.reduce((s,it)=>s+it.value,0);
+
+  // --- Équité nuits & week-ends (3 derniers mois glissants) ---
+  const todayRef=new Date();
+  const equityStart=new Date(todayRef.getFullYear(), todayRef.getMonth()-2, 1);
+  const equityData=employees.map(u=>{
+    let nights=0, weekends=0;
+    let cursor=new Date(equityStart);
+    while(cursor<=todayRef){
+      const code=getDayCode(u.username, cursor.getFullYear(), cursor.getMonth(), cursor.getDate());
+      if(code){
+        const info=codeInfo(code);
+        if(info && info.isWork){
+          if(code==='N') nights++;
+          const dow=cursor.getDay();
+          if(dow===0||dow===6) weekends++;
+        }
+      }
+      cursor=addDays(cursor,1);
+    }
+    return {label:u.name, value:nights+weekends, nights, weekends};
+  }).sort((a,b)=>b.value-a.value).filter(e=>e.value>0);
+
+  const inner=`
+    <div class="stats-filters">
+      <select id="statsServiceSelect" class="filter-select">${svcOptions}</select>
+      ${monthNavHtml()}
+    </div>
+    ${employees.length===0 ? `<div class="empty-state">Aucun salarié dans ce service.</div>` : `
+    <div class="stats-grid">
+      <div class="feat-card">
+        <h3>⏱️ Heures travaillées — ${MOIS[m]} ${y}</h3>
+        <div class="helper" style="margin:-4px 0 14px;">${escapeHtml(svcFilter==='ALL'?'Tous services confondus':svcFilter)} · total : <b>${totalHoursService.toFixed(1)} h</b></div>
+        ${hoursData.length ? svgBarChartHtml(hoursData,{unit:' h'}) : '<div class="empty-state">Aucune heure saisie ce mois-ci.</div>'}
+      </div>
+      <div class="feat-card">
+        <h3>🧩 Répartition des codes — ${MOIS[m]} ${y}</h3>
+        <div class="helper" style="margin:-4px 0 14px;">${totalCodeDays} jour${totalCodeDays>1?'s':''} au total sur le service</div>
+        ${codeDonutData.length ? `
+        <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;">
+          ${svgDonutChartHtml(codeDonutData,{centerUnit:'', centerSub:'jours'})}
+          <div class="stats-legend">
+            ${codeDonutData.map(it=>`<div class="stats-legend-row"><span class="stats-legend-dot" style="background:${it.color};"></span><b>${escapeHtml(it.label)}</b><span style="color:var(--ink-soft);">${it.value} j · ${Math.round(it.value/totalCodeDays*100)}%</span></div>`).join('')}
+          </div>
+        </div>` : '<div class="empty-state">Aucun code saisi ce mois-ci.</div>'}
+      </div>
+      <div class="feat-card" style="grid-column:1 / -1;">
+        <h3>⚖️ Équité nuits &amp; week-ends — 3 derniers mois</h3>
+        <div class="helper" style="margin:-4px 0 14px;">Nombre de nuits (code N) + jours de week-end travaillés, du ${fmtDateKeyFr(dkey(equityStart))} à aujourd'hui — pour repérer une répartition déséquilibrée avant de générer les prochains cycles.</div>
+        ${equityData.length ? svgBarChartHtml(equityData.map(e=>({label:e.label, value:e.value, color:'#8A6FE0'})),{unit:' j'}) : '<div class="empty-state">Aucune nuit ni week-end travaillé sur la période.</div>'}
+      </div>
+    </div>
+    `}
+  `;
+  renderShell(inner,'Statistiques'+(svcFilter!=='ALL'?' — '+svcFilter:''));
+  document.getElementById('statsServiceSelect').addEventListener('change',(e)=>{ state.statsServiceFilter=e.target.value; render(); });
+  bindMonthNav(render);
+}
+
 function renderCycles(){
   if(!(state.currentUser.role==='admin' && adminCanAccessFeature('cycles'))){ state.tab='calendrier'; render(); return; }
   const scope=getAdminScope(state.currentUser);
@@ -2447,6 +2603,7 @@ function renderFonctionnalites(){
       ${globalToggle('impression','Impression PDF','Les boutons « Imprimer le planning » (admin, planning équipe, planning individuel).')}
       ${globalToggle('photos','Photo de profil','Permet aux salariés d\u2019ajouter une photo depuis « Mon compte ».')}
       ${globalToggle('cycles','Cycles (heures travaillées)','Calcule les heures travaillées de chaque salarié sur des cycles glissants (ex : 8 semaines) et alerte en cas de dépassement. Visible uniquement par les comptes admin, jamais par les salariés.')}
+      ${globalToggle('stats','Statistiques','Tableau de bord : heures travaillées, répartition des codes, équité nuits/week-ends. Visible uniquement par les comptes admin, jamais par les salariés.')}
     </div>
     <div class="feat-card">
       <h3>Droits par service</h3>
@@ -2604,6 +2761,7 @@ function navItems(){
     if(adminCanAccessFeature('echanges')) items.push({id:'echanges', label:'Échanges', icon:'🔄'});
     if(adminCanAccessFeature('alertes')) items.push({id:'alertes', label:'Alertes', icon:'⚠️'});
     if(adminCanAccessFeature('cycles')) items.push({id:'cycles', label:'Cycles', icon:'📊'});
+    if(adminCanAccessFeature('stats')) items.push({id:'statistiques', label:'Statistiques', icon:'📈'});
     if(isSuperAdmin(state.currentUser)) items.push({id:'fonctionnalites', label:'Fonctionnalités', icon:'🧩'});
     return items;
   }
@@ -6485,6 +6643,9 @@ function render(){
   if(state.previousTab!=='calendrier' && state.tab==='calendrier' && state.currentUser.role==='admin' && !isSuperAdmin(state.currentUser)){
     state.calendarServiceFilter=undefined;
   }
+  if(state.previousTab!=='statistiques' && state.tab==='statistiques' && state.currentUser.role==='admin' && !isSuperAdmin(state.currentUser)){
+    state.statsServiceFilter=undefined;
+  }
   state.previousTab=state.tab;
   if(state.currentUser.role==='admin'){
     if(state.tab==='salaries') renderGestionSalaries();
@@ -6493,6 +6654,7 @@ function render(){
     else if(state.tab==='echanges') renderAdminEchanges();
     else if(state.tab==='alertes') renderAlertes();
     else if(state.tab==='cycles') renderCycles();
+    else if(state.tab==='statistiques') renderStatistiques();
     else if(state.tab==='fonctionnalites') renderFonctionnalites();
     else renderCalendrierAdmin();
   } else {
