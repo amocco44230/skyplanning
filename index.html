@@ -558,11 +558,11 @@
   .rule-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;}
   /* ---------- Sélecteur guidé du type de règle d'alerte ---------- */
   .alert-type-picker{display:flex;flex-direction:column;gap:10px;margin-bottom:16px;}
-  .alert-type-card{display:grid;grid-template-columns:36px 1fr;column-gap:14px;text-align:left;padding:14px 16px;border-radius:12px;border:1.5px solid var(--border);background:#fff;}
+  .alert-type-card{display:block;text-align:left;padding:14px 16px;border-radius:12px;border:1.5px solid var(--border);background:#fff;}
   .alert-type-card:hover{border-color:var(--primary);background:var(--primary-light);}
-  .alert-type-card-icon{grid-row:1 / 3;font-size:24px;text-align:center;}
-  .alert-type-card-title{font-weight:800;font-size:13.5px;}
-  .alert-type-card-desc{font-size:12px;color:var(--ink-soft);margin-top:2px;line-height:1.4;}
+  .alert-type-card-tag{display:inline-block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--primary);background:var(--primary-light);padding:3px 8px;border-radius:5px;margin-bottom:7px;}
+  .alert-type-card-title{font-weight:800;font-size:13.5px;display:block;}
+  .alert-type-card-desc{font-size:12px;color:var(--ink-soft);display:block;margin-top:3px;line-height:1.4;}
   .rule-card.rule-inactive{opacity:.55;}
   .rule-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;}
   .rule-card-title{font-weight:800;font-size:13.5px;}
@@ -801,7 +801,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v8.5';
+const APP_VERSION = 'v8.6';
 const APP_VERSION_DATE = '24/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -5373,9 +5373,9 @@ function renderAlertes(){
    du tableau de bord « Alertes » pour rester simple à consulter au quotidien.
    ============================================================ */
 const ALERT_TYPE_INFO = {
-  daily_group: {icon:'👥', title:'Effectif par jour', desc:'Vérifie chaque jour qu\u2019un groupe de salariés (par fonction) a un nombre suffisant — ou pas trop — de personnes sur un code donné.'},
-  weekly_person: {icon:'📆', title:'Charge hebdomadaire', desc:'Vérifie, chaque semaine, que chaque salarié d\u2019un groupe a un nombre correct de jours sur un code donné.'},
-  min_rest: {icon:'🛌', title:'Repos minimum entre 2 services', desc:'Vérifie que chaque salarié a assez d\u2019heures de repos entre la fin d\u2019un service et le début du suivant (ex : 11h minimum).'},
+  daily_group: {tag:'Effectif', title:'Effectif par jour', desc:'Vérifie chaque jour qu\u2019un groupe de salariés (par fonction) a un nombre suffisant — ou pas trop — de personnes sur un code donné.'},
+  weekly_person: {tag:'Charge', title:'Charge hebdomadaire', desc:'Vérifie, chaque semaine, que chaque salarié d\u2019un groupe a un nombre correct de jours sur un code donné.'},
+  min_rest: {tag:'Repos', title:'Repos minimum entre 2 services', desc:'Vérifie que chaque salarié a assez d\u2019heures de repos entre la fin d\u2019un service et le début du suivant (ex : 11h minimum).'},
 };
 function renderConfigAlertes(){
   if(!adminCanAccessFeature('alertes')){ state.tab='calendrier'; render(); return; }
@@ -5392,7 +5392,7 @@ function renderConfigAlertes(){
     <div class="rule-card ${r.active?'':'rule-inactive'}">
       <div class="rule-card-head">
         <div>
-          <div class="rule-card-title">${ALERT_TYPE_INFO[r.type].icon} ${escapeHtml(r.label)}</div>
+          <div class="rule-card-title">${escapeHtml(r.label)}</div>
           <div class="rule-card-sub">${ruleTypeLabel(r.type)} · ${escapeHtml(r.service)} · ${escapeHtml(ruleFonctionsLabel(r))} · codes ${escapeHtml(ruleCodesLabel(r))} · ${ruleThresholdLabel(r)}</div>
         </div>
         <label class="switch"><input type="checkbox" data-toggle-rule="${r.id}" ${r.active?'checked':''}><span class="switch-track"></span></label>
@@ -6766,7 +6766,7 @@ function renderModal(){
       <div class="alert-type-picker">
         ${Object.entries(ALERT_TYPE_INFO).map(([type,info])=>`
         <button class="alert-type-card" data-pick-type="${type}">
-          <span class="alert-type-card-icon">${info.icon}</span>
+          <span class="alert-type-card-tag">${escapeHtml(info.tag)}</span>
           <span class="alert-type-card-title">${info.title}</span>
           <span class="alert-type-card-desc">${info.desc}</span>
         </button>`).join('')}
@@ -6792,7 +6792,7 @@ function renderModal(){
     const isMinRest = rd.type==='min_rest';
     overlay.innerHTML=`
     <div class="modal" style="max-width:480px;">
-      <h3>${ALERT_TYPE_INFO[rd.type].icon} ${state.modal.isNew?'Nouvelle règle — '+ALERT_TYPE_INFO[rd.type].title:'Modifier la règle'}</h3>
+      <h3>${state.modal.isNew?'Nouvelle règle — '+ALERT_TYPE_INFO[rd.type].title:'Modifier la règle'}</h3>
       <div class="legend-hint" style="margin:-6px 0 14px;">${ALERT_TYPE_INFO[rd.type].desc}</div>
       <div class="field"><label>Nom de la règle</label><input id="arLabel" value="${escapeHtml(rd.label)}" placeholder="Ex : Effectif Matin CDQ+Responsables"></div>
       <div class="field"><label>Service</label>
