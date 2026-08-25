@@ -563,6 +563,13 @@
   .alert-type-card-tag{display:inline-block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--primary);background:var(--primary-light);padding:3px 8px;border-radius:5px;margin-bottom:7px;}
   .alert-type-card-title{font-weight:800;font-size:13.5px;display:block;}
   .alert-type-card-desc{font-size:12px;color:var(--ink-soft);display:block;margin-top:3px;line-height:1.4;}
+  .alert-examples-group{margin-bottom:18px;}
+  .alert-examples-group-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--primary);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);}
+  .alert-example-item{padding:10px 0;border-bottom:1px solid #F1F3F6;}
+  .alert-example-item:last-child{border-bottom:none;}
+  .alert-example-label{font-weight:800;font-size:13px;}
+  .alert-example-detail{font-size:11.5px;color:var(--primary-dark);font-weight:600;margin-top:3px;font-family:monospace;}
+  .alert-example-note{font-size:12px;color:var(--ink-soft);margin-top:4px;line-height:1.4;}
   .rule-card.rule-inactive{opacity:.55;}
   .rule-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;}
   .rule-card-title{font-weight:800;font-size:13.5px;}
@@ -801,8 +808,8 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v8.7';
-const APP_VERSION_DATE = '24/08/2026';
+const APP_VERSION = 'v8.8';
+const APP_VERSION_DATE = '25/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
    ============================================================ */
@@ -3126,51 +3133,8 @@ function renderFonctionnalites(){
         <button class="icon-btn" id="openImportBtn" style="flex-shrink:0;">📥 Importer</button>
       </div>
     </div>
-    <div class="feat-card">
-      <h3>🪄 Règles de génération automatique</h3>
-      <div class="helper" style="margin:-4px 0 14px;">Ces règles sont proposées au choix chaque fois qu'un admin clique sur « Générer » dans le Calendrier Mensuel — pour des équipes en rotation (4/4...), pour le personnel administratif, ou tout autre motif récurrent.</div>
-      <div class="list-mgr">
-        ${state.genRules.map(r=>`
-        <div class="list-mgr-row">
-          <span>
-            <b>${escapeHtml(r.name)}</b>
-            <span style="font-size:12px;color:var(--ink-soft);font-weight:600;display:block;margin-top:2px;">
-              ${r.type==='weekly'
-                ? DOW_SHORT.map((d,i)=>`${d} ${r.weekPattern[i]||'—'}`).join(' · ')
-                : `${r.offDays}j repos / ${r.workDays}j travail — alternance ${r.codeA} ↔ ${r.codeB}`}
-            </span>
-          </span>
-          <span style="display:flex;gap:6px;flex-shrink:0;">
-            <button class="icon-btn" data-edit-genrule="${r.id}" title="Modifier">✎</button>
-            <button class="icon-btn" data-del-genrule="${r.id}" style="color:var(--danger);border-color:var(--danger);" title="Supprimer">🗑</button>
-          </span>
-        </div>`).join('') || '<div class="empty-state">Aucune règle définie.</div>'}
-      </div>
-      <button class="btn btn-primary" id="addGenRuleBtn" style="width:auto;margin-top:14px;">+ Nouvelle règle</button>
-    </div>
   `;
   renderShell(inner,'Fonctionnalités');
-  document.getElementById('addGenRuleBtn').addEventListener('click',()=>{
-    state.modal={type:'gen-rule', isNew:true, data:{name:'', type:'cycle', workDays:4, offDays:4, codeA:'M', codeB:'S', weekPattern:['','','','','','','']}};
-    render();
-  });
-  document.querySelectorAll('[data-edit-genrule]').forEach(btn=>{
-    btn.addEventListener('click',()=>{
-      const r=state.genRules.find(x=>x.id===btn.dataset.editGenrule);
-      state.modal={type:'gen-rule', isNew:false, data:Object.assign({weekPattern:['','','','','','','']}, JSON.parse(JSON.stringify(r)))};
-      render();
-    });
-  });
-  document.querySelectorAll('[data-del-genrule]').forEach(btn=>{
-    btn.addEventListener('click', async()=>{
-      if(state.genRules.length<=1){ toast('Il doit rester au moins une règle.', true); return; }
-      if(!confirm('Supprimer cette règle de génération ?')) return;
-      state.genRules=state.genRules.filter(r=>r.id!==btn.dataset.delGenrule);
-      await persistGenRules();
-      toast('Règle supprimée.');
-      render();
-    });
-  });
   document.getElementById('resetTestDataBtn').addEventListener('click',()=>{
     state.modal={type:'confirm-reset-test-data'};
     render();
@@ -3268,6 +3232,7 @@ function navItems(){
     if(adminCanAccessFeature('stats')) items.push({id:'statistiques', label:'Statistiques', icon:'📈'});
     if(adminCanAccessFeature('historique')) items.push({id:'historique', label:'Historique', icon:'📜'});
     if(adminCanAccessSuivi()) items.push({id:'suivi', label:'Suivi', icon:'🧭'});
+    if(adminCanAccessFeature('genAuto')) items.push({id:'config-generation', label:'Règles de génération', icon:'🪄'});
     if(isSuperAdmin(state.currentUser)) items.push({id:'fonctionnalites', label:'Fonctionnalités', icon:'🧩'});
     return items;
   }
@@ -5449,6 +5414,67 @@ const ALERT_TYPE_INFO = {
   weekly_person: {tag:'Charge', title:'Charge hebdomadaire', desc:'Vérifie, chaque semaine, que chaque salarié d\u2019un groupe a un nombre correct de jours sur un code donné.'},
   min_rest: {tag:'Repos', title:'Repos minimum entre 2 services', desc:'Vérifie que chaque salarié a assez d\u2019heures de repos entre la fin d\u2019un service et le début du suivant (ex : 11h minimum).'},
 };
+/* ============================================================
+   ÉCRAN — CONFIGURATION DE LA GÉNÉRATION AUTOMATIQUE (admin) : gestion des
+   règles, sur sa propre page (au lieu de Fonctionnalités) pour rester
+   cohérent avec « Configuration des alertes » et ne pas surcharger la page
+   des réglages généraux.
+   ============================================================ */
+const GEN_TYPE_INFO = {
+  cycle: {tag:'Cycle', title:'Cycle par blocs', desc:'Alternance de blocs de repos et de blocs travaillés (ex : 4 jours de repos puis 4 jours travaillés, en alternant deux codes). Idéal pour des équipes en rotation.'},
+  weekly: {tag:'Hebdo', title:'Hebdomadaire fixe', desc:'Un code fixe par jour de la semaine, qui se répète à l\u2019identique chaque semaine (ex : ADM du lundi au vendredi, repos le week-end). Idéal pour le personnel administratif.'},
+};
+function renderConfigGeneration(){
+  if(!adminCanAccessFeature('genAuto')){ state.tab='calendrier'; render(); return; }
+  const ruleCardHtml=(r)=>`
+    <div class="rule-card">
+      <div class="rule-card-head">
+        <div>
+          <div class="rule-card-title">${escapeHtml(r.name)}</div>
+          <div class="rule-card-sub">${GEN_TYPE_INFO[r.type].title} · ${r.type==='weekly'
+            ? DOW_SHORT.map((d,i)=>`${d} ${r.weekPattern[i]||'—'}`).join(' · ')
+            : `${r.offDays}j repos / ${r.workDays}j travail — alternance ${r.codeA} ↔ ${r.codeB}`}</div>
+        </div>
+      </div>
+      <div class="rule-card-actions">
+        <button class="icon-btn" data-edit-genrule="${r.id}">Modifier</button>
+        <button class="icon-btn" style="color:var(--danger);" data-del-genrule="${r.id}">Supprimer</button>
+      </div>
+    </div>`;
+  const inner=`
+    <div class="toolbar">
+      <h3 style="margin:0;font-size:14px;font-weight:800;">Règles de génération automatique (${state.genRules.length})</h3>
+      <button class="btn btn-primary" id="addGenRuleBtn" style="width:auto;margin:0;">+ Nouvelle règle</button>
+    </div>
+    <div class="legend-hint" style="margin-bottom:16px;">Ces règles sont proposées au choix chaque fois qu'un admin clique sur « Générer » dans le Calendrier Mensuel — pour des équipes en rotation (4/4...), pour le personnel administratif, ou tout autre motif récurrent.</div>
+    <div class="rule-list">
+      ${state.genRules.length ? state.genRules.map(ruleCardHtml).join('') : '<div class="empty-state">Aucune règle définie. Cliquez sur « + Nouvelle règle » pour commencer.</div>'}
+    </div>
+  `;
+  renderShell(inner,'Configuration de la génération');
+  document.getElementById('addGenRuleBtn').addEventListener('click',()=>{
+    state.modal={type:'gen-rule-type-picker'};
+    render();
+  });
+  document.querySelectorAll('[data-edit-genrule]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const r=state.genRules.find(x=>x.id===btn.dataset.editGenrule);
+      state.modal={type:'gen-rule', isNew:false, data:Object.assign({weekPattern:['','','','','','','']}, JSON.parse(JSON.stringify(r)))};
+      render();
+    });
+  });
+  document.querySelectorAll('[data-del-genrule]').forEach(btn=>{
+    btn.addEventListener('click', async()=>{
+      if(state.genRules.length<=1){ toast('Il doit rester au moins une règle.', true); return; }
+      if(!confirm('Supprimer cette règle de génération ?')) return;
+      state.genRules=state.genRules.filter(r=>r.id!==btn.dataset.delGenrule);
+      await persistGenRules();
+      toast('Règle supprimée.');
+      render();
+    });
+  });
+}
+
 function renderConfigAlertes(){
   if(!adminCanAccessFeature('alertes')){ state.tab='calendrier'; render(); return; }
   const scope=getAdminScope(state.currentUser);
@@ -5486,7 +5512,10 @@ function renderConfigAlertes(){
     </div>
     <div class="toolbar">
       <h3 style="margin:0;font-size:14px;font-weight:800;">Règles configurées${svcFilter==='ALL'?'':' — '+escapeHtml(svcFilter)} (${visibleRules.length})</h3>
-      <button class="btn btn-primary" id="addRuleBtn" style="width:auto;margin:0;">+ Nouvelle règle</button>
+      <div style="display:flex;gap:8px;">
+        <button class="icon-btn" id="alertExamplesBtn">Exemples</button>
+        <button class="btn btn-primary" id="addRuleBtn" style="width:auto;margin:0;">+ Nouvelle règle</button>
+      </div>
     </div>
     <div class="rule-list">
       ${visibleRules.length? visibleRules.map(ruleCardHtml).join('') : `<div class="empty-state">Aucune règle configurée${svcFilter==='ALL'?'':' pour ce service'}. Cliquez sur « + Nouvelle règle » pour commencer.</div>`}
@@ -5498,6 +5527,10 @@ function renderConfigAlertes(){
   if(alertServiceSelect) alertServiceSelect.addEventListener('change',(e)=>{ state.alertesServiceFilter=e.target.value; render(); });
   document.getElementById('addRuleBtn').addEventListener('click',()=>{
     state.modal={type:'alert-rule-type-picker'};
+    render();
+  });
+  document.getElementById('alertExamplesBtn').addEventListener('click',()=>{
+    state.modal={type:'alert-examples'};
     render();
   });
   document.querySelectorAll('[data-edit-rule]').forEach(btn=>{
@@ -6495,70 +6528,83 @@ function renderModal(){
     });
   }
 
+  if(state.modal.type==='gen-rule-type-picker'){
+    overlay.innerHTML=`
+    <div class="modal" style="max-width:480px;">
+      <h3>Quel type de règle voulez-vous créer ?</h3>
+      <div class="alert-type-picker">
+        ${Object.entries(GEN_TYPE_INFO).map(([type,info])=>`
+        <button class="alert-type-card" data-pick-gen-type="${type}">
+          <span class="alert-type-card-tag">${escapeHtml(info.tag)}</span>
+          <span class="alert-type-card-title">${info.title}</span>
+          <span class="alert-type-card-desc">${info.desc}</span>
+        </button>`).join('')}
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="gtpCancel">Annuler</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('gtpCancel').addEventListener('click',closeModal);
+    document.querySelectorAll('[data-pick-gen-type]').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        const type=btn.dataset.pickGenType;
+        state.modal={type:'gen-rule', isNew:true, data:{name:'', type, workDays:4, offDays:4, codeA:'M', codeB:'S', weekPattern:['','','','','','','']}};
+        render();
+      });
+    });
+  }
+
   if(state.modal.type==='gen-rule'){
     const rd=state.modal.data;
     const workCodesList=state.codes.filter(c=>c.isWork);
     const allCodesList=state.codes;
+    const isCycle=rd.type==='cycle';
     overlay.innerHTML=`
     <div class="modal" style="max-width:520px;">
-      <h3>${state.modal.isNew?'Nouvelle règle de génération':'Modifier la règle'}</h3>
+      <h3>${state.modal.isNew?'Nouvelle règle — '+GEN_TYPE_INFO[rd.type].title:'Modifier la règle'}</h3>
+      <div class="legend-hint" style="margin:-6px 0 14px;">${GEN_TYPE_INFO[rd.type].desc}</div>
       <div class="field"><label>Nom de la règle</label><input id="grName" value="${escapeHtml(rd.name)}" placeholder="Ex : Administratif, 3/2/2/3..."></div>
-      <div class="field"><label>Type de règle</label>
-        <div class="type-toggle">
-          <label class="type-toggle-opt ${rd.type==='cycle'?'active':''}"><input type="radio" name="grType" value="cycle" ${rd.type==='cycle'?'checked':''}> 🔁 Cycle par blocs</label>
-          <label class="type-toggle-opt ${rd.type==='weekly'?'active':''}"><input type="radio" name="grType" value="weekly" ${rd.type==='weekly'?'checked':''}> 📅 Hebdomadaire fixe</label>
+      ${isCycle ? `
+      <div class="row2">
+        <div class="field"><label>Jours de repos par bloc</label><input type="number" id="grOffDays" value="${rd.offDays||4}" min="1" max="60"></div>
+        <div class="field"><label>Jours travaillés par bloc</label><input type="number" id="grWorkDays" value="${rd.workDays||4}" min="1" max="60"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Code A</label>
+          <select id="grCodeA" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14.5px;background:#FBFCFE;">
+            ${workCodesList.map(c=>`<option value="${c.code}" ${rd.codeA===c.code?'selected':''}>${c.code} · ${escapeHtml(c.label)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"><label>Code B (alterne avec A)</label>
+          <select id="grCodeB" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14.5px;background:#FBFCFE;">
+            ${workCodesList.map(c=>`<option value="${c.code}" ${rd.codeB===c.code?'selected':''}>${c.code} · ${escapeHtml(c.label)}</option>`).join('')}
+          </select>
         </div>
       </div>
-      <div id="grCycleFields" style="${rd.type==='cycle'?'':'display:none;'}">
-        <div class="helper" style="margin:-6px 0 12px;">Ex : le 4/4 classique = 4 jours de repos puis 4 jours travaillés, en alternant deux codes à chaque bloc. Au moment de générer, l'admin clique le dernier jour travaillé de chaque salarié (avec l'un des deux codes ci-dessous) pour ancrer son cycle personnel.</div>
-        <div class="row2">
-          <div class="field"><label>Jours de repos par bloc</label><input type="number" id="grOffDays" value="${rd.offDays||4}" min="1" max="60"></div>
-          <div class="field"><label>Jours travaillés par bloc</label><input type="number" id="grWorkDays" value="${rd.workDays||4}" min="1" max="60"></div>
-        </div>
-        <div class="row2">
-          <div class="field"><label>Code A</label>
-            <select id="grCodeA" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14.5px;background:#FBFCFE;">
-              ${workCodesList.map(c=>`<option value="${c.code}" ${rd.codeA===c.code?'selected':''}>${c.code} · ${escapeHtml(c.label)}</option>`).join('')}
-            </select>
-          </div>
-          <div class="field"><label>Code B (alterne avec A)</label>
-            <select id="grCodeB" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14.5px;background:#FBFCFE;">
-              ${workCodesList.map(c=>`<option value="${c.code}" ${rd.codeB===c.code?'selected':''}>${c.code} · ${escapeHtml(c.label)}</option>`).join('')}
-            </select>
-          </div>
-        </div>
+      ` : `
+      <div class="helper" style="margin:-6px 0 12px;">Laissez vide pour une case sans code.</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;">
+        ${DOW_SHORT.map((d,i)=>`
+        <div class="field" style="margin:0;"><label>${d}</label>
+          <select class="gr-week-day" data-dow="${i}" style="width:100%;padding:9px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13.5px;background:#FBFCFE;">
+            <option value="">— repos —</option>
+            ${allCodesList.map(c=>`<option value="${c.code}" ${(rd.weekPattern&&rd.weekPattern[i])===c.code?'selected':''}>${c.code}</option>`).join('')}
+          </select>
+        </div>`).join('')}
       </div>
-      <div id="grWeeklyFields" style="${rd.type==='weekly'?'':'display:none;'}">
-        <div class="helper" style="margin:-6px 0 12px;">Un code fixe par jour de la semaine, qui se répète à l'identique chaque semaine (utile pour le personnel administratif : ex. ADM du lundi au vendredi, repos le week-end). Laissez vide pour une case sans code.</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;">
-          ${DOW_SHORT.map((d,i)=>`
-          <div class="field" style="margin:0;"><label>${d}</label>
-            <select class="gr-week-day" data-dow="${i}" style="width:100%;padding:9px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13.5px;background:#FBFCFE;">
-              <option value="">— repos —</option>
-              ${allCodesList.map(c=>`<option value="${c.code}" ${(rd.weekPattern&&rd.weekPattern[i])===c.code?'selected':''}>${c.code}</option>`).join('')}
-            </select>
-          </div>`).join('')}
-        </div>
-      </div>
+      `}
       <div id="grError" style="color:var(--danger);font-size:12.5px;font-weight:600;display:none;margin:14px 0 6px;"></div>
       <div class="modal-actions">
         <button class="btn btn-ghost" id="grCancel">Annuler</button>
-        <button class="btn btn-primary" id="grSave">Enregistrer</button>
+        <button class="btn btn-primary" id="grSave">${state.modal.isNew?'Créer la règle':'Enregistrer'}</button>
       </div>
     </div>`;
     document.body.appendChild(overlay);
     document.getElementById('grCancel').addEventListener('click',closeModal);
-    document.querySelectorAll('input[name="grType"]').forEach(r=>{
-      r.addEventListener('change',()=>{
-        r.closest('.type-toggle').querySelectorAll('.type-toggle-opt').forEach(opt=>opt.classList.remove('active'));
-        r.closest('.type-toggle-opt').classList.add('active');
-        document.getElementById('grCycleFields').style.display = r.value==='cycle' ? '' : 'none';
-        document.getElementById('grWeeklyFields').style.display = r.value==='weekly' ? '' : 'none';
-      });
-    });
     document.getElementById('grSave').addEventListener('click', async()=>{
       const name=document.getElementById('grName').value.trim();
-      const type=document.querySelector('input[name="grType"]:checked').value;
+      const type=rd.type;
       const err=document.getElementById('grError');
       if(!name){ err.textContent='Merci de donner un nom à cette règle.'; err.style.display='block'; return; }
       let ruleData;
@@ -6829,6 +6875,48 @@ function renderModal(){
         closeModal();
       });
     });
+  }
+
+  if(state.modal.type==='alert-examples'){
+    const groups=[
+      {title:'Effectif par jour', examples:[
+        {label:'Effectif minimum le matin', detail:'Service X · Fonction : Techniciens · Codes : M · Seuil : min 3', note:'Vérifie qu\u2019il y a toujours au moins 3 techniciens en poste le matin.'},
+        {label:'Toujours un responsable présent', detail:'Fonction(s) : Responsables + CDQ · Codes : M, S · Seuil : min 1', note:'Cocher plusieurs fonctions additionne leurs effectifs — l\u2019alerte ne se déclenche que si personne des deux groupes n\u2019est en poste.'},
+        {label:'Éviter le sureffectif un jour donné', detail:'Fonction : Techniciens · Codes : CPA, CP · Seuil : max 4', note:'Empêche que trop de monde soit en congé le même jour.'},
+      ]},
+      {title:'Charge hebdomadaire', examples:[
+        {label:'Pas plus de 4 matins par semaine', detail:'Fonction : Techniciens · Codes : M · Seuil : max 4', note:'Repère un salarié qui enchaînerait trop de matins la même semaine.'},
+        {label:'Au moins 2 jours de repos par semaine', detail:'Codes : M, S, N · Seuil : max 5', note:'En comptant tous les codes travaillés avec un maximum de 5 sur 7 jours, on détecte qui dépasse 5 jours travaillés.'},
+        {label:'Limiter les nuits consécutives', detail:'Codes : N · Seuil : max 2', note:'Utile pour répartir les nuits équitablement plutôt que les concentrer sur les mêmes personnes.'},
+        {label:'Ne pas pénaliser un congé', detail:'Codes : M · Seuil : min 2 · Codes qui suspendent la règle : CPA, CP, FER', note:'Sans exclusion, un salarié en congé toute la semaine déclencherait une fausse alerte.'},
+      ]},
+      {title:'Repos minimum entre 2 services', examples:[
+        {label:'Repos légal standard', detail:'Codes : M, S, N · Seuil : 11 heures', note:'La référence classique entre la fin d\u2019un service et le début du suivant.'},
+        {label:'Repos renforcé après une nuit', detail:'Codes : N · Seuil : 12 heures', note:'Une règle dédiée, plus stricte, spécifiquement pour les enchaînements après une nuit.'},
+        {label:'Repos entre un Soir et un Matin', detail:'Fonction : CDQ · Codes : S, M · Seuil : 11 heures', note:'Le cas le plus tendu (S termine tard, M commence tôt) — cibler une fonction précise permet un suivi séparé.'},
+      ]},
+    ];
+    overlay.innerHTML=`
+    <div class="modal" style="max-width:560px;max-height:82vh;overflow-y:auto;">
+      <h3>Exemples de règles concrètes</h3>
+      <div class="legend-hint" style="margin:-6px 0 16px;">Un conseil pour démarrer : créez d'abord 2-3 règles simples (effectif minimum + repos 11h), regardez ce que ça détecte sur un mois déjà rempli, puis affinez. Chaque règle peut être désactivée sans être supprimée si elle génère trop (ou pas assez) d'alertes au départ.</div>
+      ${groups.map(g=>`
+        <div class="alert-examples-group">
+          <div class="alert-examples-group-title">${escapeHtml(g.title)}</div>
+          ${g.examples.map(ex=>`
+          <div class="alert-example-item">
+            <div class="alert-example-label">${escapeHtml(ex.label)}</div>
+            <div class="alert-example-detail">${escapeHtml(ex.detail)}</div>
+            <div class="alert-example-note">${escapeHtml(ex.note)}</div>
+          </div>`).join('')}
+        </div>
+      `).join('')}
+      <div class="modal-actions">
+        <button class="btn btn-primary" id="aeClose">Fermer</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('aeClose').addEventListener('click',closeModal);
   }
 
   if(state.modal.type==='alert-rule-type-picker'){
@@ -7490,6 +7578,7 @@ function render(){
     else if(state.tab==='statistiques') renderStatistiques();
     else if(state.tab==='historique') renderHistorique();
     else if(state.tab==='suivi') renderSuivi();
+    else if(state.tab==='config-generation') renderConfigGeneration();
     else if(state.tab==='fonctionnalites') renderFonctionnalites();
     else renderCalendrierAdmin();
   } else {
