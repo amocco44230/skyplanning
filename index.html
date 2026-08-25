@@ -808,7 +808,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v8.8';
+const APP_VERSION = 'v8.9';
 const APP_VERSION_DATE = '25/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -1077,9 +1077,21 @@ function toast(msg,isErr){
    CHARGEMENT INITIAL + COMPTES DE DÉMONSTRATION
    ============================================================ */
 async function loadAll(){
+  // Toutes les lectures indépendantes sont lancées EN PARALLÈLE plutôt que
+  // l'une après l'autre — sur un réseau mobile, une vingtaine d'appels
+  // enchaînés peut représenter 2 à 3 secondes d'attente rien que pour les
+  // allers-retours réseau, même si chaque lecture individuelle est rapide.
+  // En les lançant toutes en même temps, l'appli n'attend que le temps du
+  // plus long appel, pas leur somme.
+  const KEYS=['users','codes','schedules','notifications','comments','fonctions','services',
+    'desideratas','exchanges','featureFlags','cycleSettings','genRules','lastPlanningUpdate',
+    'auditLog','alertRules','monthValidations','postValidationChanges','cpAllowances','employeeDrafts'];
+  const results=await Promise.all(KEYS.map(k=>storageGet(k, true).catch(()=>null)));
+  const raw={};
+  KEYS.forEach((k,i)=>{ raw[k]=results[i]; });
+
   try{
-    const u=await storageGet('users', true);
-    state.users = u ? JSON.parse(u.value) : null;
+    state.users = raw.users ? JSON.parse(raw.users.value) : null;
   }catch(e){ state.users=null; }
   if(!state.users || state.users.length===0){
     state.users=[
@@ -1113,44 +1125,44 @@ async function loadAll(){
   // aujourd'hui — le reste de l'app (qui lit u.team/u.fonction directement)
   // reflète donc toujours l'affectation courante sans modification ailleurs.
   state.users.forEach(syncCurrentAffectation);
+
   try{
-    const c=await storageGet('codes', true);
-    state.codes = (c && JSON.parse(c.value).length) ? JSON.parse(c.value) : DEFAULT_CODES;
+    state.codes = (raw.codes && JSON.parse(raw.codes.value).length) ? JSON.parse(raw.codes.value) : DEFAULT_CODES;
     state.codes.forEach(cd=>{ if(cd.isWork===undefined) cd.isWork = !!(cd.startTime && cd.endTime); });
   }catch(e){ state.codes=DEFAULT_CODES; }
+
   try{
-    const s=await storageGet('schedules', true);
-    state.schedules = s ? JSON.parse(s.value) : {};
+    state.schedules = raw.schedules ? JSON.parse(raw.schedules.value) : {};
   }catch(e){ state.schedules={}; }
+
   try{
-    const n=await storageGet('notifications', true);
-    state.notifications = n ? JSON.parse(n.value) : {};
+    state.notifications = raw.notifications ? JSON.parse(raw.notifications.value) : {};
   }catch(e){ state.notifications={}; }
+
   try{
-    const cm=await storageGet('comments', true);
-    state.comments = cm ? JSON.parse(cm.value) : {};
+    state.comments = raw.comments ? JSON.parse(raw.comments.value) : {};
   }catch(e){ state.comments={}; }
+
   try{
-    const fn=await storageGet('fonctions', true);
-    state.fonctions = fn ? JSON.parse(fn.value) : null;
+    state.fonctions = raw.fonctions ? JSON.parse(raw.fonctions.value) : null;
   }catch(e){ state.fonctions=null; }
   if(!state.fonctions || Array.isArray(state.fonctions)){ state.fonctions={CCO:['Responsables','CDQ','Techniciens']}; await storageSet('fonctions', JSON.stringify(state.fonctions), true); }
+
   try{
-    const sv=await storageGet('services', true);
-    state.services = sv ? JSON.parse(sv.value) : null;
+    state.services = raw.services ? JSON.parse(raw.services.value) : null;
   }catch(e){ state.services=null; }
   if(!state.services){ state.services=['CCO']; await storageSet('services', JSON.stringify(state.services), true); }
+
   try{
-    const ds=await storageGet('desideratas', true);
-    state.desideratas = ds ? JSON.parse(ds.value) : [];
+    state.desideratas = raw.desideratas ? JSON.parse(raw.desideratas.value) : [];
   }catch(e){ state.desideratas=[]; }
+
   try{
-    const ex=await storageGet('exchanges', true);
-    state.exchanges = ex ? JSON.parse(ex.value) : [];
+    state.exchanges = raw.exchanges ? JSON.parse(raw.exchanges.value) : [];
   }catch(e){ state.exchanges=[]; }
+
   try{
-    const ff=await storageGet('featureFlags', true);
-    const parsed = ff ? JSON.parse(ff.value) : null;
+    const parsed = raw.featureFlags ? JSON.parse(raw.featureFlags.value) : null;
     // Fusion avec les valeurs par défaut : une fonctionnalité ajoutée plus tard
     // par une mise à jour de l'appli reste activée par défaut si l'admin n'a
     // encore rien configuré explicitement.
@@ -1160,13 +1172,13 @@ async function loadAll(){
     );
     if(!state.featureFlags.perService) state.featureFlags.perService={};
   }catch(e){ /* garde les valeurs par défaut de state */ }
+
   try{
-    const cs=await storageGet('cycleSettings', true);
-    state.cycleSettings = cs ? JSON.parse(cs.value) : {};
+    state.cycleSettings = raw.cycleSettings ? JSON.parse(raw.cycleSettings.value) : {};
   }catch(e){ state.cycleSettings={}; }
+
   try{
-    const gr=await storageGet('genRules', true);
-    state.genRules = gr ? JSON.parse(gr.value) : null;
+    state.genRules = raw.genRules ? JSON.parse(raw.genRules.value) : null;
   }catch(e){ state.genRules=null; }
   if(!state.genRules || state.genRules.length===0){
     // Règles par défaut au premier lancement : le cycle 4/4 déjà existant
@@ -1178,17 +1190,17 @@ async function loadAll(){
       {id:genId(), name:'Administratif (5 jours ADM + week-end repos)', type:'weekly', weekPattern:['ADM','ADM','ADM','ADM','ADM','O','O']},
     ];
   }
+
   try{
-    const lpu=await storageGet('lastPlanningUpdate', true);
-    state.lastPlanningUpdate = lpu ? JSON.parse(lpu.value) : {};
+    state.lastPlanningUpdate = raw.lastPlanningUpdate ? JSON.parse(raw.lastPlanningUpdate.value) : {};
   }catch(e){ state.lastPlanningUpdate={}; }
+
   try{
-    const al=await storageGet('auditLog', true);
-    state.auditLog = al ? JSON.parse(al.value) : [];
+    state.auditLog = raw.auditLog ? JSON.parse(raw.auditLog.value) : [];
   }catch(e){ state.auditLog=[]; }
+
   try{
-    const ar=await storageGet('alertRules', true);
-    state.alertRules = ar ? JSON.parse(ar.value) : null;
+    state.alertRules = raw.alertRules ? JSON.parse(raw.alertRules.value) : null;
   }catch(e){ state.alertRules=null; }
   if(!state.alertRules){
     state.alertRules=[
@@ -1197,20 +1209,36 @@ async function loadAll(){
     ];
     await storageSet('alertRules', JSON.stringify(state.alertRules), true);
   }
+
   try{
-    const mv=await storageGet('monthValidations', true);
-    state.monthValidations = mv ? JSON.parse(mv.value) : {};
+    state.monthValidations = raw.monthValidations ? JSON.parse(raw.monthValidations.value) : {};
   }catch(e){ state.monthValidations={}; }
+
   try{
-    const pvc=await storageGet('postValidationChanges', true);
-    state.postValidationChanges = pvc ? JSON.parse(pvc.value) : [];
+    state.postValidationChanges = raw.postValidationChanges ? JSON.parse(raw.postValidationChanges.value) : [];
   }catch(e){ state.postValidationChanges=[]; }
+
+  try{
+    state.cpAllowances = raw.cpAllowances ? JSON.parse(raw.cpAllowances.value) : {};
+  }catch(e){ state.cpAllowances={}; }
+
+  try{
+    state.employeeDrafts = raw.employeeDrafts ? JSON.parse(raw.employeeDrafts.value) : {};
+  }catch(e){ state.employeeDrafts={}; }
+
+  // --- Migrations ponctuelles (une seule fois, au tout premier chargement
+  // suivant une mise à jour) : les 6 drapeaux sont eux aussi vérifiés en
+  // parallèle — seul le TRAITEMENT (rare) reste séquentiel, car chaque bloc
+  // peut modifier des données déjà chargées ci-dessus.
+  const MIG_KEYS=['importAug2026Done','importCpaRuleDone','importExcludeCodesDone','importAlertRulesV2Done','importHalfDayCpCodesDone','importEmailsDone'];
+  const migResults=await Promise.all(MIG_KEYS.map(k=>storageGet(k, true).catch(()=>null)));
+  const mig={};
+  MIG_KEYS.forEach((k,i)=>{ mig[k]=migResults[i]; });
 
   // Import ponctuel et non-destructif du planning réel d'août 2026 (une seule fois,
   // ne touche jamais une case déjà renseignée par l'admin ni un salarié déjà existant)
   try{
-    const importFlag=await storageGet('importAug2026Done', true);
-    if(!importFlag){
+    if(!mig.importAug2026Done){
       let changedUsers=false, changedSchedules=false;
       if(!state.users.some(u=>u.username==='ning')){
         state.users.push({username:'ning', password:'Ning2026!', name:'NING', role:'employee', startDate:'', endDate:'', team:'CCO', fonction:'Responsables'});
@@ -1234,8 +1262,7 @@ async function loadAll(){
 
   // Ajout ponctuel de la règle « CPA max 5j/semaine » (séparée de la règle M/S de charge de travail)
   try{
-    const cpaFlag=await storageGet('importCpaRuleDone', true);
-    if(!cpaFlag){
+    if(!mig.importCpaRuleDone){
       if(!state.alertRules.some(r=>r.codes.length===1 && r.codes[0]==='CPA')){
         state.alertRules.push({
           id:genId(), label:'Congés CPA — max 5j/semaine', type:'weekly_person', service:'CCO',
@@ -1249,8 +1276,7 @@ async function loadAll(){
 
   // Ajout ponctuel : la règle « Charge hebdo M/S » ne doit pas pénaliser une semaine où le salarié a aussi du CPA/CP/FOR
   try{
-    const excFlag=await storageGet('importExcludeCodesDone', true);
-    if(!excFlag){
+    if(!mig.importExcludeCodesDone){
       let changed=false;
       state.alertRules.forEach(r=>{
         if(r.type==='weekly_person' && (!r.excludeCodes || r.excludeCodes.length===0) && !r.codes.includes('CPA')){
@@ -1265,8 +1291,7 @@ async function loadAll(){
 
   // Ajout ponctuel : refonte des règles d'alertes (effectif Matin+Soir séparés, charge hebdo M et S séparées)
   try{
-    const rulesV2Flag=await storageGet('importAlertRulesV2Done', true);
-    if(!rulesV2Flag){
+    if(!mig.importAlertRulesV2Done){
       // retire l'ancienne règle combinée "Charge hebdo Techniciens (M/S)" si présente
       state.alertRules = state.alertRules.filter(r=>r.label!=='Charge hebdo Techniciens (M/S)');
       const wanted=[
@@ -1289,8 +1314,7 @@ async function loadAll(){
 
   // Ajout ponctuel : codes demi-journée travaillée + demi-journée CP/CPA (M+CP, S+CP, M+CPA, S+CPA)
   try{
-    const halfDayFlag=await storageGet('importHalfDayCpCodesDone', true);
-    if(!halfDayFlag){
+    if(!mig.importHalfDayCpCodesDone){
       let changed=false;
       DEFAULT_CODES.filter(c=>c.isHalfDay).forEach(dc=>{
         if(!state.codes.some(c=>c.code===dc.code)){
@@ -1305,8 +1329,7 @@ async function loadAll(){
 
   // Ajout ponctuel : génération des e-mails par défaut pour les salariés qui n'en ont pas
   try{
-    const emailFlag=await storageGet('importEmailsDone', true);
-    if(!emailFlag){
+    if(!mig.importEmailsDone){
       let changed=false;
       state.users.forEach(u=>{
         if(!u.email && u.name){ u.email=generateEmail(u.name); changed=true; }
@@ -1315,16 +1338,6 @@ async function loadAll(){
       await storageSet('importEmailsDone', 'true', true);
     }
   }catch(e){ /* import silencieux */ }
-
-  try{
-    const cpa=await storageGet('cpAllowances', true);
-    state.cpAllowances = cpa ? JSON.parse(cpa.value) : {};
-  }catch(e){ state.cpAllowances={}; }
-
-  try{
-    const ed=await storageGet('employeeDrafts', true);
-    state.employeeDrafts = ed ? JSON.parse(ed.value) : {};
-  }catch(e){ state.employeeDrafts={}; }
 
   // Reconnexion automatique si "Se souvenir de moi" a été coché — on ne
   // mémorise que l'identifiant (jamais le mot de passe), et on vérifie que
