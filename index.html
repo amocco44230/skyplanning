@@ -801,7 +801,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v8.6';
+const APP_VERSION = 'v8.7';
 const APP_VERSION_DATE = '24/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -1019,7 +1019,7 @@ let state={
   comments:{},
   desideratas:[],
   exchanges:[],
-  featureFlags:{desideratas:true, echanges:true, alertes:true, genAuto:true, impression:true, photos:true, cycles:false, stats:false, historique:false, crossServiceView:false, perService:{}},
+  featureFlags:{desideratas:true, echanges:true, alertes:true, genAuto:true, impression:true, photos:true, cycles:false, stats:false, historique:false, crossServiceView:false, suivi:false, suiviServices:[], perService:{}},
   cycleSettings:{},
   alertRules:[],
   monthValidations:{},
@@ -1148,7 +1148,7 @@ async function loadAll(){
     // par une mise à jour de l'appli reste activée par défaut si l'admin n'a
     // encore rien configuré explicitement.
     state.featureFlags = Object.assign(
-      {desideratas:true, echanges:true, alertes:true, genAuto:true, impression:true, photos:true, cycles:false, stats:false, historique:false, crossServiceView:false, perService:{}},
+      {desideratas:true, echanges:true, alertes:true, genAuto:true, impression:true, photos:true, cycles:false, stats:false, historique:false, crossServiceView:false, suivi:false, suiviServices:[], perService:{}},
       parsed||{}
     );
     if(!state.featureFlags.perService) state.featureFlags.perService={};
@@ -1571,6 +1571,19 @@ function isFeatureEnabled(flag, service){
  */
 function adminCanAccessFeature(flag){
   return isSuperAdmin(state.currentUser) || isFeatureEnabled(flag);
+}
+/**
+ * « Suivi » fonctionne à l'inverse des autres pages : désactivé par défaut,
+ * et même une fois activé globalement, aucun service n'y a accès tant qu'il
+ * n'a pas été explicitement coché dans Fonctionnalités → Suivi. Le grand
+ * admin y a toujours accès (comme pour les autres pages admin).
+ */
+function adminCanAccessSuivi(){
+  if(isSuperAdmin(state.currentUser)) return true;
+  if(!state.featureFlags.suivi) return false;
+  const scope=getAdminScope(state.currentUser);
+  const suiviServices=state.featureFlags.suiviServices||[];
+  return !!(scope && scope.some(s=>suiviServices.includes(s)));
 }
 async function persistAlertRules(){ await storageSet('alertRules', JSON.stringify(state.alertRules), true); }
 async function persistMonthValidations(){ await storageSet('monthValidations', JSON.stringify(state.monthValidations), true); }
@@ -2649,6 +2662,44 @@ const AUDIT_TYPE_META = {
   schedule_changed:    {icon:'✎', label:'Planning modifié'},
   schedule_generated:  {icon:'🪄', label:'Planning généré'},
 };
+/* ============================================================
+   ÉCRAN — SUIVI (admin, opt-in par service) — squelette pour l'instant,
+   contenu à définir. Accès géré par adminCanAccessSuivi() : contrairement
+   aux autres pages admin, un service n'y a accès QUE s'il a été coché
+   explicitement dans Fonctionnalités → Suivi, même une fois la
+   fonctionnalité activée globalement.
+   ============================================================ */
+function renderSuivi(){
+  if(!adminCanAccessSuivi()){ state.tab='calendrier'; render(); return; }
+  const scope=getAdminScope(state.currentUser);
+  const suiviServices=state.featureFlags.suiviServices||[];
+  // Services que CET admin gère ET qui ont accès à Suivi.
+  const availableServices = isSuperAdmin(state.currentUser)
+    ? (scope || state.services)
+    : (scope||[]).filter(s=>suiviServices.includes(s));
+  if(state.suiviServiceFilter===undefined || !availableServices.includes(state.suiviServiceFilter)){
+    state.suiviServiceFilter = availableServices[0] || '';
+  }
+  const svcFilter=state.suiviServiceFilter;
+  const svcOptions = availableServices.map(s=>`<option value="${escapeHtml(s)}" ${svcFilter===s?'selected':''}>${escapeHtml(s)}</option>`).join('');
+
+  const inner=`
+    ${availableServices.length ? `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;">
+      <span style="font-size:13.5px;font-weight:700;color:var(--ink-soft);">Service :</span>
+      <select id="suiviServiceSelect" class="filter-select">${svcOptions}</select>
+    </div>
+    <div class="feat-card">
+      <h3>Suivi — ${escapeHtml(svcFilter)}</h3>
+      <div class="empty-state">Cette page est prête à accueillir du contenu de suivi pour ce service — dites-nous ce que vous voulez y voir et on le construit.</div>
+    </div>
+    ` : `<div class="empty-state">Aucun service n'a accès à cette page pour l'instant. Activez-le dans Fonctionnalités → Suivi.</div>`}
+  `;
+  renderShell(inner,'Suivi'+(svcFilter?' — '+svcFilter:''));
+  const suiviServiceSelect=document.getElementById('suiviServiceSelect');
+  if(suiviServiceSelect) suiviServiceSelect.addEventListener('change',(e)=>{ state.suiviServiceFilter=e.target.value; render(); });
+}
+
 function renderHistorique(){
   if(!(state.currentUser.role==='admin' && adminCanAccessFeature('historique'))){ state.tab='calendrier'; render(); return; }
   const scope=getAdminScope(state.currentUser);
@@ -3037,7 +3088,17 @@ function renderFonctionnalites(){
       ${globalToggle('stats','Statistiques','Tableau de bord : heures travaillées, répartition des codes, équité nuits/week-ends. Visible uniquement par les comptes admin, jamais par les salariés.')}
       ${globalToggle('historique','Historique','Journal complet : validations/dévalidations de mois, désidératas et échanges déposés/traités, modifications du planning après validation — qui, quand, quoi. Visible uniquement par les comptes admin, jamais par les salariés.')}
       ${globalToggle('crossServiceView','Consultation d\u2019un autre service','Autorise les salariés (et les admins) à consulter le planning d\u2019un autre service que le leur, uniquement pour les personnes qui ont explicitement accepté d\u2019être vues (fiche salarié → « Visible aussi sur le planning équipe d\u2019autres services »). Décoché par défaut : chacun ne voit que son (ou ses) propre(s) service(s), même si des autorisations ont été données.')}
+      ${globalToggle('suivi','Suivi','Nouvelle page « Suivi », en construction. Contrairement aux autres, elle reste invisible pour tous les services tant qu\u2019ils ne sont pas cochés individuellement ci-dessous, même une fois activée ici.')}
     </div>
+    ${state.featureFlags.suivi ? `
+    <div class="feat-card">
+      <h3>Services ayant accès à « Suivi »</h3>
+      <div class="helper" style="margin:-4px 0 12px;">Aucun service n'y a accès par défaut — cochez ceux qui doivent voir cette page.</div>
+      <div class="check-list" id="suiviServicesList">
+        ${state.services.map(s=>`<label class="check-item"><input type="checkbox" value="${escapeHtml(s)}" ${(state.featureFlags.suiviServices||[]).includes(s)?'checked':''}> ${escapeHtml(s)}</label>`).join('') || '<div class="helper">Aucun service créé pour l\u2019instant.</div>'}
+      </div>
+    </div>
+    ` : ''}
     <div class="feat-card">
       <h3>Droits par service</h3>
       <div class="helper" style="margin:-4px 0 12px;">Affine désidératas et échanges service par service (ex : un service peut ne pas vouloir des échanges entre salariés). Sans effet si la case est déjà décochée ci-dessus au niveau général.</div>
@@ -3137,6 +3198,16 @@ function renderFonctionnalites(){
       render();
     });
   });
+  document.querySelectorAll('#suiviServicesList input').forEach(chk=>{
+    chk.addEventListener('change', async()=>{
+      const svc=chk.value;
+      const list=state.featureFlags.suiviServices||[];
+      state.featureFlags.suiviServices = chk.checked ? [...new Set([...list, svc])] : list.filter(s=>s!==svc);
+      await persistFeatureFlags();
+      toast('Accès à « Suivi » mis à jour pour '+svc+'.');
+      render();
+    });
+  });
 }
 
 /* ============================================================
@@ -3196,6 +3267,7 @@ function navItems(){
     if(adminCanAccessFeature('cycles')) items.push({id:'cycles', label:'Cycles', icon:'📊'});
     if(adminCanAccessFeature('stats')) items.push({id:'statistiques', label:'Statistiques', icon:'📈'});
     if(adminCanAccessFeature('historique')) items.push({id:'historique', label:'Historique', icon:'📜'});
+    if(adminCanAccessSuivi()) items.push({id:'suivi', label:'Suivi', icon:'🧭'});
     if(isSuperAdmin(state.currentUser)) items.push({id:'fonctionnalites', label:'Fonctionnalités', icon:'🧩'});
     return items;
   }
@@ -7417,6 +7489,7 @@ function render(){
     else if(state.tab==='cycles') renderCycles();
     else if(state.tab==='statistiques') renderStatistiques();
     else if(state.tab==='historique') renderHistorique();
+    else if(state.tab==='suivi') renderSuivi();
     else if(state.tab==='fonctionnalites') renderFonctionnalites();
     else renderCalendrierAdmin();
   } else {
