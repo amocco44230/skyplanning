@@ -352,14 +352,14 @@
   .cal-day-compact .indiv-draft{margin-top:3px;font-size:8px;font-weight:800;text-align:center;border-radius:5px;padding:2px 3px;}
   /* ---------- Planning individuel (mobile) : tuiles colorées façon appli de shift ---------- */
   .indiv-day-tile{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#F4F5F7;color:#AEB4BE;border-radius:11px;border:2px solid transparent;gap:1px;}
-  .indiv-day-tile .indiv-day-num{font-size:13.5px;font-weight:800;line-height:1;}
-  .indiv-day-tile .indiv-day-code{font-size:8px;font-weight:800;opacity:.9;text-transform:uppercase;letter-spacing:.02em;}
-  .indiv-day-tile .indiv-day-code[data-longcode]{font-size:6px;letter-spacing:-.02em;}
+  .indiv-day-tile .indiv-day-num{font-size:12.8px;font-weight:800;line-height:1;}
+  .indiv-day-tile .indiv-day-code{font-size:7.6px;font-weight:800;opacity:.9;text-transform:uppercase;letter-spacing:.02em;}
+  .indiv-day-tile .indiv-day-code[data-longcode]{font-size:5.7px;letter-spacing:-.02em;}
   .indiv-day-tile.today{border-color:var(--primary-dark);box-shadow:0 0 0 2px rgba(32,43,73,.18);}
   .indiv-today-dot{position:absolute;top:4px;right:4px;width:5px;height:5px;border-radius:50%;background:currentColor;}
-  .indiv-day-tile .cmt-dot{top:3px;}
-  .indiv-day-tile .cmt-dot.pub{left:3px;right:auto;}
-  .indiv-day-tile .cmt-dot.priv{left:11px;right:auto;}
+  .indiv-day-tile .cmt-dot{top:2px;width:9px;height:9px;box-shadow:0 0 0 1.5px #fff,0 1px 2px rgba(0,0,0,.3);}
+  .indiv-day-tile .cmt-dot.pub{left:2px;right:auto;}
+  .indiv-day-tile .cmt-dot.priv{left:13px;right:auto;}
   .indiv-day-tile .d-fer{position:absolute;top:2px;left:3px;font-size:6px;font-weight:900;padding:0;background:none;color:inherit;opacity:.85;}
   .indiv-day-tile .indiv-draft{position:absolute;bottom:1px;right:1px;width:15px;height:15px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:6.5px;font-weight:900;box-shadow:0 0 0 1.5px #fff,0 1px 2px rgba(0,0,0,.25);margin:0;padding:0;}
   .indiv-top-row{display:flex;align-items:center;gap:6px;margin-bottom:2px;}
@@ -373,6 +373,7 @@
   .peq-week-daylabel.today{color:var(--primary-dark);}
   .peq-week-daylabel.today span{color:var(--primary-dark);}
   .peq-week-fonction-label{font-size:10.5px;font-weight:800;color:#fff;background:var(--primary-dark);padding:5px 8px;border-radius:6px;margin:8px 0 3px;text-transform:uppercase;letter-spacing:.02em;}
+  .peq-week-subgroup-sep{font-size:9.5px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.03em;background:#F4F5F7;padding:4px 8px;border-radius:5px;margin:4px 0 3px;}
   .peq-week-name{font-size:11px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:3px;}
   .peq-week-cell{text-align:center;font-size:9.5px;font-weight:800;padding:7px 2px;border-radius:6px;background:#F4F5F7;color:#AEB4BE;}
   .peq-week-cell.today{outline:2px solid var(--primary-dark);outline-offset:-2px;}
@@ -671,17 +672,8 @@
 
   .helper{font-size:11.5px;color:var(--ink-soft);margin-top:4px;}
 
-  /* ---------- Bandeau d'invitation à la rotation (mobile portrait) ---------- */
-  .rotate-banner{display:none;position:fixed;left:0;right:0;bottom:0;z-index:60;background:var(--primary-dark);color:#fff;padding:14px 16px;align-items:center;gap:10px;flex-wrap:wrap;box-shadow:0 -6px 20px rgba(0,0,0,.25);}
-  .rotate-banner-icon{font-size:20px;animation:rotateWiggle 1.6s ease-in-out infinite;}
-  @keyframes rotateWiggle{0%,100%{transform:rotate(0deg);}50%{transform:rotate(-90deg);}}
-  .rotate-banner-text{flex:1;min-width:140px;font-size:12.5px;font-weight:600;}
-  .rotate-banner-btn{background:#fff;color:var(--primary-dark);border:none;border-radius:8px;padding:9px 14px;font-size:12px;font-weight:800;white-space:nowrap;}
-  .rotate-banner-dismiss{background:transparent;color:rgba(255,255,255,.75);border:none;font-size:11.5px;font-weight:600;padding:6px 4px;white-space:nowrap;}
-
   /* ---------- Responsive : mobile portrait ---------- */
   @media(max-width:760px) and (orientation:portrait){
-    .rotate-banner.show{display:flex;}
   }
 
   /* ---------- Responsive général (tous mobiles) ---------- */
@@ -770,12 +762,6 @@
 </head>
 <body>
 <div id="app"></div>
-<div id="rotateBanner" class="rotate-banner">
-  <div class="rotate-banner-icon">🔄</div>
-  <div class="rotate-banner-text">Tournez votre téléphone pour une meilleure vue du planning</div>
-  <button id="rotateBtn" class="rotate-banner-btn">Passer en paysage</button>
-  <button id="rotateDismiss" class="rotate-banner-dismiss">Continuer quand même ✕</button>
-</div>
 <div class="toast" id="toast"></div>
 
 <!-- Firebase SDK (compat v9/v10) -->
@@ -808,7 +794,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v8.9';
+const APP_VERSION = 'v9.0';
 const APP_VERSION_DATE = '25/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -4193,14 +4179,21 @@ function teamWeekViewHtml(teamEmployees, weekDates, myTeam, todayKeyStr, restric
   </div>`;
   const groupsHtml=groups.map(g=>{
     const label = g.fonction==='__none__' ? 'Sans fonction' : (g.fonction||'');
+    let prevSubGroup=undefined;
     const rows=g.list.map(emp=>{
+      const empSubGroup=emp.subGroup||'';
+      let subGroupSepHtml='';
+      if(prevSubGroup!==undefined && empSubGroup!==prevSubGroup){
+        subGroupSepHtml=`<div class="peq-week-subgroup-sep">${empSubGroup?escapeHtml(empSubGroup):''}</div>`;
+      }
+      prevSubGroup=empSubGroup;
       // En mode « je consulte un autre service que le mien », chaque salarié
       // n'apparaît en clair que s'il a coché ce service dans sa fiche
       // (« Visible aussi sur le planning équipe d'autres services ») — sinon
       // sa ligne affiche juste « Planning non disponible », sans le code.
       const hidden = restrictedMode && !(emp.extraTeams||[]).includes(viewerTeam) && emp.username!==state.currentUser.username;
       if(hidden){
-        return `<div class="peq-week-grid">
+        return subGroupSepHtml+`<div class="peq-week-grid">
           <div class="peq-week-name">${escapeHtml(emp.name)}</div>
           <div class="peq-week-unavailable">Planning non disponible</div>
         </div>`;
@@ -4213,7 +4206,7 @@ function teamWeekViewHtml(teamEmployees, weekDates, myTeam, todayKeyStr, restric
         const isToday=k===todayKeyStr;
         return `<div class="peq-week-cell ${isToday?'today':''}" style="${info?`background:${info.color};color:${info.text};`:''}">${!dayOk?'🔒':(code||'—')}</div>`;
       }).join('');
-      return `<div class="peq-week-grid">
+      return subGroupSepHtml+`<div class="peq-week-grid">
         <div class="peq-week-name">${escapeHtml(emp.name)}</div>
         ${cells}
       </div>`;
@@ -7603,7 +7596,6 @@ function render(){
     else renderPlanningEmploye();
   }
   renderModal();
-  updateRotateBanner();
 }
 
 window.addEventListener('error', function(){
@@ -7614,32 +7606,9 @@ window.addEventListener('error', function(){
 });
 
 /* ============================================================
-   RESPONSIVE — bandeau d'invitation à la rotation (mobile)
+   RESPONSIVE — recalcule l'affichage au changement d'orientation
    ============================================================ */
-let rotateBannerDismissed=false;
-function updateRotateBanner(){
-  const banner=document.getElementById('rotateBanner');
-  if(!banner) return;
-  const isNarrow=window.innerWidth<=760;
-  const isPortrait=window.innerHeight>window.innerWidth;
-  const shouldShow = isNarrow && isPortrait && !rotateBannerDismissed && state.screen==='app';
-  banner.classList.toggle('show', shouldShow);
-}
-window.addEventListener('resize', updateRotateBanner);
-window.addEventListener('orientationchange', ()=>{ updateRotateBanner(); if(state.screen==='app') render(); });
-(function bindRotateBannerControls(){
-  const dismissBtn=document.getElementById('rotateDismiss');
-  const rotateBtn=document.getElementById('rotateBtn');
-  if(dismissBtn) dismissBtn.addEventListener('click', ()=>{ rotateBannerDismissed=true; updateRotateBanner(); });
-  if(rotateBtn) rotateBtn.addEventListener('click', async ()=>{
-    try{
-      if(document.documentElement.requestFullscreen){ await document.documentElement.requestFullscreen(); }
-      if(screen.orientation && screen.orientation.lock){ await screen.orientation.lock('landscape'); }
-    }catch(e){
-      toast("Votre navigateur ne permet pas de forcer la rotation — tournez votre téléphone manuellement.", true);
-    }
-  });
-})();
+window.addEventListener('orientationchange', ()=>{ if(state.screen==='app') render(); });
 
 ensureFirebaseAuth().then(loadAll).then(startRealtimeSync).catch(function(e){
   console.error(e);
