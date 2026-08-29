@@ -3320,8 +3320,8 @@ function bellHtml(){
  */
 function topbarSwitchBtnHtml(){
   if(!isMobileDevice() || !state.currentUser || state.currentUser.role!=='employee') return '';
-  if(state.tab==='individuel') return `<button class="icon-btn" id="topbarSwitchBtn" data-switch-to="equipe">👥 Équipe</button>`;
-  if(state.tab==='equipe') return `<button class="icon-btn" id="topbarSwitchBtn" data-switch-to="individuel">🗓️ Individuel</button>`;
+  if(state.tab==='individuel') return `<button class="icon-btn" id="topbarSwitchBtn" data-switch-to="equipe">Équipe</button>`;
+  if(state.tab==='equipe') return `<button class="icon-btn" id="topbarSwitchBtn" data-switch-to="individuel">Individuel</button>`;
   return '';
 }
 function topbarAccountMenuHtml(){
