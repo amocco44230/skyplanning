@@ -440,7 +440,11 @@
   .stats-period-toggle button.active{background:var(--primary);color:#fff;}
   .year-nav{display:flex;align-items:center;gap:10px;}
   .year-nav .month-label{font-size:15px;font-weight:800;min-width:50px;text-align:center;}
-  .stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  .stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .stats-grid .stats-collapsible{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:13px 16px;margin-bottom:0;}
+  .stats-grid .stats-collapsible summary h3{font-size:13.5px;}
+  .stats-grid-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+  @media(max-width:900px){ .stats-grid-row3{grid-template-columns:1fr;} }
   .stats-legend{display:flex;flex-direction:column;gap:8px;flex:1;min-width:160px;}
   .stats-legend-row{display:flex;align-items:center;gap:8px;font-size:13px;}
   .stats-legend-dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;}
@@ -834,7 +838,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v13.5';
+const APP_VERSION = 'v13.6';
 const APP_VERSION_DATE = '30/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -1543,7 +1547,7 @@ function svgBarChartHtml(items, opts){
   opts=opts||{};
   const unit=opts.unit||'';
   const maxVal=Math.max(1, ...items.map(it=>it.value));
-  const barH=opts.barHeight||26, gap=opts.gap||10, labelW=opts.labelWidth||168, chartW=opts.width||560, valueW=opts.valueWidth||64;
+  const barH=opts.barHeight||20, gap=opts.gap||7, labelW=opts.labelWidth||158, chartW=opts.width||560, valueW=opts.valueWidth||56;
   const barAreaW=chartW-labelW-valueW-16;
   const rowH=barH+gap;
   const totalH=items.length*rowH;
@@ -3073,45 +3077,47 @@ function renderStatistiques(){
     ${employees.length===0 ? `<div class="empty-state">Aucun salarié dans ce service.</div>` : `
     <div class="stats-grid">
       <details class="feat-card stats-collapsible" open>
-        <summary><h3>⏱️ Heures travaillées — ${escapeHtml(periodLabel)}</h3></summary>
-        <div class="helper" style="margin:-4px 0 14px;">${escapeHtml(svcFilter==='ALL'?'Tous services confondus':svcFilter)} · total : <b>${totalHoursService.toFixed(1)} h</b></div>
+        <summary><h3>Heures travaillées — ${escapeHtml(periodLabel)}</h3></summary>
+        <div class="helper" style="margin:-4px 0 10px;">${escapeHtml(svcFilter==='ALL'?'Tous services confondus':svcFilter)} · total : <b>${totalHoursService.toFixed(1)} h</b></div>
         ${hoursData.length ? svgBarChartHtml(hoursData,{unit:' h'}) : '<div class="empty-state">Aucune heure saisie sur cette période.</div>'}
       </details>
       <details class="feat-card stats-collapsible" open>
-        <summary><h3>🧩 Répartition des codes — ${escapeHtml(periodLabel)}</h3></summary>
-        <div class="helper" style="margin:-4px 0 14px;">${totalCodeDays} jour${totalCodeDays>1?'s':''} au total sur le service</div>
+        <summary><h3>Répartition des codes — ${escapeHtml(periodLabel)}</h3></summary>
+        <div class="helper" style="margin:-4px 0 10px;">${totalCodeDays} jour${totalCodeDays>1?'s':''} au total sur le service</div>
         ${codeDonutData.length ? `
-        <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;">
-          ${svgDonutChartHtml(codeDonutData,{centerUnit:'', centerSub:'jours'})}
+        <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+          ${svgDonutChartHtml(codeDonutData,{size:140, centerUnit:'', centerSub:'jours'})}
           <div class="stats-legend">
             ${codeDonutData.map(it=>`<div class="stats-legend-row"><span class="stats-legend-dot" style="background:${it.color};"></span><b>${escapeHtml(it.label)}</b><span style="color:var(--ink-soft);">${it.value} j · ${Math.round(it.value/totalCodeDays*100)}%</span></div>`).join('')}
           </div>
         </div>` : '<div class="empty-state">Aucun code saisi sur cette période.</div>'}
       </details>
       <details class="feat-card stats-collapsible" style="grid-column:1 / -1;" open>
-        <summary><h3>🔎 Détail par code — ${escapeHtml(periodLabel)}</h3></summary>
+        <summary><h3>Détail par code — ${escapeHtml(periodLabel)}</h3></summary>
         <div class="helper" style="margin:6px 0 8px;">Cochez un ou plusieurs codes à cumuler (ex : CP + CPA) :</div>
         <div class="stats-code-picker">
           ${selectableCodes.map(c=>`<label class="stats-code-chip ${selCodes.includes(c.code)?'checked':''}" style="${selCodes.includes(c.code)?`background:${c.color};color:${c.text};`:''}"><input type="checkbox" class="stats-code-checkbox" value="${c.code}" ${selCodes.includes(c.code)?'checked':''}>${c.code}</label>`).join('')}
         </div>
-        <div class="helper" style="margin:10px 0 14px;">${selCodes.length ? `Nombre de jours « ${selCodes.map(escapeHtml).join(' + ')} » par salarié · total : <b>${totalSelCode}</b> jour${totalSelCode>1?'s':''}` : 'Aucun code coché.'}</div>
+        <div class="helper" style="margin:10px 0 10px;">${selCodes.length ? `Nombre de jours « ${selCodes.map(escapeHtml).join(' + ')} » par salarié · total : <b>${totalSelCode}</b> jour${totalSelCode>1?'s':''}` : 'Aucun code coché.'}</div>
         ${selCodes.length && selCodeData.some(it=>it.value>0) ? svgBarChartHtml(selCodeData,{unit:' j'}) : `<div class="empty-state">${selCodes.length?'Aucun jour trouvé pour ces codes sur cette période.':'Cochez au moins un code ci-dessus.'}</div>`}
       </details>
-      <details class="feat-card stats-collapsible" style="grid-column:1 / -1;">
-        <summary><h3>🌙 Nuits (code N) — ${escapeHtml(periodLabel)}</h3></summary>
-        <div class="helper" style="margin:6px 0 14px;">Nombre de nuits par salarié — pour repérer une répartition déséquilibrée avant de générer les prochains cycles.</div>
-        ${nightsData.length ? svgBarChartHtml(nightsData,{unit:' nuit'+(nightsData.some(e=>e.value>1)?'s':'')}) : '<div class="empty-state">Aucune nuit travaillée sur cette période.</div>'}
-      </details>
-      <details class="feat-card stats-collapsible" style="grid-column:1 / -1;">
-        <summary><h3>🌅 Week-ends complets travaillés (samedi ET dimanche, M ou S) — ${escapeHtml(periodLabel)}</h3></summary>
-        <div class="helper" style="margin:6px 0 14px;">Nombre de week-ends où le salarié a travaillé <b>les deux jours</b> (samedi et dimanche) en M ou S.</div>
-        ${completeWeekendData.length ? svgBarChartHtml(completeWeekendData,{unit:' w-e'}) : '<div class="empty-state">Aucun week-end complet travaillé sur cette période.</div>'}
-      </details>
-      <details class="feat-card stats-collapsible" style="grid-column:1 / -1;">
-        <summary><h3>🌤️ Week-ends partiels travaillés (samedi OU dimanche, M ou S) — ${escapeHtml(periodLabel)}</h3></summary>
-        <div class="helper" style="margin:6px 0 14px;">Nombre de week-ends où le salarié a travaillé <b>un seul des deux jours</b> (samedi ou dimanche, pas les deux) en M ou S.</div>
-        ${partialWeekendData.length ? svgBarChartHtml(partialWeekendData,{unit:' w-e'}) : '<div class="empty-state">Aucun week-end partiel travaillé sur cette période.</div>'}
-      </details>
+      <div class="stats-grid-row3" style="grid-column:1 / -1;">
+        <details class="feat-card stats-collapsible">
+          <summary><h3>Nuits</h3></summary>
+          <div class="helper" style="margin:6px 0 10px;">Code N, ${escapeHtml(periodLabel)}.</div>
+          ${nightsData.length ? svgBarChartHtml(nightsData,{unit:' nuit'+(nightsData.some(e=>e.value>1)?'s':''), width:340, labelWidth:110, valueWidth:46}) : '<div class="empty-state">Aucune nuit travaillée sur cette période.</div>'}
+        </details>
+        <details class="feat-card stats-collapsible">
+          <summary><h3>W-E complets</h3></summary>
+          <div class="helper" style="margin:6px 0 10px;">Samedi ET dimanche (M/S), ${escapeHtml(periodLabel)}.</div>
+          ${completeWeekendData.length ? svgBarChartHtml(completeWeekendData,{unit:' w-e', width:340, labelWidth:110, valueWidth:46}) : '<div class="empty-state">Aucun week-end complet travaillé.</div>'}
+        </details>
+        <details class="feat-card stats-collapsible">
+          <summary><h3>W-E partiels</h3></summary>
+          <div class="helper" style="margin:6px 0 10px;">Samedi OU dimanche (M/S), ${escapeHtml(periodLabel)}.</div>
+          ${partialWeekendData.length ? svgBarChartHtml(partialWeekendData,{unit:' w-e', width:340, labelWidth:110, valueWidth:46}) : '<div class="empty-state">Aucun week-end partiel travaillé.</div>'}
+        </details>
+      </div>
     </div>
     `}
   `;
