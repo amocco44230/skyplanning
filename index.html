@@ -261,6 +261,8 @@
   .other-validations-row{font-size:12.5px;padding:4px 0;color:var(--ink);}
   .emp-actions{display:flex;gap:8px;}
   .icon-btn{border:1.5px solid var(--border);background:#fff;border-radius:8px;padding:6px 11px;font-size:12.5px;font-weight:600;color:var(--ink-soft);}
+  .sr-choice.active-ok{background:#1E7B3C;border-color:#1E7B3C;color:#fff;}
+  .sr-choice.active-no{background:#B4342A;border-color:#B4342A;color:#fff;}
   .icon-btn:hover{border-color:var(--primary);color:var(--primary);}
   .empty-state{text-align:center;padding:50px 20px;color:var(--ink-soft);}
   /* ---------- Fonctionnalités (grand admin) ---------- */
@@ -833,7 +835,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v12.4';
+const APP_VERSION = 'v13.0';
 const APP_VERSION_DATE = '30/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -871,7 +873,8 @@ const FIRESTORE_KEY_MAP = {
   comments:'comments', fonctions:'fonctions', services:'services', desideratas:'desideratas',
   alertRules:'alertRules', monthValidations:'monthValidations', postValidationChanges:'postValidationChanges',
   cpAllowances:'cpAllowances', employeeDrafts:'employeeDrafts', exchanges:'exchanges',
-  featureFlags:'featureFlags', cycleSettings:'cycleSettings', genRules:'genRules', lastPlanningUpdate:'lastPlanningUpdate', auditLog:'auditLog'
+  featureFlags:'featureFlags', cycleSettings:'cycleSettings', genRules:'genRules', lastPlanningUpdate:'lastPlanningUpdate', auditLog:'auditLog',
+  specialRequestCampaign:'specialRequestCampaign', specialRequestResponses:'specialRequestResponses'
 };
 // Enregistrement précoce et silencieux du service worker FCM (permet de recevoir
 // des notifications en arrière-plan même avant que l'utilisateur active les alertes).
@@ -1073,6 +1076,9 @@ let state={
   peqMobileView:'week',
   swapMode:false,
   swapPick:null,
+  specialRequestCampaign:{active:false, title:'', dates:[], deadline:''},
+  specialRequestResponses:{},
+  specialReqAdminService:'ALL',
   employeeDrafts:{},
   desidFilterStatus:'pending',
   desidFilterYear:'all',
@@ -1112,7 +1118,8 @@ async function loadAll(){
   // plus long appel, pas leur somme.
   const KEYS=['users','codes','schedules','notifications','comments','fonctions','services',
     'desideratas','exchanges','featureFlags','cycleSettings','genRules','lastPlanningUpdate',
-    'auditLog','alertRules','monthValidations','postValidationChanges','cpAllowances','employeeDrafts'];
+    'auditLog','alertRules','monthValidations','postValidationChanges','cpAllowances','employeeDrafts',
+    'specialRequestCampaign','specialRequestResponses'];
   const results=await Promise.all(KEYS.map(k=>storageGet(k, true).catch(()=>null)));
   const raw={};
   KEYS.forEach((k,i)=>{ raw[k]=results[i]; });
@@ -1252,6 +1259,14 @@ async function loadAll(){
   try{
     state.employeeDrafts = raw.employeeDrafts ? JSON.parse(raw.employeeDrafts.value) : {};
   }catch(e){ state.employeeDrafts={}; }
+
+  try{
+    state.specialRequestCampaign = raw.specialRequestCampaign ? JSON.parse(raw.specialRequestCampaign.value) : {active:false, title:'', dates:[], deadline:''};
+  }catch(e){ state.specialRequestCampaign={active:false, title:'', dates:[], deadline:''}; }
+
+  try{
+    state.specialRequestResponses = raw.specialRequestResponses ? JSON.parse(raw.specialRequestResponses.value) : {};
+  }catch(e){ state.specialRequestResponses={}; }
 
   // --- Migrations ponctuelles (une seule fois, au tout premier chargement
   // suivant une mise à jour) : les 6 drapeaux sont eux aussi vérifiés en
@@ -1825,6 +1840,8 @@ function getDraftPeriodsForYear(username, year){
   return periods.map(p=>({...p, days: Math.round((new Date(p.end+'T00:00:00')-new Date(p.start+'T00:00:00'))/86400000)+1}));
 }
 async function persistEmployeeDrafts(){ await storageSet('employeeDrafts', JSON.stringify(state.employeeDrafts), true); }
+async function persistSpecialRequestCampaign(){ await storageSet('specialRequestCampaign', JSON.stringify(state.specialRequestCampaign), true); }
+async function persistSpecialRequestResponses(){ await storageSet('specialRequestResponses', JSON.stringify(state.specialRequestResponses), true); }
 function applyAlternatingCycleInclusive(username, startDate, code, endDate){
   const inverse = code==='M' ? 'S' : (code==='S' ? 'M' : code);
   if(!state.employeeDrafts[username]) state.employeeDrafts[username]={};
@@ -3200,6 +3217,226 @@ function renderCycles(){
   });
 }
 
+/* ============================================================
+   ÉCRAN — DEMANDES SPÉCIALES (ex: disponibilités fêtes de fin d'année)
+   Admin : configure la campagne (titre, dates concernées) et suit les
+   réponses en temps réel (déjà garanti par la synchro Firestore existante).
+   Salarié : répond Disponible/Indisponible + commentaire pour chaque date,
+   et peut revenir modifier sa réponse à tout moment tant que c'est actif.
+   ============================================================ */
+function specialRequestSummary(username){
+  const r=state.specialRequestResponses[username];
+  if(!r) return null;
+  const modified = r.updatedAt && r.submittedAt && r.updatedAt!==r.submittedAt;
+  return {...r, modified};
+}
+function renderSpecialRequests(){
+  const isAdmin=state.currentUser.role==='admin';
+  const camp=state.specialRequestCampaign;
+  if(isAdmin){ renderSpecialRequestsAdmin(camp); return; }
+
+  const username=state.currentUser.username;
+  const me=state.users.find(u=>u.username===username);
+  const mine=specialRequestSummary(username);
+  if(!camp.active || !camp.dates.length){
+    renderShell(`<div class="empty-state">Aucune demande spéciale en cours pour le moment.</div>`, 'Demandes spéciales');
+    return;
+  }
+  const draft = state.specialReqDraft || (mine ? JSON.parse(JSON.stringify(mine.answers)) : {});
+  state.specialReqDraft = draft;
+  const inner=`
+    <div class="legend-hint" style="margin-bottom:14px;">
+      <b>${escapeHtml(camp.title||'Demande spéciale')}</b>${camp.deadline?` — merci de répondre avant le <b>${fmtDate(camp.deadline)}</b>`:''}.
+      ${mine ? `<br>${mine.modified?'Dernière modification':'Envoyé'} le ${new Date(mine.updatedAt||mine.submittedAt).toLocaleDateString('fr-FR')} — vous pouvez encore changer vos réponses ci-dessous.` : ''}
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      ${camp.dates.map(dt=>{
+        const a=draft[dt.key]||{available:null, comment:''};
+        return `
+        <div class="desid-row" style="flex-direction:column;align-items:stretch;padding:14px 16px;">
+          <div style="font-weight:800;font-size:13.5px;margin-bottom:8px;">${escapeHtml(dt.label)} <span style="font-weight:600;color:var(--ink-soft);">— ${fmtDate(dt.key)}</span></div>
+          <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <button type="button" class="icon-btn sr-choice ${a.available===true?'active-ok':''}" data-sr-date="${dt.key}" data-sr-avail="1">Disponible</button>
+            <button type="button" class="icon-btn sr-choice ${a.available===false?'active-no':''}" data-sr-date="${dt.key}" data-sr-avail="0">Indisponible</button>
+          </div>
+          <textarea class="sr-comment" data-sr-comment="${dt.key}" rows="1" placeholder="Commentaire (optionnel) — ex : congés déjà posés, contrainte particulière..." style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:8px 10px;font-family:inherit;font-size:12.5px;resize:vertical;">${escapeHtml(a.comment||'')}</textarea>
+        </div>`;
+      }).join('')}
+    </div>
+    <button class="btn-gen active" id="srSubmit" style="width:100%;margin-top:16px;">${mine?'Mettre à jour mes réponses':'Envoyer mes réponses'}</button>
+  `;
+  renderShell(inner, 'Demandes spéciales');
+  document.querySelectorAll('.sr-choice').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const dk=btn.dataset.srDate;
+      if(!draft[dk]) draft[dk]={available:null, comment:''};
+      draft[dk].available = btn.dataset.srAvail==='1';
+      render();
+    });
+  });
+  document.querySelectorAll('.sr-comment').forEach(ta=>{
+    ta.addEventListener('input',()=>{
+      const dk=ta.dataset.srComment;
+      if(!draft[dk]) draft[dk]={available:null, comment:''};
+      draft[dk].comment=ta.value;
+    });
+  });
+  document.getElementById('srSubmit').addEventListener('click', async()=>{
+    const missing=camp.dates.filter(dt=>!draft[dt.key] || draft[dt.key].available===null || draft[dt.key].available===undefined);
+    if(missing.length){ toast('Merci de répondre pour chaque date ('+missing.map(m=>m.label).join(', ')+').', true); return; }
+    const now=new Date().toISOString();
+    const existing=state.specialRequestResponses[username];
+    state.specialRequestResponses[username]={
+      answers: JSON.parse(JSON.stringify(draft)),
+      submittedAt: existing?existing.submittedAt:now,
+      updatedAt: now,
+    };
+    await persistSpecialRequestResponses();
+    await notifyAdminsForService(me?me.team:'', (me?me.name:username)+' a '+(existing?'modifié':'envoyé')+' ses réponses pour « '+(camp.title||'la demande spéciale')+' ».');
+    await logAudit('special_request_submitted', me?me.team:'', username, (me?me.name:username)+' a répondu à la demande spéciale « '+(camp.title||'')+' ».', {});
+    state.specialReqDraft=null;
+    toast('Réponses enregistrées.');
+    render();
+  });
+}
+function renderSpecialRequestsAdmin(camp){
+  const scope=getAdminScope(state.currentUser);
+  const svcFilter=state.specialReqAdminService||'ALL';
+  const employees=state.users.filter(u=>u.role==='employee' && (!scope || scope.includes(u.team)) && (svcFilter==='ALL' || u.team===svcFilter));
+  const respondedCount=employees.filter(u=>state.specialRequestResponses[u.username]).length;
+  const editing=state.specialReqEditing;
+  const draftCamp = editing ? (state.specialReqCampDraft || JSON.parse(JSON.stringify(camp))) : camp;
+  state.specialReqCampDraft = draftCamp;
+
+  const configHtml = editing ? `
+    <div class="desid-row" style="flex-direction:column;align-items:stretch;margin-bottom:18px;">
+      <div class="field"><label>Titre</label><input id="srTitle" value="${escapeHtml(draftCamp.title||'')}" placeholder="Ex : Fêtes de fin d'année 2026"></div>
+      <div class="field"><label>Date limite de réponse (optionnel)</label><input type="date" id="srDeadline" value="${draftCamp.deadline||''}"></div>
+      <label style="font-size:12.5px;font-weight:700;display:block;margin:10px 0 6px;">Dates concernées</label>
+      <div id="srDatesList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px;">
+        ${draftCamp.dates.map((dt,i)=>`
+        <div style="display:flex;gap:6px;align-items:center;">
+          <input type="date" data-sr-date-idx="${i}" data-sr-date-field="key" value="${dt.key}" style="flex:1;">
+          <input data-sr-date-idx="${i}" data-sr-date-field="label" value="${escapeHtml(dt.label)}" placeholder="Ex : Noël (24 déc)" style="flex:1.5;">
+          <button type="button" class="icon-btn" style="color:var(--danger);" data-sr-date-remove="${i}">✕</button>
+        </div>`).join('')}
+      </div>
+      <button type="button" class="icon-btn" id="srAddDate">+ Ajouter une date</button>
+      <div class="modal-actions" style="margin-top:16px;">
+        <button class="btn btn-ghost" id="srCancelEdit">Annuler</button>
+        <button class="btn btn-primary" id="srSaveConfig">Enregistrer</button>
+      </div>
+    </div>
+  ` : `
+    <div class="desid-row" style="flex-direction:column;align-items:stretch;margin-bottom:18px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+        <div>
+          <div style="font-weight:800;font-size:14.5px;">${camp.title?escapeHtml(camp.title):'Aucune campagne configurée'}</div>
+          ${camp.deadline?`<div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">Réponse attendue avant le ${fmtDate(camp.deadline)}</div>`:''}
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="icon-btn" id="srEditBtn">${camp.dates.length?'Modifier':'Configurer'}</button>
+          ${camp.dates.length ? `<button class="icon-btn ${camp.active?'':''}" style="color:${camp.active?'var(--danger)':'var(--ok)'};border-color:${camp.active?'var(--danger)':'var(--ok)'};" id="srToggleActive">${camp.active?'Désactiver':'Activer'}</button>` : ''}
+        </div>
+      </div>
+      ${camp.dates.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">${camp.dates.map(dt=>`<span class="chip" style="background:#EEF1FA;color:var(--primary-dark);">${escapeHtml(dt.label)} — ${fmtDate(dt.key)}</span>`).join('')}</div>` : ''}
+      ${!camp.active && camp.dates.length ? `<div class="helper" style="margin-top:8px;">Campagne inactive — les salariés ne la voient pas tant qu'elle n'est pas activée.</div>` : ''}
+    </div>
+  `;
+
+  const resultsHtml = (!editing && camp.dates.length) ? `
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
+      <div style="font-weight:700;font-size:13px;">${respondedCount} / ${employees.length} ont répondu</div>
+      <select id="srServiceFilter" class="filter-select">
+        <option value="ALL" ${svcFilter==='ALL'?'selected':''}>Tous les services</option>
+        ${(scope||state.services).map(s=>`<option value="${escapeHtml(s)}" ${svcFilter===s?'selected':''}>${escapeHtml(s)}</option>`).join('')}
+      </select>
+    </div>
+    <div style="overflow-x:auto;">
+    <table class="grid" style="min-width:100%;">
+      <thead><tr>
+        <th class="emp-col">Salarié</th>
+        ${camp.dates.map(dt=>`<th style="min-width:90px;">${escapeHtml(dt.label)}<br><span style="font-weight:600;font-size:10px;color:var(--ink-soft);">${fmtDate(dt.key)}</span></th>`).join('')}
+        <th style="min-width:110px;">Statut</th>
+      </tr></thead>
+      <tbody>
+        ${employees.map(u=>{
+          const r=specialRequestSummary(u.username);
+          return `<tr>
+            <td class="emp-col">${escapeHtml(u.name)}</td>
+            ${camp.dates.map(dt=>{
+              const a=r?r.answers[dt.key]:null;
+              if(!a || a.available===undefined || a.available===null) return `<td style="text-align:center;color:var(--ink-soft);">—</td>`;
+              const ok=a.available===true;
+              return `<td style="text-align:center;" ${a.comment?`title="${escapeHtml(a.comment)}"`:''}>
+                <span class="chip" style="background:${ok?'#E4F5EA':'#FBEAEA'};color:${ok?'#1E7B3C':'#B4342A'};">${ok?'Dispo':'Indispo'}</span>
+                ${a.comment?' 💬':''}
+              </td>`;
+            }).join('')}
+            <td style="text-align:center;font-size:11px;color:var(--ink-soft);">
+              ${r ? (r.modified?'Modifié le '+new Date(r.updatedAt).toLocaleDateString('fr-FR'):'Envoyé le '+new Date(r.submittedAt).toLocaleDateString('fr-FR')) : 'En attente'}
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    </div>
+  ` : '';
+
+  renderShell(configHtml+resultsHtml, 'Demandes spéciales');
+
+  if(editing){
+    document.getElementById('srAddDate').addEventListener('click',()=>{
+      draftCamp.dates.push({key:'', label:''});
+      render();
+    });
+    document.querySelectorAll('[data-sr-date-remove]').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        draftCamp.dates.splice(Number(btn.dataset.srDateRemove),1);
+        render();
+      });
+    });
+    document.querySelectorAll('[data-sr-date-idx]').forEach(inp=>{
+      inp.addEventListener('input',()=>{
+        draftCamp.dates[Number(inp.dataset.srDateIdx)][inp.dataset.srDateField]=inp.value;
+      });
+    });
+    document.getElementById('srCancelEdit').addEventListener('click',()=>{
+      state.specialReqEditing=false;
+      state.specialReqCampDraft=null;
+      render();
+    });
+    document.getElementById('srSaveConfig').addEventListener('click', async()=>{
+      draftCamp.title=document.getElementById('srTitle').value.trim();
+      draftCamp.deadline=document.getElementById('srDeadline').value;
+      const cleanDates=draftCamp.dates.filter(dt=>dt.key && dt.label.trim());
+      if(!cleanDates.length){ toast('Ajoutez au moins une date valide.', true); return; }
+      state.specialRequestCampaign={...draftCamp, dates:cleanDates};
+      await persistSpecialRequestCampaign();
+      state.specialReqEditing=false;
+      state.specialReqCampDraft=null;
+      toast('Campagne enregistrée.');
+      render();
+    });
+  } else {
+    const editBtn=document.getElementById('srEditBtn');
+    if(editBtn) editBtn.addEventListener('click',()=>{ state.specialReqEditing=true; state.specialReqCampDraft=null; render(); });
+    const toggleBtn=document.getElementById('srToggleActive');
+    if(toggleBtn) toggleBtn.addEventListener('click', async()=>{
+      state.specialRequestCampaign.active=!state.specialRequestCampaign.active;
+      await persistSpecialRequestCampaign();
+      if(state.specialRequestCampaign.active){
+        const scopeA=getAdminScope(state.currentUser);
+        const targets=state.users.filter(u=>u.role==='employee' && (!scopeA || scopeA.includes(u.team)));
+        for(const u of targets){ await pushNotification(u.username, 'Une nouvelle demande vous attend : « '+(camp.title||'Demande spéciale')+' ».'); }
+      }
+      render();
+    });
+    const svcSel=document.getElementById('srServiceFilter');
+    if(svcSel) svcSel.addEventListener('change',e=>{ state.specialReqAdminService=e.target.value; render(); });
+  }
+}
+
 function renderFonctionnalites(){
   if(!isSuperAdmin(state.currentUser)){ state.tab='calendrier'; render(); return; }
   const ff=state.featureFlags;
@@ -3355,10 +3592,27 @@ function isMobileDevice(){
   const smallScreen = Math.min(window.innerWidth, window.innerHeight) <= 500;
   return hasTouch && smallScreen;
 }
+/**
+ * Nombre de salariés concernés par la campagne active qui n'ont PAS ENCORE
+ * répondu — sert de badge (admin : suivi global ; salarié : lui/elle-même,
+ * 0 ou 1). Une fois qu'une personne a envoyé au moins une réponse, elle ne
+ * compte plus comme « en attente », même si elle peut encore revenir
+ * modifier son choix ensuite (le badge ne réapparaît pas pour ça).
+ */
+function specialRequestPendingCount(forUsername){
+  const camp=state.specialRequestCampaign;
+  if(!camp || !camp.active || !camp.dates || !camp.dates.length) return 0;
+  const targets = forUsername
+    ? (state.specialRequestResponses[forUsername] ? [] : [forUsername])
+    : state.users.filter(u=>u.role==='employee' && !state.specialRequestResponses[u.username]).map(u=>u.username);
+  return targets.length;
+}
 function navItems(){
   if(isMobileDevice()){
     if(state.currentUser.role==='admin'){
-      return [{id:'calendrier', label:'Calendrier Mensuel', icon:'▦'}];
+      const items=[{id:'calendrier', label:'Calendrier Mensuel', icon:'▦'}];
+      items.push({id:'special-requests', label:'Demandes spéciales', icon:'🎄'});
+      return items;
     }
     // Ces deux pages sont accessibles via le menu ⋮ sur mobile (le bandeau
     // latéral y étant masqué) — elles doivent donc rester dans la liste des
@@ -3369,6 +3623,7 @@ function navItems(){
     const mobItems=[{id:'individuel', label:'Planning individuel', icon:'🗓️'}, {id:'equipe', label:'Planning équipe', icon:'👥'}];
     if(isFeatureEnabled('desideratas', myTeamMob)) mobItems.push({id:'mesdesid', label:'Mes désidératas', icon:'🖐️'});
     if(isFeatureEnabled('echanges', myTeamMob)) mobItems.push({id:'echanges', label:'Swap', icon:'🔄'});
+    if(state.specialRequestCampaign.active) mobItems.push({id:'special-requests', label:'Demandes spéciales', icon:'🎄'});
     return mobItems;
   }
   if(state.currentUser.role==='admin'){
@@ -3379,6 +3634,7 @@ function navItems(){
     ];
     if(adminCanAccessFeature('desideratas')) items.push({id:'desideratas', label:'Désidératas', icon:'🖐️'});
     if(adminCanAccessFeature('echanges')) items.push({id:'echanges', label:'Échanges', icon:'🔄'});
+    items.push({id:'special-requests', label:'Demandes spéciales', icon:'🎄'});
     if(adminCanAccessFeature('alertes')) items.push({id:'alertes', label:'Alertes', icon:'⚠️'});
     if(adminCanAccessFeature('cycles')) items.push({id:'cycles', label:'Cycles', icon:'📊'});
     if(adminCanAccessFeature('stats')) items.push({id:'statistiques', label:'Statistiques', icon:'📈'});
@@ -3397,6 +3653,7 @@ function navItems(){
   ];
   if(isFeatureEnabled('desideratas', myTeam)) items.push({id:'mesdesid', label:'Mes désidératas', icon:'🖐️'});
   if(isFeatureEnabled('echanges', myTeam)) items.push({id:'echanges', label:'Swap', icon:'🔄'});
+  if(state.specialRequestCampaign.active) items.push({id:'special-requests', label:'Demandes spéciales', icon:'🎄'});
   return items;
 }
 function initials(name){
@@ -3484,6 +3741,7 @@ function topbarAccountMenuHtml(){
   const myTeam = me ? me.team : '';
   const showDesid = isEmp && isFeatureEnabled('desideratas', myTeam);
   const showEch = isEmp && isFeatureEnabled('echanges', myTeam);
+  const showSpecial = isEmp && state.specialRequestCampaign.active;
   return `
   <div style="position:relative;">
     <button class="bell-btn" id="topbarMenuBtn">⋮</button>
@@ -3493,7 +3751,8 @@ function topbarAccountMenuHtml(){
       ${isEmp?`<button data-topbar-nav="individuel" class="${state.tab==='individuel'?'active':''}">Planning individuel</button>`:''}
       ${isEmp?`<button data-topbar-nav="equipe" class="${state.tab==='equipe'?'active':''}">Planning équipe</button>`:''}
       ${showDesid?`<button data-topbar-nav="mesdesid" class="${state.tab==='mesdesid'?'active':''}">Désidératas</button>`:''}
-      ${showEch?`<button data-topbar-nav="echanges" class="${state.tab==='echanges'?'active':''}">Échanges</button>`:''}
+      ${showEch?`<button data-topbar-nav="echanges" class="${state.tab==='echanges'?'active':''}">Swap</button>`:''}
+      ${showSpecial?`<button data-topbar-nav="special-requests" class="${state.tab==='special-requests'?'active':''}">Demandes spéciales${specialRequestPendingCount(state.currentUser.username)?' •':''}</button>`:''}
       <button id="topbarAccountBtn">Mon compte</button>
       <button id="topbarLogoutBtn">Se déconnecter</button>
     </div>`:''}
@@ -3599,7 +3858,9 @@ function renderShell(innerHtml,title,sidebarExtraHtml){
                         return (ru&&scope.includes(ru.team)) || (tu&&scope.includes(tu.team));
                       }).length
                     : state.exchanges.filter(ex=>ex.targetUsername===state.currentUser.username && ex.status==='pending').length)
-                : 0;
+                : it.id==='special-requests'
+                  ? (state.currentUser.role==='admin' ? specialRequestPendingCount(null) : specialRequestPendingCount(state.currentUser.username))
+                  : 0;
           return `<button data-tab="${it.id}" class="${state.tab===it.id?'active':''}"><span class="label">${it.label}</span>${badge?`<span class="nav-badge">${badge>9?'9+':badge}</span>`:''}</button>`;
         }).join('')}
       </div>
@@ -5257,10 +5518,9 @@ function renderMesDesiderata(){
   document.getElementById('mdYear').addEventListener('change',e=>{ state.desidFilterYear=e.target.value; render(); });
   document.getElementById('mdArchived').addEventListener('change',e=>{ state.desidShowArchived=e.target.checked; render(); });
   document.querySelectorAll('[data-cancel]').forEach(btn=>{
-    btn.addEventListener('click',async()=>{
-      if(!confirm('Annuler cette demande ?')) return;
-      await cancelDesiderata(btn.dataset.cancel);
-      toast('Demande annulée.');
+    btn.addEventListener('click',()=>{
+      const d=state.desideratas.find(x=>x.id===btn.dataset.cancel);
+      state.modal={type:'confirm-cancel-desiderata', desiderataId:btn.dataset.cancel, desiderata:d};
       render();
     });
   });
@@ -7917,6 +8177,33 @@ function renderModal(){
     });
   }
 
+  if(state.modal.type==='confirm-cancel-desiderata'){
+    const d=state.modal.desiderata;
+    const info=d?codeInfo(d.code):null;
+    overlay.innerHTML=`
+    <div class="modal" style="max-width:400px;">
+      <h3>Annuler cette demande ?</h3>
+      ${d ? `
+      <div style="background:#FBFCFE;border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:16px;">
+        <div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:6px;">${fmtDateKeyFr(d.dateStart)} → ${fmtDateKeyFr(d.dateEnd)}</div>
+        <span class="chip" style="background:${info?info.color:'#EDEFF2'};color:${info?info.text:'#333'};">${escapeHtml(d.code)}${info?' · '+escapeHtml(info.label):''}</span>
+      </div>
+      ` : ''}
+      <div class="helper" style="margin:-6px 0 16px;">Cette demande sera définitivement retirée de la liste.</div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="ccdBack">Retour</button>
+        <button class="btn btn-primary" style="background:var(--danger);border-color:var(--danger);" id="ccdConfirm">Annuler la demande</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('ccdBack').addEventListener('click',closeModal);
+    document.getElementById('ccdConfirm').addEventListener('click', async()=>{
+      await cancelDesiderata(state.modal.desiderataId);
+      toast('Demande annulée.');
+      closeModal();
+    });
+  }
+
   if(state.modal.type==='confirm-reset-test-data'){
     const now=new Date();
     const defaultMonthValue=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
@@ -8098,6 +8385,7 @@ function render(){
     else if(state.tab==='suivi') renderSuivi();
     else if(state.tab==='config-generation') renderConfigGeneration();
     else if(state.tab==='fonctionnalites') renderFonctionnalites();
+    else if(state.tab==='special-requests') renderSpecialRequests();
     else renderCalendrierAdmin();
   } else {
     if(state.tab==='equipe') renderPlanningEquipe();
@@ -8105,6 +8393,7 @@ function render(){
     else if(state.tab==='mesdesid') renderMesDesiderata();
     else if(state.tab==='echanges') renderMesEchanges();
     else if(state.tab==='annuel') renderMonPlanningAnnuel();
+    else if(state.tab==='special-requests') renderSpecialRequests();
     else renderPlanningEmploye();
   }
   renderModal();
