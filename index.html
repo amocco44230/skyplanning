@@ -801,7 +801,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v9.5';
+const APP_VERSION = 'v9.6';
 const APP_VERSION_DATE = '28/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -2488,7 +2488,7 @@ function getAffectations(u){
   if(u.affectations && u.affectations.length){
     return [...u.affectations].sort((a,b)=>a.startDate.localeCompare(b.startDate));
   }
-  return [{id:'base', startDate:u.startDate||'2000-01-01', team:u.team||'', fonction:u.fonction||''}];
+  return [{id:'base', startDate:u.startDate||'2000-01-01', team:u.team||'', fonction:u.fonction||'', subGroup:u.subGroup||''}];
 }
 function affectationAt(u, dateKey){
   const list=getAffectations(u);
@@ -2534,17 +2534,17 @@ function resolveFonctionForService(e, service){
 function syncCurrentAffectation(u){
   const today=dkey(new Date());
   const cur=affectationAt(u, today);
-  if(cur){ u.team=cur.team||''; u.fonction=cur.fonction||''; }
+  if(cur){ u.team=cur.team||''; u.fonction=cur.fonction||''; u.subGroup=cur.subGroup||''; }
 }
-function setImmediateAffectation(u, team, fonction){
-  // Utilisé quand l'admin change directement le Service/Fonction depuis la
-  // fiche salarié (effet immédiat, à la date du jour) plutôt que de
-  // programmer un changement futur.
+function setImmediateAffectation(u, team, fonction, subGroup){
+  // Utilisé quand l'admin change directement le Service/Fonction/Sous-groupe
+  // depuis la fiche salarié (effet immédiat, à la date du jour) plutôt que
+  // de programmer un changement futur.
   const today=dkey(new Date());
   const list=getAffectations(u).filter(a=>a.startDate!==today);
-  list.push({id:genId(), startDate:today, team, fonction});
+  list.push({id:genId(), startDate:today, team, fonction, subGroup:subGroup||''});
   u.affectations=list.sort((a,b)=>a.startDate.localeCompare(b.startDate));
-  u.team=team; u.fonction=fonction;
+  u.team=team; u.fonction=fonction; u.subGroup=subGroup||'';
 }
 function isDayWithinValidity(emp, dateKey, serviceContext){
   if(emp.startDate && dateKey<emp.startDate) return false;
@@ -3670,7 +3670,7 @@ function gridHtml({employees, readonly, alerts, changes, serviceContext}){
       }
       const groupAlertDays=new Set(alerts.filter(a=>a.rule.type==='daily_group' && a.rule.service===svcGroup.service && (group.fonction===null||a.rule.fonctions.includes(group.fonction))).map(a=>a.date+'|'+a.kind));
       let prevSubGroup=undefined; // ligne de séparation dès que le sous-groupe change (voir « Gestion des salariés »)
-      group.list.forEach(emp=>{
+      sortEmployeesBySubGroup(group.list).forEach(emp=>{
     const empSubGroup=emp.subGroup||'';
     if(prevSubGroup!==undefined && empSubGroup!==prevSubGroup){
       bodyRows+=`<tr class="subgroup-sep-row"><td colspan="${nDays+1}">${empSubGroup?escapeHtml(empSubGroup):''}</td></tr>`;
@@ -4211,7 +4211,7 @@ function teamWeekViewHtml(teamEmployees, weekDates, myTeam, todayKeyStr, restric
   const groupsHtml=groups.map(g=>{
     const label = g.fonction==='__none__' ? 'Sans fonction' : (g.fonction||'');
     let prevSubGroup=undefined;
-    const rows=g.list.map(emp=>{
+    const rows=sortEmployeesBySubGroup(g.list).map(emp=>{
       const empSubGroup=emp.subGroup||'';
       let subGroupSepHtml='';
       if(prevSubGroup!==undefined && empSubGroup!==prevSubGroup){
@@ -5951,6 +5951,26 @@ function getAdminScope(user){
   return user.adminServices;
 }
 function isSuperAdmin(user){ return !!(user && user.role==='admin' && getAdminScope(user)===null); }
+/**
+ * Trie une liste de salariés pour que ceux du même sous-groupe soient
+ * réellement regroupés ensemble (et pas seulement quand ils se trouvaient
+ * déjà par hasard côte à côte dans l'ordre existant — c'était le bug :
+ * un salarié pouvait afficher un sous-groupe sans jamais être rapproché de
+ * ses coéquipiers). Les salariés sans sous-groupe passent en premier, puis
+ * chaque sous-groupe nommé par ordre alphabétique ; au sein d'un même
+ * sous-groupe, l'ordre alphabétique par nom est conservé.
+ */
+function sortEmployeesBySubGroup(list){
+  // Ne change rien si personne n'a de sous-groupe défini — évite de
+  // réorganiser silencieusement l'ordre existant (potentiellement voulu,
+  // ex : ancienneté) pour les services qui n'utilisent pas cette notion.
+  if(!list.some(e=>e.subGroup)) return list;
+  return [...list].sort((a,b)=>{
+    const sa=a.subGroup||'', sb=b.subGroup||'';
+    if(sa!==sb) return sa.localeCompare(sb, 'fr');
+    return 0; // égalité : le tri étant stable, l'ordre d'origine est conservé au sein d'un même sous-groupe
+  });
+}
 function groupByFonction(employees, service, includeEmpty){
   const fonctionsList=getFonctionsForService(service);
   if(!fonctionsList.length && !includeEmpty) return [{fonction:null, list:employees}];
@@ -6047,7 +6067,7 @@ function renderGestionSalaries(){
     const fonctionZone = group.fonction==='__none__' ? '' : escapeHtml(group.fonction);
     let rowsHtml='';
     let prevSubGroup=undefined;
-    group.list.forEach(emp=>{
+    sortEmployeesBySubGroup(group.list).forEach(emp=>{
       const empSubGroup=emp.subGroup||'';
       if(prevSubGroup!==undefined && empSubGroup!==prevSubGroup){
         rowsHtml+=`<div class="subgroup-sep">${empSubGroup?escapeHtml(empSubGroup):''}</div>`;
@@ -6161,7 +6181,7 @@ function renderGestionSalaries(){
       if(!username) return;
       const emp=state.users.find(u=>u.username===username);
       if(!emp) return;
-      setImmediateAffectation(emp, zone.dataset.serviceZone||'', zone.dataset.fonctionZone||'');
+      setImmediateAffectation(emp, zone.dataset.serviceZone||'', zone.dataset.fonctionZone||'', emp.subGroup);
       state.dragUser=null;
       await persistUsers();
       toast('Salarié déplacé.');
@@ -6394,10 +6414,10 @@ function renderModal(){
         <div class="helper">Autorise le service coché à consulter le planning de ce salarié quand il choisit de parcourir son service (menu « Service consulté » côté salarié comme côté admin). Dès qu'un seul salarié d'un service accepte comme ça, ce service apparaît automatiquement dans ce sélecteur, sans rien à configurer côté service visiteur. Ce salarié reste sur son propre planning équipe uniquement — contrairement au réglage ci-dessus, il n'apparaît pas directement ailleurs.</div>
       </div>
       <div class="field admin-rights-field">
-        <label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:6px;">Historique service / fonction</label>
+        <label style="font-size:12.5px;font-weight:700;display:block;margin-bottom:6px;">Historique service / fonction / sous-groupe</label>
         <div id="mAffectList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:${state.modal.isNew?'0':'8px'};">
           ${getAffectations(d).map(a=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;background:#FBFCFE;border:1px solid var(--border);border-radius:7px;padding:7px 10px;">
-            <span>À partir du <b>${fmtDate(a.startDate)}</b> : ${escapeHtml(a.team||'Aucun service')}${a.fonction?' · '+escapeHtml(a.fonction):''}${a.startDate>dkey(new Date())?' <span style="color:var(--primary);font-weight:700;">(à venir)</span>':''}</span>
+            <span>À partir du <b>${fmtDate(a.startDate)}</b> : ${escapeHtml(a.team||'Aucun service')}${a.fonction?' · '+escapeHtml(a.fonction):''}${a.subGroup?' · '+escapeHtml(a.subGroup):''}${a.startDate>dkey(new Date())?' <span style="color:var(--primary);font-weight:700;">(à venir)</span>':''}</span>
             ${(!state.modal.isNew && a.startDate>dkey(new Date())) ? `<button type="button" class="icon-btn" data-del-affect="${a.id||a.startDate}" style="color:var(--danger);padding:2px 8px;flex-shrink:0;">✕</button>` : ''}
           </div>`).join('')}
         </div>
@@ -6413,10 +6433,13 @@ function renderModal(){
           <div class="field" style="flex:1;min-width:120px;margin:0;"><label style="font-size:11px;">Nouvelle fonction</label>
             <select id="mAffectFonction" style="width:100%;padding:9px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;background:#FBFCFE;"><option value="">Aucune</option></select>
           </div>
+          <div class="field" style="flex:1;min-width:120px;margin:0;"><label style="font-size:11px;">Nouveau sous-groupe</label>
+            <input id="mAffectSubGroup" placeholder="Ex : Équipe 2" style="padding:9px 10px;">
+          </div>
           <button type="button" class="icon-btn" id="mAffectAdd" style="height:38px;">+ Programmer</button>
         </div>
-        <div class="helper">Le changement s'appliquera automatiquement à la date choisie, sur le planning, les alertes et les filtres par service — pas besoin de revenir modifier la fiche ce jour-là.</div>
-        ` : `<div class="helper">Vous pourrez programmer un changement de service/fonction futur une fois le salarié créé.</div>`}
+        <div class="helper">Le changement s'appliquera automatiquement à la date choisie, sur le planning, les alertes, les filtres par service et le regroupement par sous-groupe — pas besoin de revenir modifier la fiche ce jour-là.</div>
+        ` : `<div class="helper">Vous pourrez programmer un changement de service/fonction/sous-groupe futur une fois le salarié créé.</div>`}
       </div>
       ${isSuperAdmin(state.currentUser) ? `
       <div class="field admin-rights-field">
@@ -6481,9 +6504,10 @@ function renderModal(){
         const date=document.getElementById('mAffectDate').value;
         const team=mAffectTeamSel.value;
         const fonction=mAffectFonctionSel.value;
+        const subGroup=document.getElementById('mAffectSubGroup').value.trim();
         if(!date){ toast("Merci de choisir une date d'effet.", true); return; }
         const list=getAffectations(emp).filter(a=>a.startDate!==date);
-        list.push({id:genId(), startDate:date, team, fonction});
+        list.push({id:genId(), startDate:date, team, fonction, subGroup});
         emp.affectations=list.sort((a,b)=>a.startDate.localeCompare(b.startDate));
         syncCurrentAffectation(emp);
         await persistUsers();
@@ -6538,16 +6562,16 @@ function renderModal(){
       }
       if(state.modal.isNew){
         const newEmp={username,password,name,role,startDate,endDate,team,fonction,email,adminServices,extraTeams,alsoShowInServices,isAdministratif,subGroup};
-        newEmp.affectations=[{id:genId(), startDate: startDate||dkey(new Date()), team, fonction}];
+        newEmp.affectations=[{id:genId(), startDate: startDate||dkey(new Date()), team, fonction, subGroup}];
         state.users.push(newEmp);
       } else {
         const emp=state.users.find(u=>u.username===d.username);
         emp.name=name; emp.password=password; emp.startDate=startDate; emp.endDate=endDate; emp.email=email;
-        emp.role=role; emp.adminServices=adminServices; emp.extraTeams=extraTeams; emp.alsoShowInServices=alsoShowInServices; emp.isAdministratif=isAdministratif; emp.subGroup=subGroup;
-        if(team!==(d.team||'') || fonction!==(d.fonction||'')){
-          setImmediateAffectation(emp, team, fonction);
+        emp.role=role; emp.adminServices=adminServices; emp.extraTeams=extraTeams; emp.alsoShowInServices=alsoShowInServices; emp.isAdministratif=isAdministratif;
+        if(team!==(d.team||'') || fonction!==(d.fonction||'') || subGroup!==(d.subGroup||'')){
+          setImmediateAffectation(emp, team, fonction, subGroup);
         } else {
-          emp.team=team; emp.fonction=fonction;
+          emp.team=team; emp.fonction=fonction; emp.subGroup=subGroup;
         }
       }
       await persistUsers();
@@ -7202,7 +7226,7 @@ function renderModal(){
     });
     document.getElementById('mvConfirm').addEventListener('click', async()=>{
       const emp=state.users.find(u=>u.username===mv.username);
-      setImmediateAffectation(emp, document.getElementById('mvService').value, document.getElementById('mvFonction').value);
+      setImmediateAffectation(emp, document.getElementById('mvService').value, document.getElementById('mvFonction').value, emp.subGroup);
       await persistUsers();
       toast('Salarié déplacé.');
       closeModal();
