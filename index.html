@@ -389,6 +389,15 @@
   .peq-week-cell.swap-picked-target{opacity:1!important;outline:3px solid #E8615A!important;outline-offset:-2.5px;position:relative;z-index:2;}
   .swap-hint{background:#EEF1FA;border:1px solid #cdd6ec;color:var(--primary-dark);padding:10px 14px;border-radius:10px;margin-bottom:12px;font-size:12.5px;line-height:1.5;}
   .swap-summary{background:var(--primary-light);border:1px solid #cdd6ec;color:var(--primary-dark);padding:10px 14px;border-radius:10px;margin-top:8px;font-size:12.5px;line-height:1.5;}
+  .swap-confirm-table{border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+  .swap-confirm-head{display:grid;grid-template-columns:1fr 1fr;background:var(--primary-dark);color:#fff;font-weight:800;font-size:12.5px;}
+  .swap-confirm-head div{padding:9px 12px;}
+  .swap-confirm-head div:first-child{border-right:1px solid rgba(255,255,255,.2);}
+  .swap-confirm-row{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--border);}
+  .swap-confirm-cell{padding:10px 12px;display:flex;flex-direction:column;gap:4px;}
+  .swap-confirm-cell.mine{border-right:1px solid var(--border);}
+  .swap-confirm-date{font-size:11.5px;font-weight:600;color:var(--ink-soft);}
+  .swap-confirm-newcode{font-size:14px;font-weight:800;color:var(--ink);}
   .swap-top-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
   .swap-badge{background:var(--danger);color:#fff;font-weight:800;font-size:12px;letter-spacing:.04em;padding:6px 14px;border-radius:20px;text-transform:uppercase;flex-shrink:0;}
   .swap-top-actions{display:flex;gap:8px;flex-wrap:wrap;}
@@ -818,7 +827,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v11.5';
+const APP_VERSION = 'v11.8';
 const APP_VERSION_DATE = '30/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -4102,7 +4111,7 @@ function renderPlanningIndividuel(){
     </div>
     ${isFeatureEnabled('desideratas', myService) ? `
     <div class="mobile-action-row" style="margin-top:10px;">
-      <button class="btn-gen" id="indivDesidBtn">Désidératas</button>
+      <button class="btn btn-primary" id="indivDesidBtn">Désidératas</button>
     </div>
     ` : ''}
     <div class="legend-hint indiv-hint" style="margin:10px 0 8px;">Touchez un <b>code</b> puis un <b>jour</b> pour poser votre brouillon.</div>
@@ -4225,7 +4234,6 @@ function renderPlanningEmploye(){
   const sideActionsHtml=`
     <div class="sidebar-extra-title">Actions</div>
     ${isFeatureEnabled('desideratas', myService) ? `<button class="btn-gen" id="planNewDesidBtn">Désidératas</button>` : ''}
-    ${isFeatureEnabled('echanges', myService) ? `<button class="btn-gen" id="planNewExchBtn">Swap</button>` : ''}
   `;
   const inner=`
     <div class="emp-cal-toolbar">
@@ -4242,8 +4250,7 @@ function renderPlanningEmploye(){
     </div>
     ${mobile ? `
     <div class="mobile-action-row">
-      ${isFeatureEnabled('desideratas', myService) ? `<button class="btn-gen" id="planNewDesidBtn">Désidératas</button>` : ''}
-      ${isFeatureEnabled('echanges', myService) ? `<button class="btn-gen" id="planNewExchBtn">Swap</button>` : ''}
+      ${isFeatureEnabled('desideratas', myService) ? `<button class="btn btn-primary" id="planNewDesidBtn">Désidératas</button>` : ''}
     </div>
     ` : ''}
     <div style="display:flex;gap:10px;">
@@ -4284,14 +4291,6 @@ function renderPlanningEmploye(){
   const planNewDesidBtn=document.getElementById('planNewDesidBtn');
   if(planNewDesidBtn) planNewDesidBtn.addEventListener('click',()=>{
     state.modal={type:'new-desiderata', data:{dateStart:'',dateEnd:'',code:state.codes[0]?state.codes[0].code:'',comment:''}};
-    render();
-  });
-  const planNewExchBtn=document.getElementById('planNewExchBtn');
-  if(planNewExchBtn) planNewExchBtn.addEventListener('click',()=>{
-    const me=state.users.find(u=>u.username===username);
-    const colleagues=state.users.filter(u=>u.role==='employee' && u.username!==username && employeeActiveInServiceDuringMonth(u, myService, y, m) && u.fonction===(me?me.fonction:''));
-    if(!colleagues.length){ toast('Aucun collègue de la même fonction disponible pour un échange.', true); return; }
-    state.modal={type:'swap-intro', colleagues};
     render();
   });
 }
@@ -5001,8 +5000,6 @@ function renderAdminEchanges(){
 
   const rowHtml=(ex)=>{
     const sc=exchangeStatusColor(ex.status);
-    const infoA=ex.codeA?codeInfo(ex.codeA):null;
-    const infoB=ex.codeB?codeInfo(ex.codeB):null;
     const weekA=weekDatesAround(ex.dateA), weekB=weekDatesAround(ex.dateB);
     const alertImpact = ex.status==='pending' ? computeExchangeAlertImpact(ex) : [];
     return `
@@ -5010,16 +5007,6 @@ function renderAdminEchanges(){
       <div style="display:flex;gap:14px;flex-wrap:wrap;">
         <div class="desid-row-main">
           <div class="desid-row-name">${escapeHtml(ex.requesterName)} ↔ ${escapeHtml(ex.targetName)}</div>
-          <div class="desid-row-period">
-            <b>${escapeHtml(ex.requesterName)}</b> le ${fmtDateKeyFr(ex.dateA)}
-            <span class="chip" style="background:${infoA?infoA.color:'#EDEFF2'};color:${infoA?infoA.text:'#333'};margin:0 6px;">${ex.codeA||'Vide'}</span>
-            → devient <span class="chip" style="background:${infoB?infoB.color:'#EDEFF2'};color:${infoB?infoB.text:'#333'};">${ex.codeB||'Vide'}</span>
-          </div>
-          <div class="desid-row-period">
-            <b>${escapeHtml(ex.targetName)}</b> le ${fmtDateKeyFr(ex.dateB)}
-            <span class="chip" style="background:${infoB?infoB.color:'#EDEFF2'};color:${infoB?infoB.text:'#333'};margin:0 6px;">${ex.codeB||'Vide'}</span>
-            → devient <span class="chip" style="background:${infoA?infoA.color:'#EDEFF2'};color:${infoA?infoA.text:'#333'};">${ex.codeA||'Vide'}</span>
-          </div>
           ${ex.comment?`<div class="desid-row-comment">« ${escapeHtml(ex.comment)} »</div>`:''}
           ${ex.adminComment?`<div class="desid-row-comment" style="color:var(--primary);">Réponse : ${escapeHtml(ex.adminComment)}</div>`:''}
         </div>
@@ -5213,10 +5200,7 @@ function renderMesEchanges(){
 
   const sentList=filt(sent), receivedList=filt(received);
   const inner=`
-    <div class="toolbar" style="flex-wrap:wrap;gap:10px;">
-      <div style="font-size:13px;color:var(--ink-soft);">Proposez l'échange d'une journée de planning avec un·e collègue. L'échange est appliqué après validation de l'administrateur.</div>
-      <button class="btn btn-primary" id="newExchBtn" style="width:auto;margin:0;">+ Proposer un échange</button>
-    </div>
+    <div class="legend-hint">Pour proposer un échange, rendez-vous sur <b>Planning équipe</b> et touchez « Swap » — vous y sélectionnez directement le(s) jour(s) sur le planning. Cette page ne sert qu'à suivre vos demandes.</div>
     <div class="toolbar" style="flex-wrap:wrap;gap:10px;margin-top:4px;">
       <div></div>
       <select id="exMyStatus" class="filter-select">
@@ -5235,16 +5219,8 @@ function renderMesEchanges(){
       ${receivedList.length? receivedList.map(ex=>rowHtml(ex,false)).join('') : `<div class="empty-state">Aucune demande reçue.</div>`}
     </div>
   `;
-  renderShell(inner,'Échanges de service');
+  renderShell(inner,'Swap');
   document.getElementById('exMyStatus').addEventListener('change',e=>{ state.exchFilterStatus=e.target.value; render(); });
-  document.getElementById('newExchBtn').addEventListener('click',()=>{
-    const me=state.users.find(u=>u.username===username);
-    const myTeam=(me&&me.team)?me.team:'';
-    const colleagues=state.users.filter(u=>u.role==='employee' && u.username!==username && u.team===myTeam && u.fonction===(me?me.fonction:''));
-    if(!colleagues.length){ toast('Aucun collègue de la même fonction disponible pour un échange.', true); return; }
-    state.modal={type:'swap-intro', colleagues};
-    render();
-  });
   document.querySelectorAll('[data-exch-cancel]').forEach(btn=>{
     btn.addEventListener('click',async()=>{
       if(!confirm('Annuler cette demande d\u2019échange ?')) return;
@@ -7708,14 +7684,29 @@ function renderModal(){
 
   if(state.modal.type==='swap-confirm-multi'){
     const pairs=state.modal.pairs||[];
+    const dowOf=(dk)=>DOW_SHORT[(new Date(dk+'T00:00:00').getDay()+6)%7];
     overlay.innerHTML=`
     <div class="modal" style="max-width:460px;">
       <h3>Confirmer la demande d'échange ?</h3>
-      <div class="legend-hint" style="margin:-6px 0 14px;">Avec <b>${escapeHtml(state.modal.targetName)}</b> — ${pairs.length} jour${pairs.length>1?'s':''} échangé${pairs.length>1?'s':''} :</div>
-      <div class="list-mgr" style="margin-bottom:14px;">
-        ${pairs.map(p=>`<div class="list-mgr-row"><span>Le <b>${fmtDateKeyFr(p.dateA)}</b> (${escapeHtml(p.codeA||'Repos')})</span><span>↔ le <b>${fmtDateKeyFr(p.dateB)}</b> (${escapeHtml(p.codeB||'Repos')})</span></div>`).join('')}
+      <div class="legend-hint" style="margin:-6px 0 14px;">${pairs.length} jour${pairs.length>1?'s':''} échangé${pairs.length>1?'s':''} avec <b>${escapeHtml(state.modal.targetName)}</b> — voici ce que chacun aura <b>après</b> l'échange :</div>
+      <div class="swap-confirm-table">
+        <div class="swap-confirm-head">
+          <div>Vous</div>
+          <div>${escapeHtml(state.modal.targetName)}</div>
+        </div>
+        ${pairs.map(p=>`
+        <div class="swap-confirm-row">
+          <div class="swap-confirm-cell mine">
+            <span class="swap-confirm-date">${dowOf(p.dateA)} ${fmtDateKeyFr(p.dateA)}</span>
+            <span class="swap-confirm-newcode">${escapeHtml(p.codeB||'Repos')}</span>
+          </div>
+          <div class="swap-confirm-cell theirs">
+            <span class="swap-confirm-date">${dowOf(p.dateB)} ${fmtDateKeyFr(p.dateB)}</span>
+            <span class="swap-confirm-newcode">${escapeHtml(p.codeA||'Repos')}</span>
+          </div>
+        </div>`).join('')}
       </div>
-      <div class="field"><label>Message (optionnel)</label>
+      <div class="field" style="margin-top:14px;"><label>Message (optionnel)</label>
         <textarea id="scmComment" rows="2" placeholder="Ex : besoin d'échanger pour un rendez-vous" style="width:100%;border:1.5px solid var(--border);border-radius:9px;padding:10px 12px;font-family:inherit;font-size:13.5px;resize:vertical;"></textarea>
       </div>
       <div class="helper" style="margin:-8px 0 14px;">Une fois validé par l'administrateur, vos journées seront échangées.</div>
