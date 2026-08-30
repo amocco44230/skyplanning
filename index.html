@@ -843,7 +843,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v13.7';
+const APP_VERSION = 'v13.9';
 const APP_VERSION_DATE = '30/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -2663,10 +2663,16 @@ function employeeActiveInServiceDuringMonth(u, service, year, month){
   // notifications, listes de collègues pour un échange...).
   return affectationsForMonth(u, year, month).some(s=>s.team===service);
 }
-function resolveFonctionForService(e, service){
+function resolveFonctionForService(e, service, refDateKey){
   const matches=getAffectations(e).filter(a=>a.team===service);
   if(!matches.length) return e.fonction||'';
-  return matches[matches.length-1].fonction||'';
+  if(!refDateKey) return matches[matches.length-1].fonction||''; // pas de date de référence : comportement « dernière connue » (rétrocompatibilité)
+  // Avec une date de référence (ex : 1er jour du mois affiché) : on prend la
+  // dernière affectation dont la date de début est déjà passée à cette
+  // date-là — jamais une affectation FUTURE par rapport au mois consulté.
+  let current=matches[0];
+  for(const a of matches){ if(a.startDate<=refDateKey) current=a; else break; }
+  return current.fonction||'';
 }
 function syncCurrentAffectation(u){
   const today=dkey(new Date());
@@ -4271,8 +4277,8 @@ function gridHtml({employees, readonly, alerts, changes, serviceContext, swapCtx
         ${changePastilleHtml}
         ${dayValid?holidayMarkHtml:''}
         <div class="day-cell-inner">
-          <div class="code-badge" ${dayValid && code && code.length>3 ? 'data-longcode="1"' : ''} style="${dayValid?style:''}">${dayValid?(code||''):''}</div>
-          ${dayValid?desidStripHtml:''}
+          <div class="code-badge" ${dayValid && !isHatched && code && code.length>3 ? 'data-longcode="1"' : ''} style="${dayValid && !isHatched?style:''}">${dayValid && !isHatched?(code||''):''}</div>
+          ${dayValid && !isHatched?desidStripHtml:''}
         </div>
       </td>`;
     }
@@ -6633,8 +6639,8 @@ function groupByServiceThenFonction(employees, includeEmpty, serviceContext, yea
     // expandEmployeesForFonctionTransitions) — sinon simple résolution de sa
     // fonction actuelle pour ce service.
     const list = (year!==undefined && month!==undefined)
-      ? expandEmployeesForFonctionTransitions(employees.map(e=>({...e, fonction: resolveFonctionForService(e, serviceContext)})), year, month)
-      : employees.map(e=>({...e, fonction: resolveFonctionForService(e, serviceContext)}));
+      ? expandEmployeesForFonctionTransitions(employees.map(e=>({...e, fonction: resolveFonctionForService(e, serviceContext, ymdKey(year, month, 1))})), year, month)
+      : employees.map(e=>({...e, fonction: resolveFonctionForService(e, serviceContext, (year!==undefined&&month!==undefined)?ymdKey(year, month, 1):undefined)}));
     const sub=groupByFonction(list, serviceContext, includeEmpty);
     return [{service:serviceContext, list, sub}];
   }
