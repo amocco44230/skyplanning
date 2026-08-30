@@ -814,7 +814,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v10.7';
+const APP_VERSION = 'v10.9';
 const APP_VERSION_DATE = '30/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -1970,7 +1970,7 @@ function commentKey(username,y,m,d){ return username+'::'+y+'-'+String(m+1).padS
 function openCommentModal(username,name,y,m,d){
   const key=commentKey(username,y,m,d);
   const existing=state.comments[key]||{};
-  state.modal={type:'comment', username, name, y, m, d, key, activeTab:'public', publicText:existing.public||'', privateText:existing.private||''};
+  state.modal={type:'comment', username, name, y, m, d, key, activeTab:'public', publicText:existing.public||'', privateText:existing.private||'', originalPublicText:existing.public||''};
   render();
 }
 
@@ -3299,9 +3299,19 @@ function isMobileDevice(){
 }
 function navItems(){
   if(isMobileDevice()){
-    return state.currentUser.role==='admin'
-      ? [{id:'calendrier', label:'Calendrier Mensuel', icon:'▦'}]
-      : [{id:'individuel', label:'Planning individuel', icon:'🗓️'}, {id:'equipe', label:'Planning équipe', icon:'👥'}];
+    if(state.currentUser.role==='admin'){
+      return [{id:'calendrier', label:'Calendrier Mensuel', icon:'▦'}];
+    }
+    // Ces deux pages sont accessibles via le menu ⋮ sur mobile (le bandeau
+    // latéral y étant masqué) — elles doivent donc rester dans la liste des
+    // onglets « autorisés », sinon le garde-fou mobile les réinitialise
+    // aussitôt vers « Planning individuel ».
+    const meMob=state.users.find(u=>u.username===state.currentUser.username);
+    const myTeamMob=(meMob&&meMob.team)?meMob.team:'';
+    const mobItems=[{id:'individuel', label:'Planning individuel', icon:'🗓️'}, {id:'equipe', label:'Planning équipe', icon:'👥'}];
+    if(isFeatureEnabled('desideratas', myTeamMob)) mobItems.push({id:'mesdesid', label:'Mes désidératas', icon:'🖐️'});
+    if(isFeatureEnabled('echanges', myTeamMob)) mobItems.push({id:'echanges', label:'Swap', icon:'🔄'});
+    return mobItems;
   }
   if(state.currentUser.role==='admin'){
     const items=[
@@ -4021,8 +4031,10 @@ function renderPlanningIndividuel(){
     const cellBg = info ? `background:${info.color};color:${info.text};` : '';
     const cm=state.comments[commentKey(username,y,m,d)];
     let cmtMarks='';
+    // Le commentaire « privé » est réservé aux admins entre eux — un salarié
+    // ne doit JAMAIS en voir la moindre trace sur son propre planning (ni
+    // repère, ni contenu), contrairement au commentaire « public ».
     if(cm && cm.public) cmtMarks+=`<span class="cmt-dot pub" title="💬 ${escapeHtml(cm.public)}"></span>`;
-    if(cm && cm.private) cmtMarks+=`<span class="cmt-dot priv" title="🔒 ${escapeHtml(cm.private)}"></span>`;
     return `<div class="cal-day cal-day-compact indiv-day-tile ${isToday?'today':''} ${dayValid?'selectable-day':''}" ${dayValid?`data-date="${dateKeyStr}"`:''} style="${cellBg}" title="${dateKeyStr}${draftCode?' — brouillon : '+draftCode:''}">
       ${cmtMarks}
       <span class="indiv-day-num">${d}</span>
@@ -7039,9 +7051,16 @@ function renderModal(){
       const key=state.modal.key;
       const pub=state.modal.publicText.trim();
       const priv=state.modal.privateText.trim();
+      const publicChanged = pub!==(state.modal.originalPublicText||'');
       if(!pub && !priv){ delete state.comments[key]; }
       else { state.comments[key]={public:pub, private:priv, updated:new Date().toISOString()}; }
       await persistComments();
+      // Le commentaire PUBLIC prévient le salarié concerné — jamais le privé,
+      // qui reste strictement réservé aux admins entre eux.
+      if(publicChanged && pub){
+        const dateLabel=String(state.modal.d).padStart(2,'0')+'/'+String(state.modal.m+1).padStart(2,'0')+'/'+state.modal.y;
+        await pushNotification(state.modal.username, 'Un commentaire a été ajouté sur votre planning du '+dateLabel+' : « '+pub+' »');
+      }
       toast('Commentaire enregistré.');
       closeModal();
     });
