@@ -413,6 +413,9 @@
   td.day-cell.swap-picked-mine{opacity:1!important;outline:3.5px solid #2C3A63!important;outline-offset:-3px;position:relative;z-index:2;}
   td.day-cell.swap-picked-target{opacity:1!important;outline:3.5px solid #E8615A!important;outline-offset:-3px;position:relative;z-index:2;}
   .peq-week-cell.today{outline:2px solid var(--primary-dark);outline-offset:-2px;}
+  .peq-week-cell.status-pending{outline:2px solid #F5A623;outline-offset:-2px;}
+  .peq-week-cell.status-validated{outline:2px solid #1E7B3C;outline-offset:-2px;}
+  .peq-week-cell.status-refused{outline:1.5px dashed #D8544A;outline-offset:-1.5px;}
   .peq-week-unavailable{grid-column:2 / -1;font-size:10.5px;font-style:italic;color:var(--ink-soft);background:#F4F5F7;border-radius:6px;padding:7px 8px;text-align:center;}
   /* ---------- Grille restreinte (consultation d'un autre service) ---------- */
   .restricted-grid-card{padding:4px;}
@@ -830,7 +833,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v12.2';
+const APP_VERSION = 'v12.4';
 const APP_VERSION_DATE = '30/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -2046,7 +2049,11 @@ async function refuseDesiderata(id,adminComment){
     {dateStart:d.dateStart, dateEnd:d.dateEnd, code:d.code, adminComment});
 }
 function desiderataForCell(username,dateKey){
-  const matches=state.desideratas.filter(d=>d.username===username && !d.archived && dateKey>=d.dateStart && dateKey<=d.dateEnd);
+  // L'archivage ne sert qu'à alléger la liste « Mes désidératas » — il ne
+  // doit JAMAIS faire disparaître le repère de statut sur le calendrier
+  // (Mon planning annuel, Planning individuel...), donc pas de filtre sur
+  // « archived » ici.
+  const matches=state.desideratas.filter(d=>d.username===username && dateKey>=d.dateStart && dateKey<=d.dateEnd);
   if(!matches.length) return null;
   return matches.find(d=>d.status==='pending') || matches[0];
 }
@@ -2178,6 +2185,38 @@ function exchangeMiniRowHtml(username, weekDates, highlightDateKey, overrideDate
       <div style="font-size:8px;color:var(--ink-soft);text-transform:uppercase;">${dow}</div>
       <div style="font-size:9px;color:var(--ink-soft);margin-bottom:2px;">${dd}</div>
       <div style="height:24px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;background:${info?info.color:'#EDEFF2'};color:${info?info.text:'#B7BEC9'};${(isOverride||isHighlight)?'outline:2.5px solid var(--primary);outline-offset:-2.5px;':''}">${code||'—'}</div>
+    </div>`;
+  }).join('');
+  return `<div style="display:flex;gap:3px;">${cells}</div>`;
+}
+/**
+ * Découpe une période (dateStart→dateEnd) en semaines calendaires réelles
+ * (lundi→dimanche) à afficher successivement — une désidérata peut couvrir
+ * plusieurs semaines, contrairement à un échange qui ne concerne qu'un jour.
+ */
+function weeksForRange(dateStart, dateEnd){
+  const weeks=[];
+  let cursor=weekDatesAround(dateStart)[0];
+  const lastMonday=weekDatesAround(dateEnd)[0];
+  let guard=0;
+  while(cursor<=lastMonday && guard<26){ // garde-fou : jamais plus de ~6 mois affichés
+    weeks.push(weekDatesAround(cursor));
+    cursor=dkey(addDays(new Date(cursor+'T00:00:00'),7));
+    guard++;
+  }
+  return weeks;
+}
+function desiderataMiniRowHtml(username, weekDates, dateStart, dateEnd, overrideCode){
+  const cells=weekDates.map(dk=>{
+    const inRange = dk>=dateStart && dk<=dateEnd;
+    const code = (overrideCode!==undefined && inRange) ? overrideCode : getDayCodeByKey(username, dk);
+    const info = code?codeInfo(code):null;
+    const dd=dk.slice(8,10);
+    const dow=DOW_SHORT[(new Date(dk+'T00:00:00').getDay()+6)%7];
+    return `<div style="flex:1;min-width:30px;text-align:center;">
+      <div style="font-size:8px;color:var(--ink-soft);text-transform:uppercase;">${dow}</div>
+      <div style="font-size:9px;color:var(--ink-soft);margin-bottom:2px;">${dd}</div>
+      <div style="height:24px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;background:${info?info.color:'#EDEFF2'};color:${info?info.text:'#B7BEC9'};${inRange?'outline:2.5px solid var(--primary);outline-offset:-2.5px;':''}">${code||'—'}</div>
     </div>`;
   }).join('');
   return `<div style="display:flex;gap:3px;">${cells}</div>`;
@@ -4402,7 +4441,22 @@ function teamWeekViewHtml(teamEmployees, weekDates, myTeam, todayKeyStr, restric
         const isTargetPick = pick && pick.targetUsername===emp.username && pick.targetDays.some(dd=>dd.date===k);
         const swapClass = cellSwapEligible ? 'swap-selectable' : (swapActive ? 'swap-disabled' : '');
         const pickClass = isMyPick ? 'swap-picked-mine' : (isTargetPick ? 'swap-picked-target' : '');
-        return `<div class="peq-week-cell ${isToday?'today':''} ${swapClass} ${pickClass}" ${cellSwapEligible?`data-swap-user="${emp.username}" data-swap-name="${escapeHtml(emp.name)}" data-swap-date="${k}" data-swap-code="${code||''}" data-swap-ismine="${isMe}"`:''} style="${info?`background:${info.color};color:${info.text};`:''}">${!dayOk?'🔒':(code||'—')}</div>`;
+        // Petit repère de statut (désidérata/échange en cours) — uniquement
+        // sur MA propre ligne, jamais celle d'un collègue, et pas pendant la
+        // sélection tactile du swap pour ne pas superposer deux langages
+        // visuels différents sur la même case.
+        let myStatusClass='';
+        if(isMe && !swapActive){
+          const desid=desiderataForCell(emp.username,k);
+          const exch=exchangeForCell(emp.username,k);
+          if(exch && exch.status==='pending') myStatusClass='status-pending';
+          else if(exch && exch.status==='validated') myStatusClass='status-validated';
+          else if(exch && exch.status==='refused') myStatusClass='status-refused';
+          else if(desid && desid.status==='pending') myStatusClass='status-pending';
+          else if(desid && desid.status==='validated') myStatusClass='status-validated';
+          else if(desid && desid.status==='refused') myStatusClass='status-refused';
+        }
+        return `<div class="peq-week-cell ${isToday?'today':''} ${swapClass} ${pickClass} ${myStatusClass}" ${cellSwapEligible?`data-swap-user="${emp.username}" data-swap-name="${escapeHtml(emp.name)}" data-swap-date="${k}" data-swap-code="${code||''}" data-swap-ismine="${isMe}"`:''} style="${info?`background:${info.color};color:${info.text};`:''}">${!dayOk?'🔒':(code||'—')}</div>`;
       }).join('');
       return subGroupSepHtml+`<div class="peq-week-grid ${isMe?'my-row':''}">
         <div class="peq-week-name">${escapeHtml(emp.name)}</div>
@@ -4957,22 +5011,35 @@ function renderAdminDesiderata(){
   const rowHtml=(d)=>{
     const info=codeInfo(d.code);
     const sc=desidStatusColor(d.status);
+    const u=state.users.find(x=>x.username===d.username);
+    const weeks=weeksForRange(d.dateStart, d.dateEnd);
     return `
-    <div class="desid-row">
-      <div class="desid-row-main">
-        <div class="desid-row-name">${escapeHtml(d.name)}</div>
-        <div class="desid-row-period">${fmtDateKeyFr(d.dateStart)} → ${fmtDateKeyFr(d.dateEnd)} <span style="color:var(--ink-soft);font-weight:500;">(${calculateDesiderataDays(d.dateStart,d.dateEnd)} jour${calculateDesiderataDays(d.dateStart,d.dateEnd)>1?'s':''})</span></div>
-        <span class="chip" style="background:${info?info.color:'#EDEFF2'};color:${info?info.text:'#333'};margin-top:4px;">${d.code} · ${info?info.label:''}</span>
-        ${d.comment?`<div class="desid-row-comment">« ${escapeHtml(d.comment)} »</div>`:''}
-        ${d.adminComment?`<div class="desid-row-comment" style="color:var(--primary);">Réponse : ${escapeHtml(d.adminComment)}</div>`:''}
-      </div>
-      <div class="desid-row-side">
+    <div class="desid-row" style="flex-direction:column;align-items:stretch;">
+      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px;">
+        <div class="desid-row-name" style="margin:0;">${escapeHtml(d.name)}</div>
+        <span class="chip" style="background:${info?info.color:'#EDEFF2'};color:${info?info.text:'#333'};">${d.code} · ${info?info.label:''}</span>
+        <span style="font-size:12px;color:var(--ink-soft);">${fmtDateKeyFr(d.dateStart)} → ${fmtDateKeyFr(d.dateEnd)} (${calculateDesiderataDays(d.dateStart,d.dateEnd)} jour${calculateDesiderataDays(d.dateStart,d.dateEnd)>1?'s':''})</span>
         <span class="status-badge" style="background:${sc.bg};color:${sc.fg};">${desidStatusLabel(d.status)}</span>
         ${d.status==='pending' ? `
           <button class="icon-btn" style="color:var(--ok);border-color:var(--ok);" data-validate="${d.id}">Valider</button>
           <button class="icon-btn" style="color:var(--danger);border-color:var(--danger);" data-refuse="${d.id}">Refuser</button>
         ` : `<button class="icon-btn" data-archive="${d.id}">${d.archived?'Désarchiver':'Archiver'}</button>`}
       </div>
+      ${d.comment?`<div class="desid-row-comment" style="margin-top:4px;">« ${escapeHtml(d.comment)} »</div>`:''}
+      ${d.adminComment?`<div class="desid-row-comment" style="color:var(--primary);margin-top:4px;">Réponse : ${escapeHtml(d.adminComment)}</div>`:''}
+      ${u ? `
+      <div style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--border);">
+        ${weeks.map((weekDates,i)=>`
+        <div style="${i>0?'margin-top:10px;':''}">
+          <div style="font-size:11.5px;font-weight:800;color:var(--ink);margin-bottom:4px;">${escapeHtml(d.name)} <span style="font-weight:600;color:var(--ink-soft);">— semaine du ${fmtDateKeyFr(weekDates[0])}</span></div>
+          <div style="font-size:10px;font-weight:700;color:var(--ink-soft);margin-bottom:2px;text-transform:uppercase;">Avant</div>
+          ${desiderataMiniRowHtml(d.username, weekDates, d.dateStart, d.dateEnd, undefined)}
+          <div style="font-size:10px;font-weight:700;color:var(--primary);margin:6px 0 2px;text-transform:uppercase;">Après validation</div>
+          ${desiderataMiniRowHtml(d.username, weekDates, d.dateStart, d.dateEnd, d.code)}
+        </div>
+        `).join('')}
+      </div>
+      ` : ''}
     </div>`;
   };
 
