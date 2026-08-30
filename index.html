@@ -261,8 +261,7 @@
   .other-validations-row{font-size:12.5px;padding:4px 0;color:var(--ink);}
   .emp-actions{display:flex;gap:8px;}
   .icon-btn{border:1.5px solid var(--border);background:#fff;border-radius:8px;padding:6px 11px;font-size:12.5px;font-weight:600;color:var(--ink-soft);}
-  .sr-choice.active-ok{background:#1E7B3C;border-color:#1E7B3C;color:#fff;}
-  .sr-choice.active-no{background:#B4342A;border-color:#B4342A;color:#fff;}
+  .sr-code-chip{cursor:pointer;font-weight:800;min-width:44px;text-align:center;}
   .icon-btn:hover{border-color:var(--primary);color:var(--primary);}
   .empty-state{text-align:center;padding:50px 20px;color:var(--ink-soft);}
   /* ---------- Fonctionnalités (grand admin) ---------- */
@@ -835,7 +834,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v13.1';
+const APP_VERSION = 'v13.3';
 const APP_VERSION_DATE = '30/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -3225,6 +3224,20 @@ function renderCycles(){
    Salarié : répond Disponible/Indisponible + commentaire pour chaque date,
    et peut revenir modifier sa réponse à tout moment tant que c'est actif.
    ============================================================ */
+const SPECIAL_REQUEST_CODES=['ON','OFF','M','S','CP','AM'];
+/**
+ * Couleur d'un code du sondage : reprend la couleur réelle du code s'il
+ * existe déjà dans Gestion des codes (M, S, CP, AM...) ; sinon (ON/OFF n'ont
+ * généralement pas d'équivalent dans le planning) une couleur par défaut
+ * cohérente (vert = disponible, rouge = indisponible).
+ */
+function specialRequestCodeStyle(code){
+  const info=codeInfo(code);
+  if(info) return {bg:info.color, fg:info.text};
+  if(code==='ON') return {bg:'#1E7B3C', fg:'#fff'};
+  if(code==='OFF') return {bg:'#B4342A', fg:'#fff'};
+  return {bg:'#EDEFF2', fg:'#333'};
+}
 function specialRequestSummary(username){
   const r=state.specialRequestResponses[username];
   if(!r) return null;
@@ -3252,13 +3265,17 @@ function renderSpecialRequests(){
     </div>
     <div style="display:flex;flex-direction:column;gap:10px;">
       ${camp.dates.map(dt=>{
-        const a=draft[dt.key]||{available:null, comment:''};
+        const a=draft[dt.key]||{codes:[], comment:''};
+        const selCodes=a.codes||[];
         return `
         <div class="desid-row" style="flex-direction:column;align-items:stretch;padding:14px 16px;">
           <div style="font-weight:800;font-size:13.5px;margin-bottom:8px;">${escapeHtml(dt.label)} <span style="font-weight:600;color:var(--ink-soft);">— ${fmtDate(dt.key)}</span></div>
-          <div style="display:flex;gap:8px;margin-bottom:8px;">
-            <button type="button" class="icon-btn sr-choice ${a.available===true?'active-ok':''}" data-sr-date="${dt.key}" data-sr-avail="1">Disponible</button>
-            <button type="button" class="icon-btn sr-choice ${a.available===false?'active-no':''}" data-sr-date="${dt.key}" data-sr-avail="0">Indisponible</button>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+            ${SPECIAL_REQUEST_CODES.map(code=>{
+              const st=specialRequestCodeStyle(code);
+              const active=selCodes.includes(code);
+              return `<button type="button" class="chip sr-code-chip ${active?'active':''}" data-sr-date="${dt.key}" data-sr-code="${code}" style="background:${active?st.bg:'#F4F5F7'};color:${active?st.fg:'#8A93A6'};border:2px solid ${active?st.bg:'transparent'};">${code}</button>`;
+            }).join('')}
           </div>
           <textarea class="sr-comment" data-sr-comment="${dt.key}" rows="1" placeholder="Commentaire (optionnel) — ex : congés déjà posés, contrainte particulière..." style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:8px 10px;font-family:inherit;font-size:12.5px;resize:vertical;">${escapeHtml(a.comment||'')}</textarea>
         </div>`;
@@ -3267,24 +3284,27 @@ function renderSpecialRequests(){
     <button class="btn-gen active" id="srSubmit" style="width:100%;margin-top:16px;">${mine?'Mettre à jour mes réponses':'Envoyer mes réponses'}</button>
   `;
   renderShell(inner, 'Demandes spéciales');
-  document.querySelectorAll('.sr-choice').forEach(btn=>{
+  document.querySelectorAll('.sr-code-chip').forEach(btn=>{
     btn.addEventListener('click',()=>{
-      const dk=btn.dataset.srDate;
-      if(!draft[dk]) draft[dk]={available:null, comment:''};
-      draft[dk].available = btn.dataset.srAvail==='1';
+      const dk=btn.dataset.srDate, code=btn.dataset.srCode;
+      if(!draft[dk]) draft[dk]={codes:[], comment:''};
+      if(!draft[dk].codes) draft[dk].codes=[];
+      const idx=draft[dk].codes.indexOf(code);
+      if(idx>=0) draft[dk].codes.splice(idx,1);
+      else draft[dk].codes.push(code);
       render();
     });
   });
   document.querySelectorAll('.sr-comment').forEach(ta=>{
     ta.addEventListener('input',()=>{
       const dk=ta.dataset.srComment;
-      if(!draft[dk]) draft[dk]={available:null, comment:''};
+      if(!draft[dk]) draft[dk]={codes:[], comment:''};
       draft[dk].comment=ta.value;
     });
   });
   document.getElementById('srSubmit').addEventListener('click', async()=>{
-    const missing=camp.dates.filter(dt=>!draft[dt.key] || draft[dt.key].available===null || draft[dt.key].available===undefined);
-    if(missing.length){ toast('Merci de répondre pour chaque date ('+missing.map(m=>m.label).join(', ')+').', true); return; }
+    const missing=camp.dates.filter(dt=>!draft[dt.key] || !draft[dt.key].codes || !draft[dt.key].codes.length);
+    if(missing.length){ toast('Merci de choisir au moins un code pour chaque date ('+missing.map(m=>m.label).join(', ')+').', true); return; }
     const now=new Date().toISOString();
     const existing=state.specialRequestResponses[username];
     state.specialRequestResponses[username]={
@@ -3303,7 +3323,7 @@ function renderSpecialRequests(){
 function renderSpecialRequestsAdmin(camp){
   const scope=getAdminScope(state.currentUser);
   const svcFilter=state.specialReqAdminService||'ALL';
-  const employees=state.users.filter(u=>u.role==='employee' && (!scope || scope.includes(u.team)) && (camp.services||[]).includes(u.team) && (svcFilter==='ALL' || u.team===svcFilter));
+  const employees=state.users.filter(u=>(u.role==='employee' || u.role==='admin') && u.team && (!scope || scope.includes(u.team)) && (camp.services||[]).includes(u.team) && (svcFilter==='ALL' || u.team===svcFilter));
   const respondedCount=employees.filter(u=>state.specialRequestResponses[u.username]).length;
   const editing=state.specialReqEditing;
   const draftCamp = editing ? (state.specialReqCampDraft || JSON.parse(JSON.stringify(camp))) : camp;
@@ -3369,24 +3389,43 @@ function renderSpecialRequestsAdmin(camp){
         <th style="min-width:110px;">Statut</th>
       </tr></thead>
       <tbody>
-        ${employees.map(u=>{
-          const r=specialRequestSummary(u.username);
-          return `<tr>
-            <td class="emp-col">${escapeHtml(u.name)}</td>
-            ${camp.dates.map(dt=>{
-              const a=r?r.answers[dt.key]:null;
-              if(!a || a.available===undefined || a.available===null) return `<td style="text-align:center;color:var(--ink-soft);">—</td>`;
-              const ok=a.available===true;
-              return `<td style="text-align:center;" ${a.comment?`title="${escapeHtml(a.comment)}"`:''}>
-                <span class="chip" style="background:${ok?'#E4F5EA':'#FBEAEA'};color:${ok?'#1E7B3C':'#B4342A'};">${ok?'Dispo':'Indispo'}</span>
-                ${a.comment?' 💬':''}
-              </td>`;
-            }).join('')}
-            <td style="text-align:center;font-size:11px;color:var(--ink-soft);">
-              ${r ? (r.modified?'Modifié le '+new Date(r.updatedAt).toLocaleDateString('fr-FR'):'Envoyé le '+new Date(r.submittedAt).toLocaleDateString('fr-FR')) : 'En attente'}
-            </td>
-          </tr>`;
-        }).join('')}
+        ${(()=>{
+          // Regroupe par fonction (et « Administration » pour les comptes
+          // admin sans fonction), avec un en-tête par groupe — comme sur le
+          // Calendrier Mensuel — pour s'y retrouver dans une longue liste.
+          const groups={};
+          const order=[];
+          employees.forEach(u=>{
+            const key = u.fonction || (u.role==='admin' ? 'Administration' : 'Sans fonction');
+            if(!groups[key]){ groups[key]=[]; order.push(key); }
+            groups[key].push(u);
+          });
+          order.sort((a,b)=>a.localeCompare(b,'fr'));
+          return order.map(key=>{
+            const list=[...groups[key]].sort((a,b)=>a.name.localeCompare(b.name,'fr'));
+            const headRow=`<tr><td class="fonction-head" colspan="${camp.dates.length+2}">${escapeHtml(key)}</td></tr>`;
+            const rows=list.map(u=>{
+              const r=specialRequestSummary(u.username);
+              return `<tr>
+                <td class="emp-col">${escapeHtml(u.name)}</td>
+                ${camp.dates.map(dt=>{
+                  const a=r?r.answers[dt.key]:null;
+                  if(!a || !a.codes || !a.codes.length) return `<td style="text-align:center;color:var(--ink-soft);">—</td>`;
+                  return `<td style="text-align:center;" ${a.comment?`title="${escapeHtml(a.comment)}"`:''}>
+                    <div style="display:flex;gap:3px;justify-content:center;flex-wrap:wrap;">
+                      ${a.codes.map(code=>{ const st=specialRequestCodeStyle(code); return `<span class="chip" style="background:${st.bg};color:${st.fg};padding:2px 7px;font-size:10.5px;">${code}</span>`; }).join('')}
+                    </div>
+                    ${a.comment?' 💬':''}
+                  </td>`;
+                }).join('')}
+                <td style="text-align:center;font-size:11px;color:var(--ink-soft);">
+                  ${r ? (r.modified?'Modifié le '+new Date(r.updatedAt).toLocaleDateString('fr-FR'):'Envoyé le '+new Date(r.submittedAt).toLocaleDateString('fr-FR')) : 'En attente'}
+                </td>
+              </tr>`;
+            }).join('');
+            return headRow+rows;
+          }).join('');
+        })()}
       </tbody>
     </table>
     </div>
@@ -3438,7 +3477,7 @@ function renderSpecialRequestsAdmin(camp){
       await persistSpecialRequestCampaign();
       if(state.specialRequestCampaign.active){
         const scopeA=getAdminScope(state.currentUser);
-        const targets=state.users.filter(u=>u.role==='employee' && (!scopeA || scopeA.includes(u.team)) && employeeInSpecialRequestScope(u.username));
+        const targets=state.users.filter(u=>(u.role==='employee' || u.role==='admin') && u.team && (!scopeA || scopeA.includes(u.team)) && employeeInSpecialRequestScope(u.username));
         for(const u of targets){ await pushNotification(u.username, 'Une nouvelle demande vous attend : « '+(camp.title||'Demande spéciale')+' ».'); }
       }
       render();
@@ -3626,7 +3665,7 @@ function specialRequestPendingCount(forUsername){
   if(!camp || !camp.active || !camp.dates || !camp.dates.length) return 0;
   const targets = forUsername
     ? (employeeInSpecialRequestScope(forUsername) && !state.specialRequestResponses[forUsername] ? [forUsername] : [])
-    : state.users.filter(u=>u.role==='employee' && employeeInSpecialRequestScope(u.username) && !state.specialRequestResponses[u.username]).map(u=>u.username);
+    : state.users.filter(u=>(u.role==='employee' || u.role==='admin') && u.team && employeeInSpecialRequestScope(u.username) && !state.specialRequestResponses[u.username]).map(u=>u.username);
   return targets.length;
 }
 function navItems(){
