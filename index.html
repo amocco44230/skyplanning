@@ -801,7 +801,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v9.6';
+const APP_VERSION = 'v9.7';
 const APP_VERSION_DATE = '28/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -3672,7 +3672,7 @@ function gridHtml({employees, readonly, alerts, changes, serviceContext}){
       let prevSubGroup=undefined; // ligne de séparation dès que le sous-groupe change (voir « Gestion des salariés »)
       sortEmployeesBySubGroup(group.list).forEach(emp=>{
     const empSubGroup=emp.subGroup||'';
-    if(prevSubGroup!==undefined && empSubGroup!==prevSubGroup){
+    if(prevSubGroup!==undefined && normalizeNameForMatch(empSubGroup)!==normalizeNameForMatch(prevSubGroup)){
       bodyRows+=`<tr class="subgroup-sep-row"><td colspan="${nDays+1}">${empSubGroup?escapeHtml(empSubGroup):''}</td></tr>`;
     }
     prevSubGroup=empSubGroup;
@@ -4214,7 +4214,7 @@ function teamWeekViewHtml(teamEmployees, weekDates, myTeam, todayKeyStr, restric
     const rows=sortEmployeesBySubGroup(g.list).map(emp=>{
       const empSubGroup=emp.subGroup||'';
       let subGroupSepHtml='';
-      if(prevSubGroup!==undefined && empSubGroup!==prevSubGroup){
+      if(prevSubGroup!==undefined && normalizeNameForMatch(empSubGroup)!==normalizeNameForMatch(prevSubGroup)){
         subGroupSepHtml=`<div class="peq-week-subgroup-sep">${empSubGroup?escapeHtml(empSubGroup):''}</div>`;
       }
       prevSubGroup=empSubGroup;
@@ -5965,8 +5965,12 @@ function sortEmployeesBySubGroup(list){
   // réorganiser silencieusement l'ordre existant (potentiellement voulu,
   // ex : ancienneté) pour les services qui n'utilisent pas cette notion.
   if(!list.some(e=>e.subGroup)) return list;
+  // Comparaison insensible aux accents/casse (normalizeNameForMatch) : deux
+  // fiches tapées « Équipe A » et « Equipe A » doivent être reconnues comme
+  // le même sous-groupe, sinon elles se retrouvent scindées en deux blocs
+  // distincts malgré un affichage identique une fois mis en majuscules.
   return [...list].sort((a,b)=>{
-    const sa=a.subGroup||'', sb=b.subGroup||'';
+    const sa=normalizeNameForMatch(a.subGroup||''), sb=normalizeNameForMatch(b.subGroup||'');
     if(sa!==sb) return sa.localeCompare(sb, 'fr');
     return 0; // égalité : le tri étant stable, l'ordre d'origine est conservé au sein d'un même sous-groupe
   });
@@ -6069,7 +6073,7 @@ function renderGestionSalaries(){
     let prevSubGroup=undefined;
     sortEmployeesBySubGroup(group.list).forEach(emp=>{
       const empSubGroup=emp.subGroup||'';
-      if(prevSubGroup!==undefined && empSubGroup!==prevSubGroup){
+      if(prevSubGroup!==undefined && normalizeNameForMatch(empSubGroup)!==normalizeNameForMatch(prevSubGroup)){
         rowsHtml+=`<div class="subgroup-sep">${empSubGroup?escapeHtml(empSubGroup):''}</div>`;
       }
       prevSubGroup=empSubGroup;
