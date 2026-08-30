@@ -843,7 +843,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v13.9';
+const APP_VERSION = 'v14.0';
 const APP_VERSION_DATE = '30/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -6692,6 +6692,7 @@ function renderGestionSalaries(){
       </div>
       <div class="emp-actions">
         <button class="icon-btn" data-move="${emp.username}" title="Alternative tactile au glisser-déposer">↔ Déplacer</button>
+        <button class="icon-btn" data-move-end="${emp.username}" title="Envoyer en fin de liste, au sein de son équipe/fonction">↓ Fin de liste</button>
         <button class="icon-btn" data-edit="${emp.username}">Modifier</button>
         <button class="icon-btn" data-del="${emp.username}" style="color:var(--danger);">Supprimer</button>
       </div>
@@ -6778,6 +6779,22 @@ function renderGestionSalaries(){
     btn.addEventListener('click',()=>{
       const emp=state.users.find(u=>u.username===btn.dataset.move);
       state.modal={type:'move-employee', username:emp.username, name:emp.name, team:emp.team||'', fonction:emp.fonction||''};
+      render();
+    });
+  });
+  document.querySelectorAll('[data-move-end]').forEach(btn=>{
+    btn.addEventListener('click', async()=>{
+      // Déplace ce salarié à la toute fin du tableau — comme le tri par
+      // sous-groupe/fonction conserve toujours l'ordre d'origine entre
+      // membres d'un même groupe, ça suffit à le faire apparaître en
+      // dernier dans son équipe, sans avoir à construire un vrai
+      // glisser-déposer de réordonnancement fin.
+      const idx=state.users.findIndex(u=>u.username===btn.dataset.moveEnd);
+      if(idx<0) return;
+      const [emp]=state.users.splice(idx,1);
+      state.users.push(emp);
+      await persistUsers();
+      toast(emp.name+' déplacé en fin de liste.');
       render();
     });
   });
