@@ -801,8 +801,8 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v9.8';
-const APP_VERSION_DATE = '28/08/2026';
+const APP_VERSION = 'v9.9';
+const APP_VERSION_DATE = '30/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
    ============================================================ */
@@ -6435,27 +6435,31 @@ function renderModal(){
         <div id="mAffectList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:${state.modal.isNew?'0':'8px'};">
           ${getAffectations(d).map(a=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;background:#FBFCFE;border:1px solid var(--border);border-radius:7px;padding:7px 10px;">
             <span>À partir du <b>${fmtDate(a.startDate)}</b> : ${escapeHtml(a.team||'Aucun service')}${a.fonction?' · '+escapeHtml(a.fonction):''}${a.subGroup?' · '+escapeHtml(a.subGroup):''}${a.startDate>dkey(new Date())?' <span style="color:var(--primary);font-weight:700;">(à venir)</span>':''}</span>
-            ${(!state.modal.isNew && a.startDate>dkey(new Date())) ? `<button type="button" class="icon-btn" data-del-affect="${a.id||a.startDate}" style="color:var(--danger);padding:2px 8px;flex-shrink:0;">✕</button>` : ''}
+            <span style="display:flex;gap:4px;flex-shrink:0;">
+              ${!state.modal.isNew ? `<button type="button" class="icon-btn" data-edit-affect="${a.id||a.startDate}" style="padding:2px 8px;">✎</button>` : ''}
+              ${(!state.modal.isNew && getAffectations(d).length>1) ? `<button type="button" class="icon-btn" data-del-affect="${a.id||a.startDate}" style="color:var(--danger);padding:2px 8px;">✕</button>` : ''}
+            </span>
           </div>`).join('')}
         </div>
         ${!state.modal.isNew ? `
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:end;">
-          <div class="field" style="flex:1;min-width:126px;margin:0;"><label style="font-size:11px;">Date d'effet</label><input type="date" id="mAffectDate"></div>
-          <div class="field" style="flex:1;min-width:120px;margin:0;"><label style="font-size:11px;">Nouveau service</label>
+          <div class="field" style="flex:1;min-width:126px;margin:0;"><label style="font-size:11px;">Date d'effet</label><input type="date" id="mAffectDate" value="${state.modal.editAffect?state.modal.editAffect.startDate:''}"></div>
+          <div class="field" style="flex:1;min-width:120px;margin:0;"><label style="font-size:11px;">${state.modal.editAffect?'Service':'Nouveau service'}</label>
             <select id="mAffectTeam" style="width:100%;padding:9px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;background:#FBFCFE;">
               <option value="">Aucun</option>
-              ${(getAdminScope(state.currentUser)||state.services).map(s=>`<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('')}
+              ${(getAdminScope(state.currentUser)||state.services).map(s=>`<option value="${escapeHtml(s)}" ${state.modal.editAffect&&state.modal.editAffect.team===s?'selected':''}>${escapeHtml(s)}</option>`).join('')}
             </select>
           </div>
-          <div class="field" style="flex:1;min-width:120px;margin:0;"><label style="font-size:11px;">Nouvelle fonction</label>
+          <div class="field" style="flex:1;min-width:120px;margin:0;"><label style="font-size:11px;">${state.modal.editAffect?'Fonction':'Nouvelle fonction'}</label>
             <select id="mAffectFonction" style="width:100%;padding:9px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;background:#FBFCFE;"><option value="">Aucune</option></select>
           </div>
-          <div class="field" style="flex:1;min-width:120px;margin:0;"><label style="font-size:11px;">Nouveau sous-groupe</label>
-            <input id="mAffectSubGroup" placeholder="Ex : Équipe 2" style="padding:9px 10px;">
+          <div class="field" style="flex:1;min-width:120px;margin:0;"><label style="font-size:11px;">${state.modal.editAffect?'Sous-groupe':'Nouveau sous-groupe'}</label>
+            <input id="mAffectSubGroup" placeholder="Ex : Équipe 2" style="padding:9px 10px;" value="${state.modal.editAffect?escapeHtml(state.modal.editAffect.subGroup||''):''}">
           </div>
-          <button type="button" class="icon-btn" id="mAffectAdd" style="height:38px;">+ Programmer</button>
+          <button type="button" class="icon-btn" id="mAffectAdd" style="height:38px;">${state.modal.editAffect?'Enregistrer la modification':'+ Programmer'}</button>
+          ${state.modal.editAffect?`<button type="button" class="icon-btn" id="mAffectEditCancel" style="height:38px;">Annuler</button>`:''}
         </div>
-        <div class="helper">Le changement s'appliquera automatiquement à la date choisie, sur le planning, les alertes, les filtres par service et le regroupement par sous-groupe — pas besoin de revenir modifier la fiche ce jour-là.</div>
+        <div class="helper">${state.modal.editAffect?'Vous modifiez une entrée existante de l\u2019historique.':'Le changement s\u2019appliquera automatiquement à la date choisie, sur le planning, les alertes, les filtres par service et le regroupement par sous-groupe — pas besoin de revenir modifier la fiche ce jour-là.'}</div>
         ` : `<div class="helper">Vous pourrez programmer un changement de service/fonction/sous-groupe futur une fois le salarié créé.</div>`}
       </div>
       ${isSuperAdmin(state.currentUser) ? `
@@ -6509,12 +6513,13 @@ function renderModal(){
     const mAffectTeamSel=document.getElementById('mAffectTeam');
     const mAffectFonctionSel=document.getElementById('mAffectFonction');
     if(mAffectTeamSel){
-      const refreshAffectFonctions=()=>{
+      const editingFonction = state.modal.editAffect ? state.modal.editAffect.fonction : '';
+      const refreshAffectFonctions=(preselect)=>{
         const opts=getFonctionsForService(mAffectTeamSel.value);
-        mAffectFonctionSel.innerHTML='<option value="">Aucune</option>'+opts.map(f=>`<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join('');
+        mAffectFonctionSel.innerHTML='<option value="">Aucune</option>'+opts.map(f=>`<option value="${escapeHtml(f)}" ${preselect===f?'selected':''}>${escapeHtml(f)}</option>`).join('');
       };
-      refreshAffectFonctions();
-      mAffectTeamSel.addEventListener('change', refreshAffectFonctions);
+      refreshAffectFonctions(editingFonction);
+      mAffectTeamSel.addEventListener('change', ()=>refreshAffectFonctions());
       document.getElementById('mAffectAdd').addEventListener('click', async()=>{
         const emp=state.users.find(u=>u.username===d.username);
         if(!emp) return;
@@ -6523,24 +6528,46 @@ function renderModal(){
         const fonction=mAffectFonctionSel.value;
         const subGroup=document.getElementById('mAffectSubGroup').value.trim();
         if(!date){ toast("Merci de choisir une date d'effet.", true); return; }
-        const list=getAffectations(emp).filter(a=>a.startDate!==date);
-        list.push({id:genId(), startDate:date, team, fonction, subGroup});
+        const editId = state.modal.editAffect ? (state.modal.editAffect.id||state.modal.editAffect.startDate) : null;
+        // On retire l'entrée en cours d'édition (si applicable) ET toute autre
+        // entrée qui tomberait exactement sur la même nouvelle date, pour
+        // éviter d'en avoir deux à la même date après enregistrement.
+        const list=getAffectations(emp).filter(a=>a.startDate!==date && (a.id||a.startDate)!==editId);
+        list.push({id: editId && editId!==date ? editId : genId(), startDate:date, team, fonction, subGroup});
         emp.affectations=list.sort((a,b)=>a.startDate.localeCompare(b.startDate));
         syncCurrentAffectation(emp);
         await persistUsers();
-        toast('Changement programmé pour le '+fmtDate(date)+'.');
+        toast(state.modal.editAffect ? 'Entrée modifiée.' : 'Changement programmé pour le '+fmtDate(date)+'.');
         state.modal={type:'employee', data:{...emp}, isNew:false};
         render();
       });
     }
+    document.querySelectorAll('[data-edit-affect]').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        const emp=state.users.find(u=>u.username===d.username);
+        if(!emp) return;
+        const a=getAffectations(emp).find(x=>(x.id||x.startDate)===btn.dataset.editAffect);
+        if(!a) return;
+        state.modal={type:'employee', data:{...emp}, isNew:false, editAffect:a};
+        render();
+      });
+    });
+    const mAffectEditCancel=document.getElementById('mAffectEditCancel');
+    if(mAffectEditCancel) mAffectEditCancel.addEventListener('click',()=>{
+      state.modal.editAffect=null;
+      render();
+    });
     document.querySelectorAll('[data-del-affect]').forEach(btn=>{
       btn.addEventListener('click', async()=>{
         const emp=state.users.find(u=>u.username===d.username);
         if(!emp) return;
-        emp.affectations=getAffectations(emp).filter(a=>(a.id||a.startDate)!==btn.dataset.delAffect);
+        const list=getAffectations(emp);
+        if(list.length<=1){ toast('Impossible de supprimer la seule entrée restante.', true); return; }
+        if(!confirm('Supprimer cette entrée de l\u2019historique ?')) return;
+        emp.affectations=list.filter(a=>(a.id||a.startDate)!==btn.dataset.delAffect);
         syncCurrentAffectation(emp);
         await persistUsers();
-        toast('Changement programmé supprimé.');
+        toast('Entrée supprimée.');
         state.modal={type:'employee', data:{...emp}, isNew:false};
         render();
       });
