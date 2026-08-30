@@ -413,6 +413,11 @@
   td.day-cell.swap-selectable:hover{outline:2px dashed var(--primary);}
   td.day-cell.swap-picked-mine{opacity:1!important;outline:3.5px solid #2C3A63!important;outline-offset:-3px;position:relative;z-index:2;}
   td.day-cell.swap-picked-target{opacity:1!important;outline:3.5px solid #E8615A!important;outline-offset:-3px;position:relative;z-index:2;}
+  /* ---------- Salarié dupliqué le mois d'un changement de fonction : la
+     moitié où il n'était pas dans cette fonction est hachurée. ---------- */
+  td.day-cell.fonction-hatched{position:relative;cursor:not-allowed;}
+  td.day-cell.fonction-hatched::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(135deg, rgba(120,128,145,.28) 0 5px, transparent 5px 10px);border-radius:inherit;pointer-events:none;}
+  td.day-cell.fonction-hatched .code-badge{opacity:.55;}
   .peq-week-cell.today{outline:2px solid var(--primary-dark);outline-offset:-2px;}
   .peq-week-cell.status-pending{outline:2px solid #F5A623;outline-offset:-2px;}
   .peq-week-cell.status-validated{outline:2px solid #1E7B3C;outline-offset:-2px;}
@@ -838,7 +843,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v13.6';
+const APP_VERSION = 'v13.7';
 const APP_VERSION_DATE = '30/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -4123,7 +4128,7 @@ function gridHtml({employees, readonly, alerts, changes, serviceContext, swapCtx
   head+='</tr>';
 
   let bodyRows='';
-  const svcGroups=groupByServiceThenFonction(employees, false, serviceContext);
+  const svcGroups=groupByServiceThenFonction(employees, false, serviceContext, y, m);
   const showServiceBar = svcGroups.length>1;
   svcGroups.forEach(svcGroup=>{
     if(showServiceBar){
@@ -4181,6 +4186,16 @@ function gridHtml({employees, readonly, alerts, changes, serviceContext, swapCtx
       let desidStripHtml='', cellClass='', alertMarkHtml='';
       const titleParts=[];
       const dateKeyForAlert=ymdKey(y,m,d);
+      // Salarié affiché en double le mois d'un changement de fonction (voir
+      // expandEmployeesForFonctionTransitions) : la moitié où il n'était PAS
+      // dans cette fonction est hachurée et non modifiable depuis cette ligne
+      // (le jour reste éditable depuis l'autre occurrence, la bonne pour cette
+      // date précise).
+      const isHatched = (emp._hatchFrom && dateKeyStr>=emp._hatchFrom) || (emp._hatchTo && dateKeyStr<emp._hatchTo);
+      if(isHatched){
+        cellClass+=' fonction-hatched';
+        titleParts.push('Pas dans cette fonction ce jour-là (voir l\u2019autre groupe)');
+      }
       if(!dayValid){
         if(serviceContext && emp.startDate && dateKeyStr>=emp.startDate && (!emp.endDate || dateKeyStr<=emp.endDate)){
           const aff=affectationAt(emp, dateKeyStr);
@@ -4250,7 +4265,7 @@ function gridHtml({employees, readonly, alerts, changes, serviceContext, swapCtx
         if(isMyPick) cellClass+=' swap-picked-mine';
         if(isTargetPick) cellClass+=' swap-picked-target';
       }
-      row+=`<td class="day-cell ${isWeekend?'weekend':''} ${cellClass}" data-day="${d}" data-user="${emp.username}" data-invalid="${!dayValid}"${swapAttrs} ${cellTip?`data-tip="${cellTip}"`:''}>
+      row+=`<td class="day-cell ${isWeekend?'weekend':''} ${cellClass}" data-day="${d}" data-user="${emp.username}" data-invalid="${!dayValid || isHatched}"${swapAttrs} ${cellTip?`data-tip="${cellTip}"`:''}>
         ${marks}
         ${alertMarkHtml}
         ${changePastilleHtml}
@@ -6556,6 +6571,33 @@ function sortEmployeesBySubGroup(list, refDateKey){
     return 0; // égalité : le tri étant stable, l'ordre d'origine est conservé au sein d'un même sous-groupe
   });
 }
+/**
+ * Si la fonction d'un salarié change EN COURS DU MOIS affiché (ex : Technicien
+ * jusqu'au 19, CDQ à partir du 20), on ne peut pas le classer dans un seul
+ * groupe pour tout le mois — il doit apparaître dans les DEUX groupes,
+ * hachuré sur la portion où il n'était pas dans cette fonction, pour que le
+ * planning reste lisible et cohérent avec son historique d'affectation.
+ * Ne gère que les changements de FONCTION (pas de service) : le service est
+ * déjà fixé en amont par grille appelante.
+ */
+function expandEmployeesForFonctionTransitions(employees, year, month){
+  const firstDay=ymdKey(year, month, 1);
+  const lastDay=ymdKey(year, month, daysInMonth(year, month));
+  const expanded=[];
+  employees.forEach(emp=>{
+    const transitionsInMonth=getAffectations(emp).filter(a=>a.startDate>firstDay && a.startDate<=lastDay);
+    if(!transitionsInMonth.length){ expanded.push(emp); return; }
+    const beforeFonction=affectationAt(emp, firstDay).fonction;
+    const transitionDate=transitionsInMonth[0].startDate;
+    const afterFonction=transitionsInMonth[0].fonction;
+    if(beforeFonction===afterFonction){ expanded.push(emp); return; } // seul le service/sous-groupe a changé, pas la fonction : rien à dupliquer ici
+    // Occurrence « avant » : actif jusqu'à la veille de la transition, haché à partir de la date de transition.
+    expanded.push({...emp, fonction:beforeFonction, _hatchFrom:transitionDate, _hatchTo:null});
+    // Occurrence « après » : haché avant la transition, actif à partir de la date de transition.
+    expanded.push({...emp, fonction:afterFonction, _hatchFrom:null, _hatchTo:transitionDate});
+  });
+  return expanded;
+}
 function groupByFonction(employees, service, includeEmpty){
   const fonctionsList=getFonctionsForService(service);
   if(!fonctionsList.length && !includeEmpty) return [{fonction:null, list:employees}];
@@ -6583,13 +6625,16 @@ function groupByFonction(employees, service, includeEmpty){
   if(includeEmpty || groups['__none__'].length) result.push({fonction:'__none__', list:groups['__none__']});
   return result;
 }
-function groupByServiceThenFonction(employees, includeEmpty, serviceContext){
+function groupByServiceThenFonction(employees, includeEmpty, serviceContext, year, month){
   if(serviceContext){
     // Vue centrée sur UN service précis (filtre admin, ou planning équipe) :
-    // on affiche un seul groupe pour ce service, et la fonction de chaque
-    // salarié est résolue par rapport à CE service (utile si son affectation
-    // change en cours de mois — voir « Historique service / fonction »).
-    const list=employees.map(e=>({...e, fonction: resolveFonctionForService(e, serviceContext)}));
+    // si la fonction d'un salarié change EN COURS DU MOIS affiché, il doit
+    // apparaître dans les deux groupes concernés (voir
+    // expandEmployeesForFonctionTransitions) — sinon simple résolution de sa
+    // fonction actuelle pour ce service.
+    const list = (year!==undefined && month!==undefined)
+      ? expandEmployeesForFonctionTransitions(employees.map(e=>({...e, fonction: resolveFonctionForService(e, serviceContext)})), year, month)
+      : employees.map(e=>({...e, fonction: resolveFonctionForService(e, serviceContext)}));
     const sub=groupByFonction(list, serviceContext, includeEmpty);
     return [{service:serviceContext, list, sub}];
   }
