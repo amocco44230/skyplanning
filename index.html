@@ -827,7 +827,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v11.9';
+const APP_VERSION = 'v12.1';
 const APP_VERSION_DATE = '30/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -3495,6 +3495,7 @@ function bindBell(){
     // sont pas juste grisées) — conformément au principe "après avoir lu,
     // elles disparaissent".
     await dismissAllNotifs();
+    state.bellOpen=false;
     render();
   });
   document.querySelectorAll('.notif-item[data-notif-id]').forEach(item=>{
@@ -4112,6 +4113,7 @@ function renderPlanningIndividuel(){
     ${isFeatureEnabled('desideratas', myService) ? `
     <div class="mobile-action-row" style="margin-top:10px;">
       <button class="btn btn-primary" id="indivDesidBtn">Désidératas</button>
+      <button class="btn btn-primary" id="indivDraftToDesidBtn">Transformer en désidérata</button>
     </div>
     ` : ''}
     <div class="legend-hint indiv-hint" style="margin:10px 0 8px;">Touchez un <b>code</b> puis un <b>jour</b> pour poser votre brouillon.</div>
@@ -4126,6 +4128,11 @@ function renderPlanningIndividuel(){
   const indivDesidBtn=document.getElementById('indivDesidBtn');
   if(indivDesidBtn) indivDesidBtn.addEventListener('click',()=>{
     state.modal={type:'new-desiderata', data:{dateStart:'',dateEnd:'',code:state.codes[0]?state.codes[0].code:'',comment:''}};
+    render();
+  });
+  const indivDraftToDesidBtn=document.getElementById('indivDraftToDesidBtn');
+  if(indivDraftToDesidBtn) indivDraftToDesidBtn.addEventListener('click',()=>{
+    state.modal={type:'draft-to-desiderata', year:state.viewDate.getFullYear()};
     render();
   });
   document.querySelectorAll('.selectable-day').forEach(el=>{
