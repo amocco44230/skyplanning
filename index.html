@@ -356,7 +356,6 @@
   .cal-day-compact .d-dow{font-size:8px;}
   .cal-day-compact .d-fer{font-size:7px;padding:1px 4px;}
   .cal-day-compact .d-code{font-size:9.5px;padding:4px 3px;border-radius:6px;}
-  .cal-day-compact .indiv-draft{margin-top:3px;font-size:8px;font-weight:800;text-align:center;border-radius:5px;padding:2px 3px;}
   /* ---------- Planning individuel (mobile) : tuiles colorées façon appli de shift ---------- */
   .indiv-day-tile{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#F4F5F7;color:#AEB4BE;border-radius:11px;border:2px solid transparent;gap:1px;}
   .indiv-day-tile .indiv-day-num{font-size:11.6px;font-weight:800;line-height:1;}
@@ -367,7 +366,11 @@
   .indiv-day-tile .cmt-dot.pub{left:2px;right:auto;}
   .indiv-day-tile .cmt-dot.priv{left:13px;right:auto;}
   .indiv-day-tile .d-fer{position:absolute;top:2px;left:3px;font-size:6px;font-weight:900;padding:0;background:none;color:inherit;opacity:.85;}
-  .indiv-day-tile .indiv-draft{position:absolute;bottom:1px;right:1px;width:15px;height:15px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:6.5px;font-weight:900;box-shadow:0 0 0 1.5px #fff,0 1px 2px rgba(0,0,0,.25);margin:0;padding:0;}
+  .indiv-day-tile .indiv-status-bubble{position:absolute;bottom:1px;right:1px;width:15px;height:15px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:6.5px;font-weight:900;box-shadow:0 0 0 1.5px #fff,0 1px 2px rgba(0,0,0,.25);margin:0;padding:0;z-index:3;}
+  .indiv-day-tile.status-draft{outline:1.5px dashed #4C8DFF;outline-offset:-1px;}
+  .indiv-day-tile.status-pending{outline:2px solid #F5A623;outline-offset:-1.5px;}
+  .indiv-day-tile.status-validated{outline:2px solid #1E7B3C;outline-offset:-1.5px;}
+  .indiv-day-tile.status-refused{outline:1.5px dashed #D8544A;outline-offset:-1px;}
   .indiv-top-row{display:flex;align-items:center;gap:6px;margin-bottom:2px;}
   .indiv-top-row .month-nav{justify-content:center;}
   /* ---------- Planning équipe — vue semaine (mobile) ---------- */
@@ -765,7 +768,7 @@
     .indiv-week-row .cal-day-compact{height:100%;min-height:0;display:flex;flex-direction:column;justify-content:center;padding:3px 4px;}
     .indiv-week-row .cal-day-compact .d-head{margin-bottom:2px;}
     .indiv-week-row .cal-day-compact .d-code{padding:2px 2px;}
-    .indiv-week-row .cal-day-compact .indiv-draft{margin-top:1px;padding:1px 2px;}
+    .indiv-week-row .cal-day-compact .indiv-status-bubble{margin-top:1px;padding:1px 2px;}
   }
 
   /* ---------- Responsive : mobile paysage (maximiser l'espace vertical) ---------- */
@@ -827,7 +830,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v12.1';
+const APP_VERSION = 'v12.2';
 const APP_VERSION_DATE = '30/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -4049,7 +4052,6 @@ function renderPlanningIndividuel(){
     const info=officialCode?codeInfo(officialCode):null;
     const isToday = dkey(date)===todayKey;
     const draftCode=getDraftCode(username,y,m,d);
-    const draftInfo=draftCode?codeInfo(draftCode):null;
     const dayValid = meRec ? isDayWithinValidity(meRec, dateKeyStr) : true;
     const cellBg = info ? `background:${info.color};color:${info.text};` : '';
     const cm=state.comments[commentKey(username,y,m,d)];
@@ -4058,12 +4060,51 @@ function renderPlanningIndividuel(){
     // ne doit JAMAIS en voir la moindre trace sur son propre planning (ni
     // repère, ni contenu), contrairement au commentaire « public ».
     if(cm && cm.public) cmtMarks+=`<span class="cmt-dot pub" title="💬 ${escapeHtml(cm.public)}"></span>`;
-    return `<div class="cal-day cal-day-compact indiv-day-tile ${isToday?'today':''} ${dayValid?'selectable-day':''}" ${dayValid?`data-date="${dateKeyStr}"`:''} style="${cellBg}" title="${dateKeyStr}${draftCode?' — brouillon : '+draftCode:''}">
+
+    // Statut de ma désidérata / mon échange sur ce jour précis — même
+    // logique de priorité que « Mon planning annuel » : un seul statut actif
+    // à la fois, avec un contour de couleur et une petite bulle en bas de
+    // case pour le code concerné (jamais superposé au brouillon, puisqu'un
+    // brouillon transformé en désidérata en sort automatiquement).
+    const desid=desiderataForCell(username,dateKeyStr);
+    const exch=exchangeForCell(username,dateKeyStr);
+    let statusClass='', statusBubbleHtml='', statusTip='';
+    if(exch && exch.status==='pending'){
+      const eInfo=exch.code?codeInfo(exch.code):null;
+      statusClass='status-pending';
+      statusTip=`Échange en attente avec ${escapeHtml(exch.otherName)}`;
+      statusBubbleHtml=`<span class="indiv-status-bubble pending" style="background:${eInfo?eInfo.color:'#F5A623'};color:${eInfo?eInfo.text:'#fff'};" title="${statusTip}">${exch.code||'?'}</span>`;
+    } else if(exch && exch.status==='validated'){
+      statusClass='status-validated';
+    } else if(exch && exch.status==='refused'){
+      const eInfo=exch.code?codeInfo(exch.code):null;
+      statusClass='status-refused';
+      statusTip=`Échange refusé avec ${escapeHtml(exch.otherName)}`;
+      statusBubbleHtml=`<span class="indiv-status-bubble refused" style="background:${eInfo?eInfo.color:'#B7BEC9'};color:${eInfo?eInfo.text:'#fff'};" title="${statusTip}">${exch.code||'?'}</span>`;
+    } else if(desid && desid.status==='pending'){
+      const dInfo=codeInfo(desid.code);
+      statusClass='status-pending';
+      statusTip=`Désidérata en attente : ${dInfo?dInfo.label:desid.code}`;
+      statusBubbleHtml=`<span class="indiv-status-bubble pending" style="background:${dInfo?dInfo.color:'#F5A623'};color:${dInfo?dInfo.text:'#fff'};" title="${statusTip}">${desid.code}</span>`;
+    } else if(desid && desid.status==='validated'){
+      statusClass='status-validated';
+    } else if(desid && desid.status==='refused'){
+      const dInfo=codeInfo(desid.code);
+      statusClass='status-refused';
+      statusTip=`Désidérata refusée : ${dInfo?dInfo.label:desid.code}`;
+      statusBubbleHtml=`<span class="indiv-status-bubble refused" style="background:${dInfo?dInfo.color:'#B7BEC9'};color:${dInfo?dInfo.text:'#fff'};" title="${statusTip}">${desid.code}</span>`;
+    } else if(draftCode){
+      const draftInfo=codeInfo(draftCode);
+      statusClass='status-draft';
+      statusBubbleHtml=`<span class="indiv-status-bubble draft" style="background:${draftInfo?draftInfo.color:'#DDD'};color:${draftInfo?draftInfo.text:'#333'};" title="Mon brouillon : ${escapeHtml(draftCode)}">${draftCode}</span>`;
+    }
+
+    return `<div class="cal-day cal-day-compact indiv-day-tile ${isToday?'today':''} ${dayValid?'selectable-day':''} ${statusClass}" ${dayValid?`data-date="${dateKeyStr}"`:''} style="${cellBg}" title="${dateKeyStr}${statusTip?' — '+statusTip:(draftCode?' — brouillon : '+draftCode:'')}">
       ${cmtMarks}
       <span class="indiv-day-num">${d}</span>
       ${officialCode?`<span class="indiv-day-code" ${officialCode.length>3?'data-longcode="1"':''}>${officialCode}</span>`:''}
       ${holidayName?'<span class="d-fer" title="'+escapeHtml(holidayName)+'">FÉR</span>':''}
-      ${draftCode?`<span class="indiv-draft" style="background:${draftInfo?draftInfo.color:'#DDD'};color:${draftInfo?draftInfo.text:'#333'};" title="Brouillon : ${escapeHtml(draftCode)}">${draftCode}</span>`:''}
+      ${statusBubbleHtml}
     </div>`;
   }
 
