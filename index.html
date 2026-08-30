@@ -827,7 +827,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v11.8';
+const APP_VERSION = 'v11.9';
 const APP_VERSION_DATE = '30/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -5004,20 +5004,16 @@ function renderAdminEchanges(){
     const alertImpact = ex.status==='pending' ? computeExchangeAlertImpact(ex) : [];
     return `
     <div class="desid-row" style="flex-direction:column;align-items:stretch;">
-      <div style="display:flex;gap:14px;flex-wrap:wrap;">
-        <div class="desid-row-main">
-          <div class="desid-row-name">${escapeHtml(ex.requesterName)} ↔ ${escapeHtml(ex.targetName)}</div>
-          ${ex.comment?`<div class="desid-row-comment">« ${escapeHtml(ex.comment)} »</div>`:''}
-          ${ex.adminComment?`<div class="desid-row-comment" style="color:var(--primary);">Réponse : ${escapeHtml(ex.adminComment)}</div>`:''}
-        </div>
-        <div class="desid-row-side">
-          <span class="status-badge" style="background:${sc.bg};color:${sc.fg};">${exchangeStatusLabel(ex.status)}</span>
-          ${ex.status==='pending' ? `
-            <button class="icon-btn" style="color:var(--ok);border-color:var(--ok);" data-exch-validate="${ex.id}">Valider</button>
-            <button class="icon-btn" style="color:var(--danger);border-color:var(--danger);" data-exch-refuse="${ex.id}">Refuser</button>
-          ` : ''}
-        </div>
+      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px;">
+        <div class="desid-row-name" style="margin:0;">${escapeHtml(ex.requesterName)} ↔ ${escapeHtml(ex.targetName)}</div>
+        <span class="status-badge" style="background:${sc.bg};color:${sc.fg};">${exchangeStatusLabel(ex.status)}</span>
+        ${ex.status==='pending' ? `
+          <button class="icon-btn" style="color:var(--ok);border-color:var(--ok);" data-exch-validate="${ex.id}">Valider</button>
+          <button class="icon-btn" style="color:var(--danger);border-color:var(--danger);" data-exch-refuse="${ex.id}">Refuser</button>
+        ` : ''}
       </div>
+      ${ex.comment?`<div class="desid-row-comment" style="margin-top:4px;">« ${escapeHtml(ex.comment)} »</div>`:''}
+      ${ex.adminComment?`<div class="desid-row-comment" style="color:var(--primary);margin-top:4px;">Réponse : ${escapeHtml(ex.adminComment)}</div>`:''}
       <div style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--border);">
         <div style="font-size:11.5px;font-weight:800;color:var(--ink);margin-bottom:4px;">${escapeHtml(ex.requesterName)} <span style="font-weight:600;color:var(--ink-soft);">— semaine du ${fmtDateKeyFr(weekA[0])}</span></div>
         <div style="font-size:10px;font-weight:700;color:var(--ink-soft);margin-bottom:2px;text-transform:uppercase;">Avant</div>
@@ -5176,24 +5172,35 @@ function renderMesEchanges(){
 
   const rowHtml=(ex, mine)=>{
     const sc=exchangeStatusColor(ex.status);
-    const infoA=ex.codeA?codeInfo(ex.codeA):null;
-    const infoB=ex.codeB?codeInfo(ex.codeB):null;
     const other = mine ? ex.targetName : ex.requesterName;
+    const myUsername = mine ? ex.requesterUsername : ex.targetUsername;
+    const otherUsername = mine ? ex.targetUsername : ex.requesterUsername;
+    const myDate = mine ? ex.dateA : ex.dateB;
+    const otherDate = mine ? ex.dateB : ex.dateA;
+    const myNewCode = mine ? (ex.codeB||null) : (ex.codeA||null);
+    const otherNewCode = mine ? (ex.codeA||null) : (ex.codeB||null);
+    const weekMine=weekDatesAround(myDate), weekOther=weekDatesAround(otherDate);
     return `
-    <div class="desid-row">
-      <div class="desid-row-main">
-        <div class="desid-row-name">${mine?'Vers':'De'} ${escapeHtml(other)}</div>
-        <div class="desid-row-period">Votre journée du ${fmtDateKeyFr(mine?ex.dateA:ex.dateB)}
-          <span class="chip" style="background:${(mine?infoA:infoB)?(mine?infoA.color:infoB.color):'#EDEFF2'};color:${(mine?infoA:infoB)?(mine?infoA.text:infoB.text):'#333'};margin:0 6px;">${(mine?ex.codeA:ex.codeB)||'Vide'}</span>
-          ↔ journée de ${escapeHtml(other)} du ${fmtDateKeyFr(mine?ex.dateB:ex.dateA)}
-          <span class="chip" style="background:${(mine?infoB:infoA)?(mine?infoB.color:infoA.color):'#EDEFF2'};color:${(mine?infoB:infoA)?(mine?infoB.text:infoA.text):'#333'};margin:0 6px;">${(mine?ex.codeB:ex.codeA)||'Vide'}</span>
-        </div>
-        ${ex.comment?`<div class="desid-row-comment">« ${escapeHtml(ex.comment)} »</div>`:''}
-        ${ex.adminComment?`<div class="desid-row-comment" style="color:var(--primary);">Réponse admin : ${escapeHtml(ex.adminComment)}</div>`:''}
-      </div>
-      <div class="desid-row-side">
+    <div class="desid-row" style="flex-direction:column;align-items:stretch;">
+      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px;">
+        <div class="desid-row-name" style="margin:0;">${mine?'Vers':'De'} ${escapeHtml(other)}</div>
         <span class="status-badge" style="background:${sc.bg};color:${sc.fg};">${exchangeStatusLabel(ex.status)}</span>
-        ${(mine && ex.status==='pending') ? `<button class="icon-btn" style="color:var(--danger);" data-exch-cancel="${ex.id}">Annuler</button>` : ''}
+        ${(mine && ex.status==='pending') ? `<button class="icon-btn" style="color:var(--danger);border-color:var(--danger);" data-exch-cancel="${ex.id}">Annuler</button>` : ''}
+      </div>
+      ${ex.comment?`<div class="desid-row-comment" style="margin-top:4px;">« ${escapeHtml(ex.comment)} »</div>`:''}
+      ${ex.adminComment?`<div class="desid-row-comment" style="color:var(--primary);margin-top:4px;">Réponse admin : ${escapeHtml(ex.adminComment)}</div>`:''}
+      <div style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--border);">
+        <div style="font-size:11.5px;font-weight:800;color:var(--ink);margin-bottom:4px;">Vous <span style="font-weight:600;color:var(--ink-soft);">— semaine du ${fmtDateKeyFr(weekMine[0])}</span></div>
+        <div style="font-size:10px;font-weight:700;color:var(--ink-soft);margin-bottom:2px;text-transform:uppercase;">Avant</div>
+        ${exchangeMiniRowHtml(myUsername, weekMine, myDate, null, null)}
+        <div style="font-size:10px;font-weight:700;color:var(--primary);margin:6px 0 2px;text-transform:uppercase;">Après échange</div>
+        ${exchangeMiniRowHtml(myUsername, weekMine, myDate, myDate, myNewCode)}
+
+        <div style="font-size:11.5px;font-weight:800;color:var(--ink);margin:14px 0 4px;">${escapeHtml(other)} <span style="font-weight:600;color:var(--ink-soft);">— semaine du ${fmtDateKeyFr(weekOther[0])}</span></div>
+        <div style="font-size:10px;font-weight:700;color:var(--ink-soft);margin-bottom:2px;text-transform:uppercase;">Avant</div>
+        ${exchangeMiniRowHtml(otherUsername, weekOther, otherDate, null, null)}
+        <div style="font-size:10px;font-weight:700;color:var(--primary);margin:6px 0 2px;text-transform:uppercase;">Après échange</div>
+        ${exchangeMiniRowHtml(otherUsername, weekOther, otherDate, otherDate, otherNewCode)}
       </div>
     </div>`;
   };
