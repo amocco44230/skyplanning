@@ -834,7 +834,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v13.3';
+const APP_VERSION = 'v13.5';
 const APP_VERSION_DATE = '30/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -1053,7 +1053,7 @@ let state={
   comments:{},
   desideratas:[],
   exchanges:[],
-  featureFlags:{desideratas:true, echanges:true, alertes:true, genAuto:true, impression:true, photos:true, cycles:false, stats:false, historique:false, crossServiceView:false, suivi:false, suiviServices:[], perService:{}},
+  featureFlags:{desideratas:true, echanges:true, alertes:true, genAuto:true, impression:true, photos:true, cycles:false, stats:false, historique:false, crossServiceView:false, suivi:false, suiviServices:[], specialRequests:true, perService:{}},
   cycleSettings:{},
   alertRules:[],
   monthValidations:{},
@@ -1200,7 +1200,7 @@ async function loadAll(){
     // par une mise à jour de l'appli reste activée par défaut si l'admin n'a
     // encore rien configuré explicitement.
     state.featureFlags = Object.assign(
-      {desideratas:true, echanges:true, alertes:true, genAuto:true, impression:true, photos:true, cycles:false, stats:false, historique:false, crossServiceView:false, suivi:false, suiviServices:[], perService:{}},
+      {desideratas:true, echanges:true, alertes:true, genAuto:true, impression:true, photos:true, cycles:false, stats:false, historique:false, crossServiceView:false, suivi:false, suiviServices:[], specialRequests:true, perService:{}},
       parsed||{}
     );
     if(!state.featureFlags.perService) state.featureFlags.perService={};
@@ -3247,10 +3247,14 @@ function specialRequestSummary(username){
 function renderSpecialRequests(){
   const isAdmin=state.currentUser.role==='admin';
   const camp=state.specialRequestCampaign;
-  if(isAdmin){ renderSpecialRequestsAdmin(camp); return; }
+  if(isAdmin){
+    if(!adminCanAccessFeature('specialRequests')){ state.tab='calendrier'; render(); return; }
+    renderSpecialRequestsAdmin(camp); return;
+  }
 
   const username=state.currentUser.username;
   const me=state.users.find(u=>u.username===username);
+  if(!isFeatureEnabled('specialRequests', me?me.team:'')){ state.tab='planning'; render(); return; }
   const mine=specialRequestSummary(username);
   if(!camp.active || !camp.dates.length || !employeeInSpecialRequestScope(username)){
     renderShell(`<div class="empty-state">Aucune demande spéciale en cours pour le moment.</div>`, 'Demandes spéciales');
@@ -3400,7 +3404,19 @@ function renderSpecialRequestsAdmin(camp){
             if(!groups[key]){ groups[key]=[]; order.push(key); }
             groups[key].push(u);
           });
-          order.sort((a,b)=>a.localeCompare(b,'fr'));
+          // Priorité : Responsables en premier, puis le reste par ordre
+          // alphabétique, et les groupes « fourre-tout » (Administration,
+          // Sans fonction) toujours en dernier.
+          const priorityRank=(k)=>{
+            if(k==='Responsables' || k==='Resp Adjoint' || k==='RESP ADJOINT') return 0;
+            if(k==='Administration' || k==='Sans fonction') return 2;
+            return 1;
+          };
+          order.sort((a,b)=>{
+            const ra=priorityRank(a), rb=priorityRank(b);
+            if(ra!==rb) return ra-rb;
+            return a.localeCompare(b,'fr');
+          });
           return order.map(key=>{
             const list=[...groups[key]].sort((a,b)=>a.name.localeCompare(b.name,'fr'));
             const headRow=`<tr><td class="fonction-head" colspan="${camp.dates.length+2}">${escapeHtml(key)}</td></tr>`;
@@ -3411,11 +3427,11 @@ function renderSpecialRequestsAdmin(camp){
                 ${camp.dates.map(dt=>{
                   const a=r?r.answers[dt.key]:null;
                   if(!a || !a.codes || !a.codes.length) return `<td style="text-align:center;color:var(--ink-soft);">—</td>`;
-                  return `<td style="text-align:center;" ${a.comment?`title="${escapeHtml(a.comment)}"`:''}>
+                  return `<td style="text-align:center;">
                     <div style="display:flex;gap:3px;justify-content:center;flex-wrap:wrap;">
                       ${a.codes.map(code=>{ const st=specialRequestCodeStyle(code); return `<span class="chip" style="background:${st.bg};color:${st.fg};padding:2px 7px;font-size:10.5px;">${code}</span>`; }).join('')}
                     </div>
-                    ${a.comment?' 💬':''}
+                    ${a.comment?`<span data-tip="${tipContent('💬 '+a.comment)}" style="cursor:help;">💬</span>`:''}
                   </td>`;
                 }).join('')}
                 <td style="text-align:center;font-size:11px;color:var(--ink-soft);">
@@ -3516,6 +3532,7 @@ function renderFonctionnalites(){
       <h3>Fonctionnalités générales</h3>
       ${globalToggle('desideratas','Désidératas','Les salariés peuvent demander des jours spécifiques, l\u2019admin valide ou refuse.')}
       ${globalToggle('echanges','Échanges de service','Un salarié peut proposer un échange de journée avec un collègue, validé en un clic par l\u2019admin.')}
+      ${globalToggle('specialRequests','Demandes spéciales','Campagnes ponctuelles (ex : disponibilités fêtes de fin d\u2019année) — configuration et suivi côté admin, formulaire de réponse côté salarié.')}
       ${globalToggle('alertes','Alertes d\u2019effectif','Détection automatique des sous/sur-effectifs et dépassements de charge hebdo.')}
       ${globalToggle('genAuto','Génération automatique du planning','Le bouton « 🪄 Générer automatiquement » sur le Calendrier Mensuel.')}
       ${globalToggle('impression','Impression PDF','Les boutons « Imprimer le planning » (admin, planning équipe, planning individuel).')}
@@ -3672,7 +3689,7 @@ function navItems(){
   if(isMobileDevice()){
     if(state.currentUser.role==='admin'){
       const items=[{id:'calendrier', label:'Calendrier Mensuel', icon:'▦'}];
-      items.push({id:'special-requests', label:'Demandes spéciales', icon:'🎄'});
+      if(adminCanAccessFeature('specialRequests')) items.push({id:'special-requests', label:'Demandes spéciales', icon:'🎄'});
       return items;
     }
     // Ces deux pages sont accessibles via le menu ⋮ sur mobile (le bandeau
@@ -3684,7 +3701,7 @@ function navItems(){
     const mobItems=[{id:'individuel', label:'Planning individuel', icon:'🗓️'}, {id:'equipe', label:'Planning équipe', icon:'👥'}];
     if(isFeatureEnabled('desideratas', myTeamMob)) mobItems.push({id:'mesdesid', label:'Mes désidératas', icon:'🖐️'});
     if(isFeatureEnabled('echanges', myTeamMob)) mobItems.push({id:'echanges', label:'Swap', icon:'🔄'});
-    if(state.specialRequestCampaign.active && employeeInSpecialRequestScope(state.currentUser.username)) mobItems.push({id:'special-requests', label:'Demandes spéciales', icon:'🎄'});
+    if(state.specialRequestCampaign.active && isFeatureEnabled('specialRequests', myTeamMob) && employeeInSpecialRequestScope(state.currentUser.username)) mobItems.push({id:'special-requests', label:'Demandes spéciales', icon:'🎄'});
     return mobItems;
   }
   if(state.currentUser.role==='admin'){
@@ -3695,7 +3712,7 @@ function navItems(){
     ];
     if(adminCanAccessFeature('desideratas')) items.push({id:'desideratas', label:'Désidératas', icon:'🖐️'});
     if(adminCanAccessFeature('echanges')) items.push({id:'echanges', label:'Échanges', icon:'🔄'});
-    items.push({id:'special-requests', label:'Demandes spéciales', icon:'🎄'});
+    if(adminCanAccessFeature('specialRequests')) items.push({id:'special-requests', label:'Demandes spéciales', icon:'🎄'});
     if(adminCanAccessFeature('alertes')) items.push({id:'alertes', label:'Alertes', icon:'⚠️'});
     if(adminCanAccessFeature('cycles')) items.push({id:'cycles', label:'Cycles', icon:'📊'});
     if(adminCanAccessFeature('stats')) items.push({id:'statistiques', label:'Statistiques', icon:'📈'});
@@ -3714,7 +3731,7 @@ function navItems(){
   ];
   if(isFeatureEnabled('desideratas', myTeam)) items.push({id:'mesdesid', label:'Mes désidératas', icon:'🖐️'});
   if(isFeatureEnabled('echanges', myTeam)) items.push({id:'echanges', label:'Swap', icon:'🔄'});
-  if(state.specialRequestCampaign.active && employeeInSpecialRequestScope(state.currentUser.username)) items.push({id:'special-requests', label:'Demandes spéciales', icon:'🎄'});
+  if(state.specialRequestCampaign.active && isFeatureEnabled('specialRequests', myTeam) && employeeInSpecialRequestScope(state.currentUser.username)) items.push({id:'special-requests', label:'Demandes spéciales', icon:'🎄'});
   return items;
 }
 function initials(name){
@@ -3802,7 +3819,7 @@ function topbarAccountMenuHtml(){
   const myTeam = me ? me.team : '';
   const showDesid = isEmp && isFeatureEnabled('desideratas', myTeam);
   const showEch = isEmp && isFeatureEnabled('echanges', myTeam);
-  const showSpecial = isEmp && state.specialRequestCampaign.active && employeeInSpecialRequestScope(state.currentUser.username);
+  const showSpecial = isEmp && state.specialRequestCampaign.active && isFeatureEnabled('specialRequests', myTeam) && employeeInSpecialRequestScope(state.currentUser.username);
   return `
   <div style="position:relative;">
     <button class="bell-btn" id="topbarMenuBtn">⋮</button>
