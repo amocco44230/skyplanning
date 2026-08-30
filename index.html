@@ -207,6 +207,12 @@
   table.grid{border-collapse:separate;border-spacing:0;width:100%;table-layout:fixed;}
   table.grid th, table.grid td{border-bottom:1px solid var(--border);border-right:1px solid var(--border);}
   table.grid th.emp-col, table.grid td.emp-col{position:sticky;left:0;background:#fff;z-index:2;text-align:left;padding:8px 13px;font-size:11.5px;font-weight:700;box-shadow:2px 0 4px rgba(15,23,42,.04);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* ---------- Repère "ma ligne" (salarié qui se repère dans la liste de son équipe) ---------- */
+  table.grid tr.my-row td{border-top:2px solid var(--primary);border-bottom:2px solid var(--primary);}
+  table.grid tr.my-row td.emp-col{border-left:3px solid var(--primary);color:var(--primary-dark);}
+  table.grid tr.my-row td:last-child{border-right:3px solid var(--primary);}
+  .peq-week-grid.my-row{outline:2.5px solid var(--primary);outline-offset:-2px;border-radius:8px;background:var(--primary-light);}
+  .peq-week-grid.my-row .peq-week-name{color:var(--primary-dark);font-weight:800;}
   table.grid thead th{position:sticky;top:0;background:#fbfcfe;z-index:1;font-size:10.5px;color:var(--ink-soft);font-weight:700;padding:7px 2px;text-align:center;}
   table.grid thead th.emp-col{z-index:3;background:#fbfcfe;}
   table.grid thead th .dow{display:block;font-size:9px;font-weight:600;color:#A7AFBC;text-transform:uppercase;}
@@ -379,17 +385,17 @@
   .peq-week-view.swap-mode .peq-week-cell{opacity:.35;}
   .peq-week-cell.swap-disabled{opacity:.25;}
   .peq-week-cell.swap-selectable{opacity:1;outline:1.5px dashed rgba(32,43,73,.35);outline-offset:-1px;cursor:pointer;}
-  .peq-week-cell.swap-picked-mine{opacity:1;outline:2.5px solid #2C3A63;outline-offset:-1.5px;box-shadow:0 0 0 2px rgba(44,58,99,.15);}
-  .peq-week-cell.swap-picked-target{opacity:1;outline:2.5px solid #E8615A;outline-offset:-1.5px;box-shadow:0 0 0 2px rgba(232,97,90,.15);}
+  .peq-week-cell.swap-picked-mine{opacity:1!important;outline:3px solid #2C3A63!important;outline-offset:-2.5px;position:relative;z-index:2;}
+  .peq-week-cell.swap-picked-target{opacity:1!important;outline:3px solid #E8615A!important;outline-offset:-2.5px;position:relative;z-index:2;}
   .swap-hint{background:#EEF1FA;border:1px solid #cdd6ec;color:var(--primary-dark);padding:10px 14px;border-radius:10px;margin-bottom:12px;font-size:12.5px;line-height:1.5;}
   .swap-summary{background:var(--primary-light);border:1px solid #cdd6ec;color:var(--primary-dark);padding:10px 14px;border-radius:10px;margin-top:8px;font-size:12.5px;line-height:1.5;}
   /* ---------- Mode swap (grille desktop, gridHtml) ---------- */
   .grid-card.swap-mode td.day-cell{opacity:.35;}
   td.day-cell.swap-disabled{opacity:.22;}
-  td.day-cell.swap-selectable{opacity:1;cursor:pointer;box-shadow:inset 0 0 0 1.5px rgba(32,43,73,.35);}
-  td.day-cell.swap-selectable:hover{box-shadow:inset 0 0 0 2px var(--primary);}
-  td.day-cell.swap-picked-mine{opacity:1;box-shadow:inset 0 0 0 2.5px #2C3A63;}
-  td.day-cell.swap-picked-target{opacity:1;box-shadow:inset 0 0 0 2.5px #E8615A;}
+  td.day-cell.swap-selectable{opacity:1;cursor:pointer;outline:1.5px dashed rgba(32,43,73,.4);outline-offset:-2px;}
+  td.day-cell.swap-selectable:hover{outline:2px dashed var(--primary);}
+  td.day-cell.swap-picked-mine{opacity:1!important;outline:3.5px solid #2C3A63!important;outline-offset:-3px;position:relative;z-index:2;}
+  td.day-cell.swap-picked-target{opacity:1!important;outline:3.5px solid #E8615A!important;outline-offset:-3px;position:relative;z-index:2;}
   .peq-week-cell.today{outline:2px solid var(--primary-dark);outline-offset:-2px;}
   .peq-week-unavailable{grid-column:2 / -1;font-size:10.5px;font-style:italic;color:var(--ink-soft);background:#F4F5F7;border-radius:6px;padding:7px 8px;text-align:center;}
   /* ---------- Grille restreinte (consultation d'un autre service) ---------- */
@@ -808,7 +814,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v10.2';
+const APP_VERSION = 'v10.7';
 const APP_VERSION_DATE = '30/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -1986,6 +1992,7 @@ async function createDesiderata(username,name,dateStart,dateEnd,code,comment){
   });
   await persistDesideratas();
   const dInfo=codeInfo(code);
+  await notifyAdminsForService((state.users.find(u=>u.username===username)||{}).team, name+' a déposé une demande de désidérata du '+fmtDateKeyFr(dateStart)+' au '+fmtDateKeyFr(dateEnd)+' ('+(dInfo?dInfo.label:code)+').');
   await logAudit('desiderata_submitted', (state.users.find(u=>u.username===username)||{}).team, username,
     name+' a déposé une demande de désidérata du '+fmtDateKeyFr(dateStart)+' au '+fmtDateKeyFr(dateEnd)+' ('+(dInfo?dInfo.label:code)+').',
     {dateStart, dateEnd, code});
@@ -2086,6 +2093,7 @@ async function createExchange(requesterUsername,requesterName,targetUsername,tar
   });
   await persistExchanges();
   await pushNotification(targetUsername, requesterName+' vous propose un échange de journée : '+fmtDateKeyFr(dateA)+' ↔ '+fmtDateKeyFr(dateB)+'. En attente de validation par l\u2019administrateur.');
+  await notifyAdminsForService((state.users.find(u=>u.username===requesterUsername)||{}).team, requesterName+' propose un échange avec '+targetName+' : '+fmtDateKeyFr(dateA)+' ↔ '+fmtDateKeyFr(dateB)+'.');
   await logAudit('exchange_submitted', (state.users.find(u=>u.username===requesterUsername)||{}).team, requesterUsername,
     requesterName+' propose un échange avec '+targetName+' : '+fmtDateKeyFr(dateA)+' ↔ '+fmtDateKeyFr(dateB)+'.',
     {targetUsername, dateA, dateB});
@@ -2407,6 +2415,16 @@ async function pushNotification(username, message){
   state.notifications[username]=state.notifications[username].slice(0,50);
   await persistNotifications();
   return notif;
+}
+/**
+ * Notifie tous les admins concernés par un service (grand admin + admins
+ * scopés sur ce service) — utilisé pour les nouvelles demandes (désidérata,
+ * échange...) afin que l'admin ne découvre pas la demande uniquement en
+ * ouvrant la page correspondante.
+ */
+async function notifyAdminsForService(service, message){
+  const admins=state.users.filter(u=>u.role==='admin' && (isSuperAdmin(u) || (u.adminServices||[]).includes(service)));
+  for(const a of admins){ await pushNotification(a.username, message); }
 }
 
 /* ============================================================
@@ -3305,12 +3323,12 @@ function navItems(){
   const me=state.users.find(u=>u.username===state.currentUser.username);
   const myTeam=(me&&me.team)?me.team:'';
   const items=[
-    {id:'planning', label:'Planning', icon:'▦'},
+    {id:'planning', label:'Mon planning mensuel', icon:'▦'},
     {id:'annuel', label:'Mon planning annuel', icon:'📅'},
     {id:'equipe', label:'Planning équipe', icon:'👥'},
   ];
   if(isFeatureEnabled('desideratas', myTeam)) items.push({id:'mesdesid', label:'Mes désidératas', icon:'🖐️'});
-  if(isFeatureEnabled('echanges', myTeam)) items.push({id:'echanges', label:'Échanges', icon:'🔄'});
+  if(isFeatureEnabled('echanges', myTeam)) items.push({id:'echanges', label:'Swap', icon:'🔄'});
   return items;
 }
 function initials(name){
@@ -3511,7 +3529,7 @@ function renderShell(innerHtml,title,sidebarExtraHtml){
                       }).length
                     : state.exchanges.filter(ex=>ex.targetUsername===state.currentUser.username && ex.status==='pending').length)
                 : 0;
-          return `<button data-tab="${it.id}" class="${state.tab===it.id?'active':''}">${it.icon} <span class="label">${it.label}</span>${badge?`<span class="nav-badge">${badge>9?'9+':badge}</span>`:''}</button>`;
+          return `<button data-tab="${it.id}" class="${state.tab===it.id?'active':''}"><span class="label">${it.label}</span>${badge?`<span class="nav-badge">${badge>9?'9+':badge}</span>`:''}</button>`;
         }).join('')}
       </div>
       ${sidebarExtraHtml ? `<div class="sidebar-extra">${sidebarExtraHtml}</div>` : ''}
@@ -3714,7 +3732,7 @@ function gridHtml({employees, readonly, alerts, changes, serviceContext, swapCtx
     prevSubGroup=empSubGroup;
     const empWeeklyAlerts = alerts.filter(a=>a.rule.type==='weekly_person' && a.employee && a.employee.username===emp.username);
     const empAlertBadge = empWeeklyAlerts.length ? `<span class="alert-badge-dot" title="${escapeHtml(formatWeeklyAlertTooltip(empWeeklyAlerts))}">⚠</span>` : '';
-    let row=`<tr data-user="${emp.username}"><td class="emp-col">${emp.photoUrl?`<span class="grid-emp-avatar"><img src="${emp.photoUrl}" alt=""></span>`:''}${emp.name}${empAlertBadge}</td>`;
+    let row=`<tr data-user="${emp.username}" class="${emp.username===state.currentUser.username?'my-row':''}"><td class="emp-col">${emp.photoUrl?`<span class="grid-emp-avatar"><img src="${emp.photoUrl}" alt=""></span>`:''}${emp.name}${empAlertBadge}</td>`;
     for(let d=1; d<=nDays; d++){
       const date=new Date(y,m,d);
       const dow=date.getDay();
@@ -3801,8 +3819,8 @@ function gridHtml({employees, readonly, alerts, changes, serviceContext, swapCtx
         const isMe = emp.username===state.currentUser.username;
         const eligible = dayValid && !!code && emp.fonction===swapCtx.myFonction;
         const pick=swapCtx.pick;
-        const isMyPick = pick && pick.myUsername===emp.username && pick.myDate===dateKeyStr;
-        const isTargetPick = pick && pick.targetUsername===emp.username && pick.targetDate===dateKeyStr;
+        const isMyPick = isMe && pick.myDays.some(dd=>dd.date===dateKeyStr);
+        const isTargetPick = pick.targetUsername===emp.username && pick.targetDays.some(dd=>dd.date===dateKeyStr);
         if(eligible){
           cellClass+=' swap-selectable';
           swapAttrs=` data-swap-user="${emp.username}" data-swap-name="${escapeHtml(emp.name)}" data-swap-date="${dateKeyStr}" data-swap-code="${code}" data-swap-ismine="${isMe}"`;
@@ -4171,8 +4189,8 @@ function renderPlanningEmploye(){
   const mobile=isMobileDevice();
   const sideActionsHtml=`
     <div class="sidebar-extra-title">Actions</div>
-    ${isFeatureEnabled('desideratas', myService) ? `<button class="btn btn-primary" id="planNewDesidBtn">🖐️ Désidératas</button>` : ''}
-    ${isFeatureEnabled('echanges', myService) ? `<button class="btn btn-primary" id="planNewExchBtn">🔄 Swap</button>` : ''}
+    ${isFeatureEnabled('desideratas', myService) ? `<button class="btn-gen" id="planNewDesidBtn">Désidératas</button>` : ''}
+    ${isFeatureEnabled('echanges', myService) ? `<button class="btn-gen" id="planNewExchBtn">Swap</button>` : ''}
   `;
   const inner=`
     <div class="emp-cal-toolbar">
@@ -4189,8 +4207,8 @@ function renderPlanningEmploye(){
     </div>
     ${mobile ? `
     <div class="mobile-action-row">
-      ${isFeatureEnabled('desideratas', myService) ? `<button class="btn btn-primary" id="planNewDesidBtn">🖐️ Désidératas</button>` : ''}
-      ${isFeatureEnabled('echanges', myService) ? `<button class="btn btn-primary" id="planNewExchBtn">🔄 Swap</button>` : ''}
+      ${isFeatureEnabled('desideratas', myService) ? `<button class="btn-gen" id="planNewDesidBtn">Désidératas</button>` : ''}
+      ${isFeatureEnabled('echanges', myService) ? `<button class="btn-gen" id="planNewExchBtn">Swap</button>` : ''}
     </div>
     ` : ''}
     <div style="display:flex;gap:10px;">
@@ -4274,13 +4292,14 @@ function teamWeekViewHtml(teamEmployees, weekDates, myTeam, todayKeyStr, restric
         subGroupSepHtml=`<div class="peq-week-subgroup-sep">${escapeHtml(empSubGroup)}</div>`;
       }
       prevSubGroup=empSubGroup;
+      const isMe = emp.username===state.currentUser.username;
       // En mode « je consulte un autre service que le mien », chaque salarié
       // n'apparaît en clair que s'il a coché ce service dans sa fiche
       // (« Visible aussi sur le planning équipe d'autres services ») — sinon
       // sa ligne affiche juste « Planning non disponible », sans le code.
       const hidden = restrictedMode && !(emp.extraTeams||[]).includes(viewerTeam) && emp.username!==state.currentUser.username;
       if(hidden){
-        return subGroupSepHtml+`<div class="peq-week-grid">
+        return subGroupSepHtml+`<div class="peq-week-grid ${isMe?'my-row':''}">
           <div class="peq-week-name">${escapeHtml(emp.name)}</div>
           <div class="peq-week-unavailable">Planning non disponible</div>
         </div>`;
@@ -4288,7 +4307,6 @@ function teamWeekViewHtml(teamEmployees, weekDates, myTeam, todayKeyStr, restric
       // En mode swap : seules les lignes de MÊME FONCTION que la personne
       // connectée sont sélectionnables (soi-même, pour le jour qu'on
       // propose ; un collègue, pour le jour souhaité en échange).
-      const isMe = emp.username===state.currentUser.username;
       const rowSwapEligible = swapActive && emp.fonction===swapCtx.myFonction;
       const cells=weekDates.map(k=>{
         const [ky,km]=k.split('-').map(Number);
@@ -4298,13 +4316,13 @@ function teamWeekViewHtml(teamEmployees, weekDates, myTeam, todayKeyStr, restric
         const isToday=k===todayKeyStr;
         const cellSwapEligible = rowSwapEligible && !!code;
         const pick=swapCtx&&swapCtx.pick;
-        const isMyPick = pick && pick.myUsername===emp.username && pick.myDate===k;
-        const isTargetPick = pick && pick.targetUsername===emp.username && pick.targetDate===k;
+        const isMyPick = pick && isMe && pick.myDays.some(dd=>dd.date===k);
+        const isTargetPick = pick && pick.targetUsername===emp.username && pick.targetDays.some(dd=>dd.date===k);
         const swapClass = cellSwapEligible ? 'swap-selectable' : (swapActive ? 'swap-disabled' : '');
         const pickClass = isMyPick ? 'swap-picked-mine' : (isTargetPick ? 'swap-picked-target' : '');
         return `<div class="peq-week-cell ${isToday?'today':''} ${swapClass} ${pickClass}" ${cellSwapEligible?`data-swap-user="${emp.username}" data-swap-name="${escapeHtml(emp.name)}" data-swap-date="${k}" data-swap-code="${code}" data-swap-ismine="${isMe}"`:''} style="${info?`background:${info.color};color:${info.text};`:''}">${!dayOk?'🔒':(code||'—')}</div>`;
       }).join('');
-      return subGroupSepHtml+`<div class="peq-week-grid">
+      return subGroupSepHtml+`<div class="peq-week-grid ${isMe?'my-row':''}">
         <div class="peq-week-name">${escapeHtml(emp.name)}</div>
         ${cells}
       </div>`;
@@ -4454,9 +4472,12 @@ function renderPlanningEquipe(){
   // mode à moitié fonctionnel.
   const swapUsable = isOwnTeam && isFeatureEnabled('echanges', myTeam) && (weekMode || !mobile);
   if(state.swapMode && !swapUsable){ state.swapMode=false; state.swapPick=null; }
-  const swapCtx = swapUsable && state.swapMode ? {active:true, myFonction:me?me.fonction:'', pick:state.swapPick} : null;
-  const pick=state.swapPick;
-  const swapReady = pick && pick.myUsername && pick.targetUsername;
+  const swapCtx = swapUsable && state.swapMode ? {active:true, myFonction:me?me.fonction:'', pick:(state.swapPick && state.swapPick.myDays ? state.swapPick : {myDays:[], targetUsername:null, targetName:null, targetDays:[]})} : null;
+  // Plusieurs jours possibles de chaque côté (ex : 2 jours chez moi contre 2
+  // jours chez le collègue) — mais toujours en NOMBRE ÉGAL des deux côtés.
+  const pick=state.swapPick && state.swapPick.myDays ? state.swapPick : {myDays:[], targetUsername:null, targetName:null, targetDays:[]};
+  const swapCountsMatch = pick.myDays.length>0 && pick.myDays.length===pick.targetDays.length;
+  const swapReady = swapCountsMatch;
 
   const inner=`
     ${mobile ? `
@@ -4477,9 +4498,10 @@ function renderPlanningEquipe(){
     ` : monthNavHtml()}
     ${swapCtx ? `
     <div class="legend-hint swap-hint">
-      ${!pick || !pick.myUsername ? `<b>Étape 1 :</b> touchez d'abord <b>votre propre jour</b> à proposer à l'échange.`
-        : !pick.targetUsername ? `<b>Étape 2 :</b> touchez maintenant le jour souhaité chez un <b>collègue de même fonction</b>.`
-        : `Prêt à envoyer votre proposition d'échange.`}
+      ${pick.myDays.length===0 ? `<b>Étape 1 :</b> touchez <b>votre/vos jour(s)</b> à proposer à l'échange (plusieurs possibles).`
+        : pick.targetDays.length===0 ? `<b>Étape 2 :</b> touchez maintenant, chez un <b>collègue de même fonction</b>, <b>autant de jours</b> que vous en avez choisi (${pick.myDays.length}).`
+        : !swapCountsMatch ? `Vous avez choisi <b>${pick.myDays.length}</b> jour(s) chez vous et <b>${pick.targetDays.length}</b> chez ${escapeHtml(pick.targetName||'le collègue')} — il faut le <b>même nombre</b> des deux côtés.`
+        : `Prêt à envoyer votre proposition d'échange (${pick.myDays.length} jour${pick.myDays.length>1?'s':''} contre ${pick.targetDays.length}).`}
     </div>
     ` : `
     <div class="legend-hint" style="margin:6px 0 12px;">
@@ -4519,7 +4541,7 @@ function renderPlanningEquipe(){
       <button class="btn-gen" id="peqSwapCancelBtn" style="${mobile?'':'width:auto;'}">Annuler</button>
       ${swapReady ? `<button class="btn-gen active" id="peqSwapConfirmBtn" style="${mobile?'':'width:auto;'}">Continuer</button>` : ''}
     </div>
-    ${swapReady ? `<div class="swap-summary">Vous donnez le <b>${fmtDateKeyFr(pick.myDate)}</b> (${escapeHtml(pick.myCode)}) contre le <b>${fmtDateKeyFr(pick.targetDate)}</b> de <b>${escapeHtml(pick.targetName)}</b> (${escapeHtml(pick.targetCode)}).</div>` : ''}
+    ${swapReady ? `<div class="swap-summary">Vous donnez ${pick.myDays.map(d=>'<b>'+fmtDateKeyFr(d.date)+'</b> ('+escapeHtml(d.code)+')').join(', ')} contre ${pick.targetDays.map(d=>'<b>'+fmtDateKeyFr(d.date)+'</b> ('+escapeHtml(d.code)+')').join(', ')} de <b>${escapeHtml(pick.targetName)}</b>.</div>` : ''}
     ` : ''}
   `;
   renderShell(inner,'Planning équipe'+(viewedTeam?' — '+viewedTeam:''), mobile?null:(sideCodesHtml+sideActionsHtml));
@@ -4596,23 +4618,36 @@ function renderPlanningEquipe(){
   });
   const peqSwapConfirmBtn=document.getElementById('peqSwapConfirmBtn');
   if(peqSwapConfirmBtn) peqSwapConfirmBtn.addEventListener('click',()=>{
-    state.modal={type:'new-exchange', data:{targetUsername:pick.targetUsername, dateA:pick.myDate, dateB:pick.targetDate, comment:''}, colleagues:[{username:pick.targetUsername, name:pick.targetName}], swapLocked:true};
+    // Chaque jour choisi chez moi est apparié, dans l'ordre du clic, avec le
+    // jour correspondant choisi chez le collègue — un échange = une paire.
+    const pairs=pick.myDays.map((d,i)=>({dateA:d.date, codeA:d.code, dateB:pick.targetDays[i].date, codeB:pick.targetDays[i].code}));
+    state.modal={type:'swap-confirm-multi', pairs, targetUsername:pick.targetUsername, targetName:pick.targetName, comment:''};
     render();
   });
   document.querySelectorAll('.swap-selectable').forEach(cell=>{
     cell.addEventListener('click',()=>{
       const isMine = cell.dataset.swapIsmine==='true';
       const username=cell.dataset.swapUser, name=cell.dataset.swapName, date=cell.dataset.swapDate, code=cell.dataset.swapCode;
-      const p=state.swapPick||{};
+      const p=(state.swapPick && state.swapPick.myDays) ? state.swapPick : {myDays:[], targetUsername:null, targetName:null, targetDays:[]};
       if(isMine){
-        // Re-toucher sa propre case déjà sélectionnée = désélectionner.
-        if(p.myUsername===username && p.myDate===date){ p.myUsername=null; p.myDate=null; p.myCode=null; }
-        else { p.myUsername=username; p.myDate=date; p.myCode=code; }
+        // Re-toucher un jour déjà sélectionné le retire (bascule) — plusieurs
+        // jours peuvent être choisis, à condition d'en choisir autant côté collègue.
+        const idx=p.myDays.findIndex(dd=>dd.date===date);
+        if(idx>=0) p.myDays=p.myDays.filter((_,i)=>i!==idx);
+        else p.myDays=[...p.myDays, {date, code}];
       } else {
-        if(p.targetUsername===username && p.targetDate===date){ p.targetUsername=null; p.targetDate=null; p.targetCode=null; p.targetName=null; }
-        else { p.targetUsername=username; p.targetDate=date; p.targetCode=code; p.targetName=name; }
+        if(p.targetUsername && p.targetUsername!==username){
+          // Changement de collègue en cours de sélection : on repart à zéro
+          // côté « ses jours » pour ne jamais mélanger deux collègues différents.
+          p.targetDays=[];
+        }
+        const idx=p.targetDays.findIndex(dd=>dd.date===date);
+        if(idx>=0) p.targetDays=p.targetDays.filter((_,i)=>i!==idx);
+        else p.targetDays=[...p.targetDays, {date, code}];
+        p.targetUsername = p.targetDays.length ? username : null;
+        p.targetName = p.targetDays.length ? name : null;
       }
-      state.swapPick={...p};
+      state.swapPick={myDays:p.myDays, targetUsername:p.targetUsername, targetName:p.targetName, targetDays:p.targetDays};
       render();
     });
   });
@@ -7626,6 +7661,39 @@ function renderModal(){
     document.getElementById('swapIntroContinue').addEventListener('click',()=>{
       state.modal={type:'new-exchange', data:{targetUsername:colleagues[0].username, dateA:'', dateB:'', comment:''}, colleagues};
       render();
+    });
+  }
+
+  if(state.modal.type==='swap-confirm-multi'){
+    const pairs=state.modal.pairs||[];
+    overlay.innerHTML=`
+    <div class="modal" style="max-width:460px;">
+      <h3>Confirmer la demande d'échange ?</h3>
+      <div class="legend-hint" style="margin:-6px 0 14px;">Avec <b>${escapeHtml(state.modal.targetName)}</b> — ${pairs.length} jour${pairs.length>1?'s':''} échangé${pairs.length>1?'s':''} :</div>
+      <div class="list-mgr" style="margin-bottom:14px;">
+        ${pairs.map(p=>`<div class="list-mgr-row"><span>Le <b>${fmtDateKeyFr(p.dateA)}</b> (${escapeHtml(p.codeA)})</span><span>↔ le <b>${fmtDateKeyFr(p.dateB)}</b> (${escapeHtml(p.codeB)})</span></div>`).join('')}
+      </div>
+      <div class="field"><label>Message (optionnel)</label>
+        <textarea id="scmComment" rows="2" placeholder="Ex : besoin d'échanger pour un rendez-vous" style="width:100%;border:1.5px solid var(--border);border-radius:9px;padding:10px 12px;font-family:inherit;font-size:13.5px;resize:vertical;"></textarea>
+      </div>
+      <div class="helper" style="margin:-8px 0 14px;">Une fois validé par l'administrateur, vos journées seront échangées.</div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="scmBack">Retour</button>
+        <button class="btn btn-primary" id="scmConfirm">Confirmer la demande</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('scmBack').addEventListener('click',()=>{ state.modal=null; render(); });
+    document.getElementById('scmConfirm').addEventListener('click', async()=>{
+      const comment=document.getElementById('scmComment').value.trim();
+      for(const p of pairs){
+        await createExchange(state.currentUser.username, state.currentUser.name, state.modal.targetUsername, state.modal.targetName, p.dateA, p.dateB, comment);
+      }
+      toast(pairs.length>1 ? pairs.length+' demandes d\u2019échange envoyées à l\u2019administrateur.' : 'Demande d\u2019échange envoyée à l\u2019administrateur.');
+      state.exchFilterStatus='all';
+      state.swapMode=false;
+      state.swapPick=null;
+      closeModal();
     });
   }
 
