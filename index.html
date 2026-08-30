@@ -389,6 +389,10 @@
   .peq-week-cell.swap-picked-target{opacity:1!important;outline:3px solid #E8615A!important;outline-offset:-2.5px;position:relative;z-index:2;}
   .swap-hint{background:#EEF1FA;border:1px solid #cdd6ec;color:var(--primary-dark);padding:10px 14px;border-radius:10px;margin-bottom:12px;font-size:12.5px;line-height:1.5;}
   .swap-summary{background:var(--primary-light);border:1px solid #cdd6ec;color:var(--primary-dark);padding:10px 14px;border-radius:10px;margin-top:8px;font-size:12.5px;line-height:1.5;}
+  .swap-top-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
+  .swap-badge{background:var(--danger);color:#fff;font-weight:800;font-size:12px;letter-spacing:.04em;padding:6px 14px;border-radius:20px;text-transform:uppercase;flex-shrink:0;}
+  .swap-top-actions{display:flex;gap:8px;flex-wrap:wrap;}
+  .swap-top-actions .btn-gen{width:auto;margin:0;padding:9px 16px;}
   /* ---------- Mode swap (grille desktop, gridHtml) ---------- */
   .grid-card.swap-mode td.day-cell{opacity:.35;}
   td.day-cell.swap-disabled{opacity:.22;}
@@ -740,10 +744,10 @@
     /* Planning individuel : calendrier du mois qui occupe tout l'écran visible,
        sans défilement — le nombre de semaines varie (4 à 6) donc chaque
        semaine se partage équitablement la hauteur restante. */
-    .indiv-mobile-wrap{display:flex;flex-direction:column;height:calc(100vh - 54px - 12px - 70px);min-height:340px;}
+    .indiv-mobile-wrap{display:flex;flex-direction:column;height:calc((100vh - 54px - 12px - 70px) * 0.9);min-height:306px;}
     .indiv-hint{font-size:9px;margin:4px 0 6px;line-height:1.3;flex-shrink:0;}
-    .indiv-legend{flex-shrink:0;gap:4px;}
-    .indiv-legend .chip{font-size:8.6px;padding:3px 6px 3px 5px;}
+    .indiv-legend{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;flex-shrink:0;}
+    .indiv-legend .chip{justify-content:center;padding:6px 4px;font-size:8.6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
     .indiv-dow-row{flex-shrink:0;}
     .indiv-weeks{flex:1;min-height:0;display:flex;flex-direction:column;gap:3px;}
     .indiv-week-row-wrap{flex:1;min-height:0;margin-bottom:0;gap:4px;}
@@ -814,7 +818,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v10.9';
+const APP_VERSION = 'v11.4';
 const APP_VERSION_DATE = '30/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -3416,8 +3420,8 @@ function bellHtml(){
  */
 function topbarSwitchBtnHtml(){
   if(!isMobileDevice() || !state.currentUser || state.currentUser.role!=='employee') return '';
-  if(state.tab==='individuel') return `<button class="icon-btn" id="topbarSwitchBtn" data-switch-to="equipe">👥 Équipe</button>`;
-  if(state.tab==='equipe') return `<button class="icon-btn" id="topbarSwitchBtn" data-switch-to="individuel">🗓️ Individuel</button>`;
+  if(state.tab==='individuel') return `<button class="icon-btn" id="topbarSwitchBtn" data-switch-to="equipe">Équipe</button>`;
+  if(state.tab==='equipe') return `<button class="icon-btn" id="topbarSwitchBtn" data-switch-to="individuel">Individuel</button>`;
   return '';
 }
 function topbarAccountMenuHtml(){
@@ -3432,6 +3436,8 @@ function topbarAccountMenuHtml(){
     ${state.topbarMenuOpen?`
     <div class="bell-panel topbar-account-panel">
       <div class="topbar-account-user"><b>${escapeHtml(state.currentUser.name)}</b><span>${state.currentUser.role==='admin'?(isSuperAdmin(state.currentUser)?'Administrateur':'Admin · '+(getAdminScope(state.currentUser)||[]).join(', ')):'Salarié·e'}</span></div>
+      ${isEmp?`<button data-topbar-nav="individuel" class="${state.tab==='individuel'?'active':''}">Planning individuel</button>`:''}
+      ${isEmp?`<button data-topbar-nav="equipe" class="${state.tab==='equipe'?'active':''}">Planning équipe</button>`:''}
       ${showDesid?`<button data-topbar-nav="mesdesid" class="${state.tab==='mesdesid'?'active':''}">Désidératas</button>`:''}
       ${showEch?`<button data-topbar-nav="echanges" class="${state.tab==='echanges'?'active':''}">Échanges</button>`:''}
       <button id="topbarAccountBtn">Mon compte</button>
@@ -3766,7 +3772,11 @@ function gridHtml({employees, readonly, alerts, changes, serviceContext, swapCtx
       const cm=state.comments[commentKey(emp.username,y,m,d)];
       let marks='';
       if(cm && cm.public) marks+=`<span class="cmt-dot pub" data-tip="${tipContent('💬 Commentaire\n'+cm.public)}"></span>`;
-      if(cm && cm.private) marks+=`<span class="cmt-dot priv" data-tip="${tipContent('🔒 Commentaire privé\n'+cm.private)}"></span>`;
+      // Le commentaire privé est réservé aux admins entre eux — cette même
+      // fonction sert aussi à afficher le planning en LECTURE SEULE côté
+      // salarié (Planning équipe) : readonly=true dans ce cas, donc on ne
+      // montre le repère privé que côté admin (readonly=false).
+      if(!readonly && cm && cm.private) marks+=`<span class="cmt-dot priv" data-tip="${tipContent('🔒 Commentaire privé\n'+cm.private)}"></span>`;
       const desid=desiderataForCell(emp.username,dateKeyStr);
       let desidStripHtml='', cellClass='', alertMarkHtml='';
       const titleParts=[];
@@ -3827,13 +3837,13 @@ function gridHtml({employees, readonly, alerts, changes, serviceContext, swapCtx
       let swapAttrs='';
       if(swapCtx && swapCtx.active){
         const isMe = emp.username===state.currentUser.username;
-        const eligible = dayValid && !!code && emp.fonction===swapCtx.myFonction;
+        const eligible = dayValid && emp.fonction===swapCtx.myFonction;
         const pick=swapCtx.pick;
         const isMyPick = isMe && pick.myDays.some(dd=>dd.date===dateKeyStr);
         const isTargetPick = pick.targetUsername===emp.username && pick.targetDays.some(dd=>dd.date===dateKeyStr);
         if(eligible){
           cellClass+=' swap-selectable';
-          swapAttrs=` data-swap-user="${emp.username}" data-swap-name="${escapeHtml(emp.name)}" data-swap-date="${dateKeyStr}" data-swap-code="${code}" data-swap-ismine="${isMe}"`;
+          swapAttrs=` data-swap-user="${emp.username}" data-swap-name="${escapeHtml(emp.name)}" data-swap-date="${dateKeyStr}" data-swap-code="${code||''}" data-swap-ismine="${isMe}"`;
         } else {
           cellClass+=' swap-disabled';
         }
@@ -4087,6 +4097,11 @@ function renderPlanningIndividuel(){
     </div>
     <div class="indiv-weeks" id="indivSwipeArea">${weekRows}</div>
     </div>
+    ${isFeatureEnabled('desideratas', myService) ? `
+    <div class="mobile-action-row" style="margin-top:10px;">
+      <button class="btn-gen" id="indivDesidBtn">Désidératas</button>
+    </div>
+    ` : ''}
     <div class="legend-hint indiv-hint" style="margin:10px 0 8px;">Touchez un <b>code</b> puis un <b>jour</b> pour poser votre brouillon.</div>
     <div class="legend indiv-legend" style="margin-bottom:8px;">${legendChipsHtml}</div>
     ${todayCardHtml}
@@ -4096,6 +4111,11 @@ function renderPlanningIndividuel(){
   renderShell(inner,'Planning individuel');
   bindMonthNav(render);
   bindSwipeMonthNav(document.getElementById('indivSwipeArea'));
+  const indivDesidBtn=document.getElementById('indivDesidBtn');
+  if(indivDesidBtn) indivDesidBtn.addEventListener('click',()=>{
+    state.modal={type:'new-desiderata', data:{dateStart:'',dateEnd:'',code:state.codes[0]?state.codes[0].code:'',comment:''}};
+    render();
+  });
   document.querySelectorAll('.selectable-day').forEach(el=>{
     el.addEventListener('click', async()=>{
       if(!selectedCode){ toast('Sélectionnez d\u2019abord un code ci-dessus.', true); return; }
@@ -4326,13 +4346,13 @@ function teamWeekViewHtml(teamEmployees, weekDates, myTeam, todayKeyStr, restric
         const code=dayOk ? getDayCodeByKey(emp.username,k) : null;
         const info=code?codeInfo(code):null;
         const isToday=k===todayKeyStr;
-        const cellSwapEligible = rowSwapEligible && !!code;
+        const cellSwapEligible = rowSwapEligible && dayOk;
         const pick=swapCtx&&swapCtx.pick;
         const isMyPick = pick && isMe && pick.myDays.some(dd=>dd.date===k);
         const isTargetPick = pick && pick.targetUsername===emp.username && pick.targetDays.some(dd=>dd.date===k);
         const swapClass = cellSwapEligible ? 'swap-selectable' : (swapActive ? 'swap-disabled' : '');
         const pickClass = isMyPick ? 'swap-picked-mine' : (isTargetPick ? 'swap-picked-target' : '');
-        return `<div class="peq-week-cell ${isToday?'today':''} ${swapClass} ${pickClass}" ${cellSwapEligible?`data-swap-user="${emp.username}" data-swap-name="${escapeHtml(emp.name)}" data-swap-date="${k}" data-swap-code="${code}" data-swap-ismine="${isMe}"`:''} style="${info?`background:${info.color};color:${info.text};`:''}">${!dayOk?'🔒':(code||'—')}</div>`;
+        return `<div class="peq-week-cell ${isToday?'today':''} ${swapClass} ${pickClass}" ${cellSwapEligible?`data-swap-user="${emp.username}" data-swap-name="${escapeHtml(emp.name)}" data-swap-date="${k}" data-swap-code="${code||''}" data-swap-ismine="${isMe}"`:''} style="${info?`background:${info.color};color:${info.text};`:''}">${!dayOk?'🔒':(code||'—')}</div>`;
       }).join('');
       return subGroupSepHtml+`<div class="peq-week-grid ${isMe?'my-row':''}">
         <div class="peq-week-name">${escapeHtml(emp.name)}</div>
@@ -4509,8 +4529,15 @@ function renderPlanningEquipe(){
     ${myAuthorizedServices.length?serviceSwitcherHtml:''}
     ` : monthNavHtml()}
     ${swapCtx ? `
+    <div class="swap-top-bar">
+      <span class="swap-badge">MODE SWAP</span>
+      <div class="swap-top-actions">
+        <button class="btn-gen" id="peqSwapCancelBtn">Annuler</button>
+        ${swapReady ? `<button class="btn-gen active" id="peqSwapConfirmBtn">Valider</button>` : ''}
+      </div>
+    </div>
     <div class="legend-hint swap-hint">
-      ${pick.myDays.length===0 ? `<b>Étape 1 :</b> touchez <b>votre/vos jour(s)</b> à proposer à l'échange (plusieurs possibles).`
+      ${pick.myDays.length===0 ? `<b>Étape 1 :</b> touchez <b>votre/vos jour(s)</b> à proposer à l'échange (plusieurs possibles, y compris un jour de repos).`
         : pick.targetDays.length===0 ? `<b>Étape 2 :</b> touchez maintenant, chez un <b>collègue de même fonction</b>, <b>autant de jours</b> que vous en avez choisi (${pick.myDays.length}).`
         : !swapCountsMatch ? `Vous avez choisi <b>${pick.myDays.length}</b> jour(s) chez vous et <b>${pick.targetDays.length}</b> chez ${escapeHtml(pick.targetName||'le collègue')} — il faut le <b>même nombre</b> des deux côtés.`
         : `Prêt à envoyer votre proposition d'échange (${pick.myDays.length} jour${pick.myDays.length>1?'s':''} contre ${pick.targetDays.length}).`}
@@ -4548,13 +4575,7 @@ function renderPlanningEquipe(){
       ${isMobileDevice()?'':"<p class='helper'>Vous pouvez toujours consulter ou déposer vos désidératas depuis l'onglet « Mes désidératas » (sur ordinateur).</p>"}
     </div>
     `)}
-    ${swapCtx ? `
-    <div class="${mobile?'mobile-action-row':''}" style="margin-top:12px;${mobile?'':'display:flex;gap:10px;'}">
-      <button class="btn-gen" id="peqSwapCancelBtn" style="${mobile?'':'width:auto;'}">Annuler</button>
-      ${swapReady ? `<button class="btn-gen active" id="peqSwapConfirmBtn" style="${mobile?'':'width:auto;'}">Continuer</button>` : ''}
-    </div>
-    ${swapReady ? `<div class="swap-summary">Vous donnez ${pick.myDays.map(d=>'<b>'+fmtDateKeyFr(d.date)+'</b> ('+escapeHtml(d.code)+')').join(', ')} contre ${pick.targetDays.map(d=>'<b>'+fmtDateKeyFr(d.date)+'</b> ('+escapeHtml(d.code)+')').join(', ')} de <b>${escapeHtml(pick.targetName)}</b>.</div>` : ''}
-    ` : ''}
+    ${swapReady ? `<div class="swap-summary">Vous donnez ${pick.myDays.map(d=>'<b>'+fmtDateKeyFr(d.date)+'</b> ('+escapeHtml(d.code||'Repos')+')').join(', ')} contre ${pick.targetDays.map(d=>'<b>'+fmtDateKeyFr(d.date)+'</b> ('+escapeHtml(d.code||'Repos')+')').join(', ')} de <b>${escapeHtml(pick.targetName)}</b>.</div>` : ''}
   `;
   renderShell(inner,'Planning équipe'+(viewedTeam?' — '+viewedTeam:''), mobile?null:(sideCodesHtml+sideActionsHtml));
   const peqServiceSelect=document.getElementById('peqServiceSelect');
@@ -7690,7 +7711,7 @@ function renderModal(){
       <h3>Confirmer la demande d'échange ?</h3>
       <div class="legend-hint" style="margin:-6px 0 14px;">Avec <b>${escapeHtml(state.modal.targetName)}</b> — ${pairs.length} jour${pairs.length>1?'s':''} échangé${pairs.length>1?'s':''} :</div>
       <div class="list-mgr" style="margin-bottom:14px;">
-        ${pairs.map(p=>`<div class="list-mgr-row"><span>Le <b>${fmtDateKeyFr(p.dateA)}</b> (${escapeHtml(p.codeA)})</span><span>↔ le <b>${fmtDateKeyFr(p.dateB)}</b> (${escapeHtml(p.codeB)})</span></div>`).join('')}
+        ${pairs.map(p=>`<div class="list-mgr-row"><span>Le <b>${fmtDateKeyFr(p.dateA)}</b> (${escapeHtml(p.codeA||'Repos')})</span><span>↔ le <b>${fmtDateKeyFr(p.dateB)}</b> (${escapeHtml(p.codeB||'Repos')})</span></div>`).join('')}
       </div>
       <div class="field"><label>Message (optionnel)</label>
         <textarea id="scmComment" rows="2" placeholder="Ex : besoin d'échanger pour un rendez-vous" style="width:100%;border:1.5px solid var(--border);border-radius:9px;padding:10px 12px;font-family:inherit;font-size:13.5px;resize:vertical;"></textarea>
