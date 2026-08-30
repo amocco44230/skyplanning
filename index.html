@@ -383,6 +383,13 @@
   .peq-week-cell.swap-picked-target{opacity:1;outline:2.5px solid #E8615A;outline-offset:-1.5px;box-shadow:0 0 0 2px rgba(232,97,90,.15);}
   .swap-hint{background:#EEF1FA;border:1px solid #cdd6ec;color:var(--primary-dark);padding:10px 14px;border-radius:10px;margin-bottom:12px;font-size:12.5px;line-height:1.5;}
   .swap-summary{background:var(--primary-light);border:1px solid #cdd6ec;color:var(--primary-dark);padding:10px 14px;border-radius:10px;margin-top:8px;font-size:12.5px;line-height:1.5;}
+  /* ---------- Mode swap (grille desktop, gridHtml) ---------- */
+  .grid-card.swap-mode td.day-cell{opacity:.35;}
+  td.day-cell.swap-disabled{opacity:.22;}
+  td.day-cell.swap-selectable{opacity:1;cursor:pointer;box-shadow:inset 0 0 0 1.5px rgba(32,43,73,.35);}
+  td.day-cell.swap-selectable:hover{box-shadow:inset 0 0 0 2px var(--primary);}
+  td.day-cell.swap-picked-mine{opacity:1;box-shadow:inset 0 0 0 2.5px #2C3A63;}
+  td.day-cell.swap-picked-target{opacity:1;box-shadow:inset 0 0 0 2.5px #E8615A;}
   .peq-week-cell.today{outline:2px solid var(--primary-dark);outline-offset:-2px;}
   .peq-week-unavailable{grid-column:2 / -1;font-size:10.5px;font-style:italic;color:var(--ink-soft);background:#F4F5F7;border-radius:6px;padding:7px 8px;text-align:center;}
   /* ---------- Grille restreinte (consultation d'un autre service) ---------- */
@@ -801,7 +808,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v10.0';
+const APP_VERSION = 'v10.2';
 const APP_VERSION_DATE = '30/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -3641,7 +3648,7 @@ function bindLegend(){
 /* ============================================================
    RENDU — GRILLE (mois) pour un ou plusieurs employés
    ============================================================ */
-function gridHtml({employees, readonly, alerts, changes, serviceContext}){
+function gridHtml({employees, readonly, alerts, changes, serviceContext, swapCtx}){
   alerts = alerts || [];
   changes = changes || [];
   const changesMap={};
@@ -3701,8 +3708,8 @@ function gridHtml({employees, readonly, alerts, changes, serviceContext}){
       const gridSubGroupRefDate=ymdKey(y,m,1);
       sortEmployeesBySubGroup(group.list, gridSubGroupRefDate).forEach(emp=>{
     const empSubGroup=effectiveSubGroup(emp, gridSubGroupRefDate);
-    if(prevSubGroup!==undefined && normalizeNameForMatch(empSubGroup)!==normalizeNameForMatch(prevSubGroup)){
-      bodyRows+=`<tr class="subgroup-sep-row"><td colspan="${nDays+1}">${empSubGroup?escapeHtml(empSubGroup):''}</td></tr>`;
+    if(empSubGroup && (prevSubGroup===undefined || normalizeNameForMatch(empSubGroup)!==normalizeNameForMatch(prevSubGroup))){
+      bodyRows+=`<tr class="subgroup-sep-row"><td colspan="${nDays+1}">${escapeHtml(empSubGroup)}</td></tr>`;
     }
     prevSubGroup=empSubGroup;
     const empWeeklyAlerts = alerts.filter(a=>a.rule.type==='weekly_person' && a.employee && a.employee.username===emp.username);
@@ -3786,7 +3793,26 @@ function gridHtml({employees, readonly, alerts, changes, serviceContext}){
       if(holidayName) cellTipParts.push('📅 '+holidayName);
       cellTipParts.push(...titleParts);
       const cellTip = cellTipParts.length ? tipContent(cellTipParts.join('\n')) : '';
-      row+=`<td class="day-cell ${isWeekend?'weekend':''} ${cellClass}" data-day="${d}" data-user="${emp.username}" data-invalid="${!dayValid}" ${cellTip?`data-tip="${cellTip}"`:''}>
+      // Mode swap (desktop) : mêmes règles que la vue semaine mobile — seules
+      // les cases d'un salarié de MÊME FONCTION que la personne connectée,
+      // avec un code posé, sont sélectionnables.
+      let swapAttrs='';
+      if(swapCtx && swapCtx.active){
+        const isMe = emp.username===state.currentUser.username;
+        const eligible = dayValid && !!code && emp.fonction===swapCtx.myFonction;
+        const pick=swapCtx.pick;
+        const isMyPick = pick && pick.myUsername===emp.username && pick.myDate===dateKeyStr;
+        const isTargetPick = pick && pick.targetUsername===emp.username && pick.targetDate===dateKeyStr;
+        if(eligible){
+          cellClass+=' swap-selectable';
+          swapAttrs=` data-swap-user="${emp.username}" data-swap-name="${escapeHtml(emp.name)}" data-swap-date="${dateKeyStr}" data-swap-code="${code}" data-swap-ismine="${isMe}"`;
+        } else {
+          cellClass+=' swap-disabled';
+        }
+        if(isMyPick) cellClass+=' swap-picked-mine';
+        if(isTargetPick) cellClass+=' swap-picked-target';
+      }
+      row+=`<td class="day-cell ${isWeekend?'weekend':''} ${cellClass}" data-day="${d}" data-user="${emp.username}" data-invalid="${!dayValid}"${swapAttrs} ${cellTip?`data-tip="${cellTip}"`:''}>
         ${marks}
         ${alertMarkHtml}
         ${changePastilleHtml}
@@ -3807,7 +3833,7 @@ function gridHtml({employees, readonly, alerts, changes, serviceContext}){
     return `<div class="grid-card"><div class="empty-state">Aucun salarié valide pour cette période.<br>Vérifiez les dates de validité dans « Gestion des salariés ».</div></div>`;
   }
 
-  return `<div class="grid-card"><table class="grid ${readonly?'readonly':''}">${colgroup}<thead>${weekHead}${head}</thead><tbody>${bodyRows}</tbody></table></div>`;
+  return `<div class="grid-card ${swapCtx&&swapCtx.active?'swap-mode':''}"><table class="grid ${readonly?'readonly':''}">${colgroup}<thead>${weekHead}${head}</thead><tbody>${bodyRows}</tbody></table></div>`;
 }
 let gridClickTimer=null;
 function bindGrid(readonly){
@@ -4244,8 +4270,8 @@ function teamWeekViewHtml(teamEmployees, weekDates, myTeam, todayKeyStr, restric
     const rows=sortEmployeesBySubGroup(g.list, weekSubGroupRefDate).map(emp=>{
       const empSubGroup=effectiveSubGroup(emp, weekSubGroupRefDate);
       let subGroupSepHtml='';
-      if(prevSubGroup!==undefined && normalizeNameForMatch(empSubGroup)!==normalizeNameForMatch(prevSubGroup)){
-        subGroupSepHtml=`<div class="peq-week-subgroup-sep">${empSubGroup?escapeHtml(empSubGroup):''}</div>`;
+      if(empSubGroup && (prevSubGroup===undefined || normalizeNameForMatch(empSubGroup)!==normalizeNameForMatch(prevSubGroup))){
+        subGroupSepHtml=`<div class="peq-week-subgroup-sep">${escapeHtml(empSubGroup)}</div>`;
       }
       prevSubGroup=empSubGroup;
       // En mode « je consulte un autre service que le mien », chaque salarié
@@ -4417,8 +4443,8 @@ function renderPlanningEquipe(){
     ${myAuthorizedServices.length ? `<div class="sidebar-extra-title">Service</div>${serviceSwitcherHtml}` : ''}
     <div class="sidebar-extra-title" style="margin-top:22px;">Actions</div>
     ${(monthOk && isOwnTeam && myTeam && isFeatureEnabled('impression')) ? `<button class="icon-btn" id="peqPrintBtn">Imprimer</button>` : ''}
-    ${isFeatureEnabled('desideratas', myTeam) ? `<button class="btn btn-primary" id="peqNewDesidBtn">Désidératas</button>` : ''}
-    ${isFeatureEnabled('echanges', myTeam) ? `<button class="btn ${state.swapMode?'btn-primary':''}" id="peqSwapToggleBtn">${state.swapMode?'Annuler l\u2019échange':'Swap'}</button>` : ''}
+    ${isFeatureEnabled('desideratas', myTeam) ? `<button class="btn-gen" id="peqNewDesidBtn">Désidératas</button>` : ''}
+    ${isFeatureEnabled('echanges', myTeam) ? `<button class="btn-gen ${state.swapMode?'active':''}" id="peqSwapToggleBtn">${state.swapMode?'Annuler l\u2019échange':'Swap'}</button>` : ''}
   `;
   const todayKeyStr=dkey(new Date());
   const weekNumLabel = weekMode ? isoWeekNumber(new Date(weekDates[0]+'T00:00:00')) : null;
@@ -4426,7 +4452,7 @@ function renderPlanningEquipe(){
   // Contexte du mode swap : n'a de sens qu'en vue semaine (mobile), sur mon
   // propre service — on désactive proprement sinon plutôt que d'afficher un
   // mode à moitié fonctionnel.
-  const swapUsable = weekMode && isOwnTeam && isFeatureEnabled('echanges', myTeam);
+  const swapUsable = isOwnTeam && isFeatureEnabled('echanges', myTeam) && (weekMode || !mobile);
   if(state.swapMode && !swapUsable){ state.swapMode=false; state.swapPick=null; }
   const swapCtx = swapUsable && state.swapMode ? {active:true, myFonction:me?me.fonction:'', pick:state.swapPick} : null;
   const pick=state.swapPick;
@@ -4474,7 +4500,7 @@ function renderPlanningEquipe(){
     ${isOwnTeam && !state.swapMode && hasCommentsForMonth(refYear,refMonth,teamUsernames) ? commentsRecapHtml(refYear,refMonth,teamUsernames,false) : ''}
     ` : (monthOk ? `
     <div id="peqSwipeArea">${isOwnTeam
-        ? gridHtml({employees:teamEmployees, readonly:true, alerts:[], serviceContext: viewedTeam||null})
+        ? gridHtml({employees:teamEmployees, readonly:true, alerts:[], serviceContext: viewedTeam||null, swapCtx})
         : restrictedTeamGridHtml(teamEmployees, viewedTeam, myTeam, y, m)}</div>
     ${mobile ? `<button class="icon-btn" id="peqWeekViewBtn" style="width:100%;margin-top:12px;">Vue semaine</button>` : ''}
     ${isOwnTeam && hasCommentsForMonth(y,m,teamUsernames) ? commentsRecapHtml(y,m,teamUsernames,false) : ''}
@@ -4488,10 +4514,10 @@ function renderPlanningEquipe(){
       ${isMobileDevice()?'':"<p class='helper'>Vous pouvez toujours consulter ou déposer vos désidératas depuis l'onglet « Mes désidératas » (sur ordinateur).</p>"}
     </div>
     `)}
-    ${swapCtx && mobile ? `
-    <div class="mobile-action-row" style="margin-top:12px;">
-      <button class="btn" id="peqSwapCancelBtn">Annuler</button>
-      ${swapReady ? `<button class="btn btn-primary" id="peqSwapConfirmBtn">Continuer</button>` : ''}
+    ${swapCtx ? `
+    <div class="${mobile?'mobile-action-row':''}" style="margin-top:12px;${mobile?'':'display:flex;gap:10px;'}">
+      <button class="btn-gen" id="peqSwapCancelBtn" style="${mobile?'':'width:auto;'}">Annuler</button>
+      ${swapReady ? `<button class="btn-gen active" id="peqSwapConfirmBtn" style="${mobile?'':'width:auto;'}">Continuer</button>` : ''}
     </div>
     ${swapReady ? `<div class="swap-summary">Vous donnez le <b>${fmtDateKeyFr(pick.myDate)}</b> (${escapeHtml(pick.myCode)}) contre le <b>${fmtDateKeyFr(pick.targetDate)}</b> de <b>${escapeHtml(pick.targetName)}</b> (${escapeHtml(pick.targetCode)}).</div>` : ''}
     ` : ''}
@@ -4526,6 +4552,18 @@ function renderPlanningEquipe(){
   // la sélection tactile n'a de sens que sur la vue semaine mobile.
   const peqSwapToggleBtn=document.getElementById('peqSwapToggleBtn');
   if(peqSwapToggleBtn) peqSwapToggleBtn.addEventListener('click',()=>{
+    if(state.swapMode){
+      state.swapMode=false;
+      state.swapPick=null;
+      render();
+      return;
+    }
+    if(swapUsable){
+      state.swapMode=true;
+      state.swapPick={};
+      render();
+      return;
+    }
     const username=state.currentUser.username;
     const meX=state.users.find(u=>u.username===username);
     const colleagues=state.users.filter(u=>u.role==='employee' && u.username!==username && belongsToTeam(u) && u.fonction===(meX?meX.fonction:''));
@@ -5302,7 +5340,6 @@ function renderMonPlanningAnnuel(){
     <div class="sidebar-extra-title" style="margin-top:22px;">Actions</div>
     ${modeToggleHtml}
     ${isFeatureEnabled('desideratas', emp?emp.team:'') ? `<button class="btn-gen" id="annDesidBtn">Désidératas${state.annualSelectedDay?' — '+fmtDateKeyFr(state.annualSelectedDay):''}</button>` : ''}
-    ${isFeatureEnabled('echanges', emp?emp.team:'') ? `<button class="btn-gen" id="annNewExchBtn">Swap</button>` : ''}
     ${isFeatureEnabled('desideratas', emp?emp.team:'') ? `
     <div class="sidebar-extra-title" style="margin-top:18px;">Brouillon</div>
     <button class="btn-gen" id="annDraftToDesidBtn">Transformer en désidératas</button>
@@ -5324,7 +5361,6 @@ function renderMonPlanningAnnuel(){
     <div class="mobile-action-row">
       ${modeToggleHtml}
       ${isFeatureEnabled('desideratas', emp?emp.team:'') ? `<button class="btn-gen" id="annDesidBtn">Désidératas</button>` : ''}
-      ${isFeatureEnabled('echanges', emp?emp.team:'') ? `<button class="btn-gen" id="annNewExchBtn">Swap</button>` : ''}
     </div>
     ${isFeatureEnabled('desideratas', emp?emp.team:'') ? `
     <div class="mobile-action-row" style="margin-top:6px;">
@@ -5398,14 +5434,6 @@ function renderMonPlanningAnnuel(){
   const annDraftToDesidBtn=document.getElementById('annDraftToDesidBtn');
   if(annDraftToDesidBtn) annDraftToDesidBtn.addEventListener('click',()=>{
     state.modal={type:'draft-to-desiderata', year};
-    render();
-  });
-  const annNewExchBtn=document.getElementById('annNewExchBtn');
-  if(annNewExchBtn) annNewExchBtn.addEventListener('click',()=>{
-    const myTeamForExch=emp?emp.team:'';
-    const colleagues=state.users.filter(u=>u.role==='employee' && u.username!==username && employeeActiveInServiceDuringMonth(u, myTeamForExch, year, 0) && u.fonction===(emp?emp.fonction:''));
-    if(!colleagues.length){ toast('Aucun collègue de la même fonction disponible pour un échange.', true); return; }
-    state.modal={type:'swap-intro', colleagues};
     render();
   });
 
@@ -6114,8 +6142,8 @@ function renderGestionSalaries(){
     let prevSubGroup=undefined;
     sortEmployeesBySubGroup(group.list).forEach(emp=>{
       const empSubGroup=emp.subGroup||'';
-      if(prevSubGroup!==undefined && normalizeNameForMatch(empSubGroup)!==normalizeNameForMatch(prevSubGroup)){
-        rowsHtml+=`<div class="subgroup-sep">${empSubGroup?escapeHtml(empSubGroup):''}</div>`;
+      if(empSubGroup && (prevSubGroup===undefined || normalizeNameForMatch(empSubGroup)!==normalizeNameForMatch(prevSubGroup))){
+        rowsHtml+=`<div class="subgroup-sep">${escapeHtml(empSubGroup)}</div>`;
       }
       prevSubGroup=empSubGroup;
       rowsHtml+=empRowHtml(emp);
