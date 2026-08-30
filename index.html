@@ -835,7 +835,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v13.0';
+const APP_VERSION = 'v13.1';
 const APP_VERSION_DATE = '30/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -1076,7 +1076,7 @@ let state={
   peqMobileView:'week',
   swapMode:false,
   swapPick:null,
-  specialRequestCampaign:{active:false, title:'', dates:[], deadline:''},
+  specialRequestCampaign:{active:false, title:'', dates:[], deadline:'', services:[]},
   specialRequestResponses:{},
   specialReqAdminService:'ALL',
   employeeDrafts:{},
@@ -1261,8 +1261,9 @@ async function loadAll(){
   }catch(e){ state.employeeDrafts={}; }
 
   try{
-    state.specialRequestCampaign = raw.specialRequestCampaign ? JSON.parse(raw.specialRequestCampaign.value) : {active:false, title:'', dates:[], deadline:''};
-  }catch(e){ state.specialRequestCampaign={active:false, title:'', dates:[], deadline:''}; }
+    state.specialRequestCampaign = raw.specialRequestCampaign ? JSON.parse(raw.specialRequestCampaign.value) : {active:false, title:'', dates:[], deadline:'', services:[]};
+    if(!Array.isArray(state.specialRequestCampaign.services)) state.specialRequestCampaign.services=[];
+  }catch(e){ state.specialRequestCampaign={active:false, title:'', dates:[], deadline:'', services:[]}; }
 
   try{
     state.specialRequestResponses = raw.specialRequestResponses ? JSON.parse(raw.specialRequestResponses.value) : {};
@@ -3238,7 +3239,7 @@ function renderSpecialRequests(){
   const username=state.currentUser.username;
   const me=state.users.find(u=>u.username===username);
   const mine=specialRequestSummary(username);
-  if(!camp.active || !camp.dates.length){
+  if(!camp.active || !camp.dates.length || !employeeInSpecialRequestScope(username)){
     renderShell(`<div class="empty-state">Aucune demande spéciale en cours pour le moment.</div>`, 'Demandes spéciales');
     return;
   }
@@ -3302,7 +3303,7 @@ function renderSpecialRequests(){
 function renderSpecialRequestsAdmin(camp){
   const scope=getAdminScope(state.currentUser);
   const svcFilter=state.specialReqAdminService||'ALL';
-  const employees=state.users.filter(u=>u.role==='employee' && (!scope || scope.includes(u.team)) && (svcFilter==='ALL' || u.team===svcFilter));
+  const employees=state.users.filter(u=>u.role==='employee' && (!scope || scope.includes(u.team)) && (camp.services||[]).includes(u.team) && (svcFilter==='ALL' || u.team===svcFilter));
   const respondedCount=employees.filter(u=>state.specialRequestResponses[u.username]).length;
   const editing=state.specialReqEditing;
   const draftCamp = editing ? (state.specialReqCampDraft || JSON.parse(JSON.stringify(camp))) : camp;
@@ -3312,6 +3313,14 @@ function renderSpecialRequestsAdmin(camp){
     <div class="desid-row" style="flex-direction:column;align-items:stretch;margin-bottom:18px;">
       <div class="field"><label>Titre</label><input id="srTitle" value="${escapeHtml(draftCamp.title||'')}" placeholder="Ex : Fêtes de fin d'année 2026"></div>
       <div class="field"><label>Date limite de réponse (optionnel)</label><input type="date" id="srDeadline" value="${draftCamp.deadline||''}"></div>
+      <label style="font-size:12.5px;font-weight:700;display:block;margin:10px 0 6px;">Service(s) destinataire(s)</label>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:4px;">
+        ${(scope||state.services).map(s=>`
+        <label style="display:flex;align-items:center;gap:6px;background:#FBFCFE;border:1.5px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;">
+          <input type="checkbox" data-sr-service="${escapeHtml(s)}" ${(draftCamp.services||[]).includes(s)?'checked':''}> ${escapeHtml(s)}
+        </label>`).join('')}
+      </div>
+      <div class="helper" style="margin:0 0 10px;">Seuls les salariés des services cochés verront cette demande. Aucun service coché = personne ne la verra.</div>
       <label style="font-size:12.5px;font-weight:700;display:block;margin:10px 0 6px;">Dates concernées</label>
       <div id="srDatesList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px;">
         ${draftCamp.dates.map((dt,i)=>`
@@ -3409,8 +3418,10 @@ function renderSpecialRequestsAdmin(camp){
     document.getElementById('srSaveConfig').addEventListener('click', async()=>{
       draftCamp.title=document.getElementById('srTitle').value.trim();
       draftCamp.deadline=document.getElementById('srDeadline').value;
+      draftCamp.services=[...document.querySelectorAll('[data-sr-service]:checked')].map(cb=>cb.dataset.srService);
       const cleanDates=draftCamp.dates.filter(dt=>dt.key && dt.label.trim());
       if(!cleanDates.length){ toast('Ajoutez au moins une date valide.', true); return; }
+      if(!draftCamp.services.length){ toast('Cochez au moins un service destinataire.', true); return; }
       state.specialRequestCampaign={...draftCamp, dates:cleanDates};
       await persistSpecialRequestCampaign();
       state.specialReqEditing=false;
@@ -3427,7 +3438,7 @@ function renderSpecialRequestsAdmin(camp){
       await persistSpecialRequestCampaign();
       if(state.specialRequestCampaign.active){
         const scopeA=getAdminScope(state.currentUser);
-        const targets=state.users.filter(u=>u.role==='employee' && (!scopeA || scopeA.includes(u.team)));
+        const targets=state.users.filter(u=>u.role==='employee' && (!scopeA || scopeA.includes(u.team)) && employeeInSpecialRequestScope(u.username));
         for(const u of targets){ await pushNotification(u.username, 'Une nouvelle demande vous attend : « '+(camp.title||'Demande spéciale')+' ».'); }
       }
       render();
@@ -3593,6 +3604,17 @@ function isMobileDevice(){
   return hasTouch && smallScreen;
 }
 /**
+ * Un salarié est « concerné » par la campagne si son service fait partie
+ * des services cochés à la configuration — sinon la campagne lui reste
+ * invisible, même active pour d'autres services.
+ */
+function employeeInSpecialRequestScope(username){
+  const camp=state.specialRequestCampaign;
+  if(!camp.services || !camp.services.length) return false;
+  const u=state.users.find(x=>x.username===username);
+  return !!(u && camp.services.includes(u.team));
+}
+/**
  * Nombre de salariés concernés par la campagne active qui n'ont PAS ENCORE
  * répondu — sert de badge (admin : suivi global ; salarié : lui/elle-même,
  * 0 ou 1). Une fois qu'une personne a envoyé au moins une réponse, elle ne
@@ -3603,8 +3625,8 @@ function specialRequestPendingCount(forUsername){
   const camp=state.specialRequestCampaign;
   if(!camp || !camp.active || !camp.dates || !camp.dates.length) return 0;
   const targets = forUsername
-    ? (state.specialRequestResponses[forUsername] ? [] : [forUsername])
-    : state.users.filter(u=>u.role==='employee' && !state.specialRequestResponses[u.username]).map(u=>u.username);
+    ? (employeeInSpecialRequestScope(forUsername) && !state.specialRequestResponses[forUsername] ? [forUsername] : [])
+    : state.users.filter(u=>u.role==='employee' && employeeInSpecialRequestScope(u.username) && !state.specialRequestResponses[u.username]).map(u=>u.username);
   return targets.length;
 }
 function navItems(){
@@ -3623,7 +3645,7 @@ function navItems(){
     const mobItems=[{id:'individuel', label:'Planning individuel', icon:'🗓️'}, {id:'equipe', label:'Planning équipe', icon:'👥'}];
     if(isFeatureEnabled('desideratas', myTeamMob)) mobItems.push({id:'mesdesid', label:'Mes désidératas', icon:'🖐️'});
     if(isFeatureEnabled('echanges', myTeamMob)) mobItems.push({id:'echanges', label:'Swap', icon:'🔄'});
-    if(state.specialRequestCampaign.active) mobItems.push({id:'special-requests', label:'Demandes spéciales', icon:'🎄'});
+    if(state.specialRequestCampaign.active && employeeInSpecialRequestScope(state.currentUser.username)) mobItems.push({id:'special-requests', label:'Demandes spéciales', icon:'🎄'});
     return mobItems;
   }
   if(state.currentUser.role==='admin'){
@@ -3653,7 +3675,7 @@ function navItems(){
   ];
   if(isFeatureEnabled('desideratas', myTeam)) items.push({id:'mesdesid', label:'Mes désidératas', icon:'🖐️'});
   if(isFeatureEnabled('echanges', myTeam)) items.push({id:'echanges', label:'Swap', icon:'🔄'});
-  if(state.specialRequestCampaign.active) items.push({id:'special-requests', label:'Demandes spéciales', icon:'🎄'});
+  if(state.specialRequestCampaign.active && employeeInSpecialRequestScope(state.currentUser.username)) items.push({id:'special-requests', label:'Demandes spéciales', icon:'🎄'});
   return items;
 }
 function initials(name){
@@ -3741,7 +3763,7 @@ function topbarAccountMenuHtml(){
   const myTeam = me ? me.team : '';
   const showDesid = isEmp && isFeatureEnabled('desideratas', myTeam);
   const showEch = isEmp && isFeatureEnabled('echanges', myTeam);
-  const showSpecial = isEmp && state.specialRequestCampaign.active;
+  const showSpecial = isEmp && state.specialRequestCampaign.active && employeeInSpecialRequestScope(state.currentUser.username);
   return `
   <div style="position:relative;">
     <button class="bell-btn" id="topbarMenuBtn">⋮</button>
