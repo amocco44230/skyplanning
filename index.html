@@ -843,7 +843,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v14.3';
+const APP_VERSION = 'v14.5';
 const APP_VERSION_DATE = '30/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -1672,17 +1672,27 @@ function adminCanAccessFeature(flag){
   return isSuperAdmin(state.currentUser) || isFeatureEnabled(flag);
 }
 /**
+ * Comme adminCanAccessFeature, mais en plus vérifie qu'AU MOINS UN des
+ * services gérés par cet admin a la fonctionnalité active (le grand admin
+ * garde toujours accès, comme pour les autres pages admin) — utilisé pour
+ * Statistiques, Historique et Suivi, qui peuvent être limitées à certains
+ * services seulement via le tableau « Droits par service » de Fonctionnalités.
+ */
+function adminCanAccessFeatureForAnyService(flag){
+  if(isSuperAdmin(state.currentUser)) return true;
+  if(!isFeatureEnabled(flag)) return false;
+  const scope=getAdminScope(state.currentUser);
+  if(!scope) return true; // pas de restriction de scope pour cet admin
+  return scope.some(s=>isFeatureEnabled(flag, s));
+}
+/**
  * « Suivi » fonctionne à l'inverse des autres pages : désactivé par défaut,
  * et même une fois activé globalement, aucun service n'y a accès tant qu'il
  * n'a pas été explicitement coché dans Fonctionnalités → Suivi. Le grand
  * admin y a toujours accès (comme pour les autres pages admin).
  */
 function adminCanAccessSuivi(){
-  if(isSuperAdmin(state.currentUser)) return true;
-  if(!state.featureFlags.suivi) return false;
-  const scope=getAdminScope(state.currentUser);
-  const suiviServices=state.featureFlags.suiviServices||[];
-  return !!(scope && scope.some(s=>suiviServices.includes(s)));
+  return adminCanAccessFeatureForAnyService('suivi');
 }
 async function persistAlertRules(){ await storageSet('alertRules', JSON.stringify(state.alertRules), true); }
 async function persistMonthValidations(){ await storageSet('monthValidations', JSON.stringify(state.monthValidations), true); }
@@ -2853,11 +2863,10 @@ const AUDIT_TYPE_META = {
 function renderSuivi(){
   if(!adminCanAccessSuivi()){ state.tab='calendrier'; render(); return; }
   const scope=getAdminScope(state.currentUser);
-  const suiviServices=state.featureFlags.suiviServices||[];
   // Services que CET admin gère ET qui ont accès à Suivi.
   const availableServices = isSuperAdmin(state.currentUser)
     ? (scope || state.services)
-    : (scope||[]).filter(s=>suiviServices.includes(s));
+    : (scope||[]).filter(s=>isFeatureEnabled('suivi', s));
   if(state.suiviServiceFilter===undefined || !availableServices.includes(state.suiviServiceFilter)){
     state.suiviServiceFilter = availableServices[0] || '';
   }
@@ -2882,7 +2891,7 @@ function renderSuivi(){
 }
 
 function renderHistorique(){
-  if(!(state.currentUser.role==='admin' && adminCanAccessFeature('historique'))){ state.tab='calendrier'; render(); return; }
+  if(!(state.currentUser.role==='admin' && adminCanAccessFeatureForAnyService('historique'))){ state.tab='calendrier'; render(); return; }
   const scope=getAdminScope(state.currentUser);
   const availableServices = scope || state.services;
   if(state.histServiceFilter===undefined || (scope && !scope.includes(state.histServiceFilter) && state.histServiceFilter!=='ALL')){
@@ -2962,7 +2971,7 @@ function renderHistorique(){
 }
 
 function renderStatistiques(){
-  if(!(state.currentUser.role==='admin' && adminCanAccessFeature('stats'))){ state.tab='calendrier'; render(); return; }
+  if(!(state.currentUser.role==='admin' && adminCanAccessFeatureForAnyService('stats'))){ state.tab='calendrier'; render(); return; }
   const scope=getAdminScope(state.currentUser);
   const availableServices = scope || state.services;
   if(state.statsServiceFilter===undefined || (scope && !scope.includes(state.statsServiceFilter) && state.statsServiceFilter!=='ALL')){
@@ -3535,11 +3544,15 @@ function renderFonctionnalites(){
 
   const perServiceRows = state.services.map(svc=>{
     const ov=(ff.perService && ff.perService[svc]) || {};
+    const cell=(key)=>`<td style="text-align:center;"><input type="checkbox" data-feat-svc="${escapeHtml(svc)}" data-feat-key="${key}" ${ov[key]!==false?'checked':''} ${ff[key]===false?'disabled':''}></td>`;
     return `
     <tr>
       <td>${escapeHtml(svc)}</td>
-      <td style="text-align:center;"><input type="checkbox" data-feat-svc="${escapeHtml(svc)}" data-feat-key="desideratas" ${ov.desideratas!==false?'checked':''} ${ff.desideratas===false?'disabled':''}></td>
-      <td style="text-align:center;"><input type="checkbox" data-feat-svc="${escapeHtml(svc)}" data-feat-key="echanges" ${ov.echanges!==false?'checked':''} ${ff.echanges===false?'disabled':''}></td>
+      ${cell('desideratas')}
+      ${cell('echanges')}
+      ${cell('stats')}
+      ${cell('historique')}
+      ${cell('suivi')}
     </tr>`;
   }).join('');
 
@@ -3548,7 +3561,7 @@ function renderFonctionnalites(){
     <div class="feat-card">
       <h3>Fonctionnalités générales</h3>
       ${globalToggle('desideratas','Désidératas','Les salariés peuvent demander des jours spécifiques, l\u2019admin valide ou refuse.')}
-      ${globalToggle('echanges','Échanges de service','Un salarié peut proposer un échange de journée avec un collègue, validé en un clic par l\u2019admin.')}
+      ${globalToggle('echanges','Swap','Un salarié peut proposer un échange de journée avec un collègue, validé en un clic par l\u2019admin.')}
       ${globalToggle('specialRequests','Demandes spéciales','Campagnes ponctuelles (ex : disponibilités fêtes de fin d\u2019année) — configuration et suivi côté admin, formulaire de réponse côté salarié.')}
       ${globalToggle('alertes','Alertes d\u2019effectif','Détection automatique des sous/sur-effectifs et dépassements de charge hebdo.')}
       ${globalToggle('genAuto','Génération automatique du planning','Le bouton « 🪄 Générer automatiquement » sur le Calendrier Mensuel.')}
@@ -3558,23 +3571,14 @@ function renderFonctionnalites(){
       ${globalToggle('stats','Statistiques','Tableau de bord : heures travaillées, répartition des codes, équité nuits/week-ends. Visible uniquement par les comptes admin, jamais par les salariés.')}
       ${globalToggle('historique','Historique','Journal complet : validations/dévalidations de mois, désidératas et échanges déposés/traités, modifications du planning après validation — qui, quand, quoi. Visible uniquement par les comptes admin, jamais par les salariés.')}
       ${globalToggle('crossServiceView','Consultation d\u2019un autre service','Autorise les salariés (et les admins) à consulter le planning d\u2019un autre service que le leur, uniquement pour les personnes qui ont explicitement accepté d\u2019être vues (fiche salarié → « Visible aussi sur le planning équipe d\u2019autres services »). Décoché par défaut : chacun ne voit que son (ou ses) propre(s) service(s), même si des autorisations ont été données.')}
-      ${globalToggle('suivi','Suivi','Nouvelle page « Suivi », en construction. Contrairement aux autres, elle reste invisible pour tous les services tant qu\u2019ils ne sont pas cochés individuellement ci-dessous, même une fois activée ici.')}
+      ${globalToggle('suivi','Suivi','Nouvelle page « Suivi », en construction. Visible uniquement par les comptes admin. Décochez un service ci-dessous pour le lui masquer.')}
     </div>
-    ${state.featureFlags.suivi ? `
-    <div class="feat-card">
-      <h3>Services ayant accès à « Suivi »</h3>
-      <div class="helper" style="margin:-4px 0 12px;">Aucun service n'y a accès par défaut — cochez ceux qui doivent voir cette page.</div>
-      <div class="check-list" id="suiviServicesList">
-        ${state.services.map(s=>`<label class="check-item"><input type="checkbox" value="${escapeHtml(s)}" ${(state.featureFlags.suiviServices||[]).includes(s)?'checked':''}> ${escapeHtml(s)}</label>`).join('') || '<div class="helper">Aucun service créé pour l\u2019instant.</div>'}
-      </div>
-    </div>
-    ` : ''}
     <div class="feat-card">
       <h3>Droits par service</h3>
-      <div class="helper" style="margin:-4px 0 12px;">Affine désidératas et échanges service par service (ex : un service peut ne pas vouloir des échanges entre salariés). Sans effet si la case est déjà décochée ci-dessus au niveau général.</div>
+      <div class="helper" style="margin:-4px 0 12px;">Cochez les services où chaque fonctionnalité est active — décochez pour la masquer sur un service précis, sans la désactiver partout. Sans effet si la case est déjà décochée ci-dessus au niveau général.</div>
       ${state.services.length ? `
       <table class="feat-service-table">
-        <thead><tr><th>Service</th><th>Désidératas</th><th>Échanges</th></tr></thead>
+        <thead><tr><th>Service</th><th>Désidératas</th><th>Swap</th><th>Statistiques</th><th>Historique</th><th>Suivi</th></tr></thead>
         <tbody>${perServiceRows}</tbody>
       </table>` : `<div class="empty-state">Aucun service créé pour l'instant.</div>`}
     </div>
@@ -3634,16 +3638,6 @@ function renderFonctionnalites(){
       state.featureFlags.perService[svc][key]=chk.checked;
       await persistFeatureFlags();
       toast('Réglage mis à jour pour '+svc+'.');
-      render();
-    });
-  });
-  document.querySelectorAll('#suiviServicesList input').forEach(chk=>{
-    chk.addEventListener('change', async()=>{
-      const svc=chk.value;
-      const list=state.featureFlags.suiviServices||[];
-      state.featureFlags.suiviServices = chk.checked ? [...new Set([...list, svc])] : list.filter(s=>s!==svc);
-      await persistFeatureFlags();
-      toast('Accès à « Suivi » mis à jour pour '+svc+'.');
       render();
     });
   });
@@ -3744,8 +3738,8 @@ function navItems(){
     if(adminCanAccessFeature('specialRequests')) items.push({id:'special-requests', label:'Demandes spéciales', icon:'🎄'});
     if(adminCanAccessFeature('alertes')) items.push({id:'alertes', label:'Alertes', icon:'⚠️'});
     if(adminCanAccessFeature('cycles')) items.push({id:'cycles', label:'Cycles', icon:'📊'});
-    if(adminCanAccessFeature('stats')) items.push({id:'statistiques', label:'Statistiques', icon:'📈'});
-    if(adminCanAccessFeature('historique')) items.push({id:'historique', label:'Historique', icon:'📜'});
+    if(adminCanAccessFeatureForAnyService('stats')) items.push({id:'statistiques', label:'Statistiques', icon:'📈'});
+    if(adminCanAccessFeatureForAnyService('historique')) items.push({id:'historique', label:'Historique', icon:'📜'});
     if(adminCanAccessSuivi()) items.push({id:'suivi', label:'Suivi', icon:'🧭'});
     if(adminCanAccessFeature('genAuto')) items.push({id:'config-generation', label:'Règles de génération', icon:'🪄'});
     if(isSuperAdmin(state.currentUser)) items.push({id:'fonctionnalites', label:'Fonctionnalités', icon:'🧩'});
@@ -8503,7 +8497,7 @@ function renderModal(){
       if(!ds || !de){ err.textContent='Merci de choisir les deux dates.'; err.style.display='block'; return; }
       if(ds>de){ err.textContent='La date de fin doit être après la date de début.'; err.style.display='block'; return; }
       const svc=document.getElementById('expService').value;
-      const employees=state.users.filter(u=>u.role==='employee' && (svc==='ALL' || u.team===svc)).sort((a,b)=>a.name.localeCompare(b.name,'fr'));
+      const employees=state.users.filter(u=>(u.role==='employee' || u.role==='admin') && u.team && (svc==='ALL' || u.team===svc)).sort((a,b)=>a.name.localeCompare(b.name,'fr'));
       if(!employees.length){ err.textContent='Aucun salarié pour ce service.'; err.style.display='block'; return; }
       // Construit la liste des jours (dates ISO complètes en en-tête, plus
       // robuste que des numéros de jour puisque la période peut couvrir
