@@ -843,7 +843,7 @@ const DOW = ['L','M','M','J','V','S','D'];
 const DOW_FULL = ['LUN','MAR','MER','JEU','VEN','SAM','DIM'];
 const DOW_SHORT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-const APP_VERSION = 'v14.0';
+const APP_VERSION = 'v14.3';
 const APP_VERSION_DATE = '30/08/2026';
 /* ============================================================
    FIREBASE — CONFIGURATION & INITIALISATION
@@ -3588,12 +3588,19 @@ function renderFonctionnalites(){
         </div>
         <button class="icon-btn" id="resetTestDataBtn" style="color:var(--danger);border-color:var(--danger);flex-shrink:0;">🗑️ Vider</button>
       </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;padding:12px 0 0;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;padding:12px 0 0;border-bottom:1px solid var(--border);">
         <div>
           <div style="font-weight:700;font-size:13.5px;">Importer un planning (CSV/Excel)</div>
           <div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">Reprendre un planning déjà existant (ex : un mois déjà fait sur Excel) sans tout ressaisir à la main.</div>
         </div>
         <button class="icon-btn" id="openImportBtn" style="flex-shrink:0;">📥 Importer</button>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;padding:12px 0 0;">
+        <div>
+          <div style="font-weight:700;font-size:13.5px;">Exporter le planning (CSV)</div>
+          <div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">Récupérer les plannings déjà saisis sur une période choisie, un fichier prêt à ouvrir dans Excel.</div>
+        </div>
+        <button class="icon-btn" id="openExportBtn" style="flex-shrink:0;">📤 Exporter</button>
       </div>
     </div>
   `;
@@ -3604,6 +3611,11 @@ function renderFonctionnalites(){
   });
   document.getElementById('openImportBtn').addEventListener('click',()=>{
     state.modal={type:'import-planning', data:{service:state.services[0]||'', year:new Date().getFullYear(), month:new Date().getMonth()+1, csv:'', result:null}};
+    render();
+  });
+  document.getElementById('openExportBtn').addEventListener('click',()=>{
+    const today=dkey(new Date());
+    state.modal={type:'export-planning', service:'ALL', dateStart:today.slice(0,8)+'01', dateEnd:today};
     render();
   });
   document.querySelectorAll('[data-feat-global]').forEach(chk=>{
@@ -4141,10 +4153,20 @@ function gridHtml({employees, readonly, alerts, changes, serviceContext, swapCtx
       const svcLabel = svcGroup.service==='__none_service__' ? 'Sans service' : svcGroup.service;
       bodyRows+=`<tr><td class="service-head" colspan="${nDays+1}">${escapeHtml(svcLabel)}</td></tr>`;
     }
+    const fonctionsOrderForSvc = getFonctionsForService(svcGroup.service);
     svcGroup.sub.forEach(group=>{
       if(group.fonction!==null){
         const label = group.fonction==='__none__' ? 'Sans fonction' : group.fonction;
-        const grpDailyAlerts = alerts.filter(a=>a.rule.type==='daily_group' && a.rule.service===svcGroup.service && a.rule.fonctions.includes(group.fonction));
+        // Une règle peut combiner plusieurs fonctions (ex : CDQ + Responsables
+        // comptés ensemble) — dans ce cas la même alerte concerne les deux
+        // groupes ; on ne l'affiche que sur la DERNIÈRE fonction couverte
+        // (dans l'ordre d'affichage) pour ne pas la montrer en double.
+        const grpDailyAlerts = alerts.filter(a=>{
+          if(a.rule.type!=='daily_group' || a.rule.service!==svcGroup.service || !a.rule.fonctions.includes(group.fonction)) return false;
+          const coveredInOrder=a.rule.fonctions.filter(f=>fonctionsOrderForSvc.includes(f)).sort((f1,f2)=>fonctionsOrderForSvc.indexOf(f1)-fonctionsOrderForSvc.indexOf(f2));
+          const lastCovered=coveredInOrder[coveredInOrder.length-1];
+          return lastCovered===group.fonction;
+        });
         const alertBadge = grpDailyAlerts.length ? `<span class="alert-badge" title="${escapeHtml(formatGroupAlertTooltip(grpDailyAlerts))}">⚠ ${grpDailyAlerts.length}</span>` : '';
         bodyRows+=`<tr><td class="fonction-head" colspan="${nDays+1}">${escapeHtml(label)}${alertBadge}</td></tr>`;
       }
@@ -7802,6 +7824,13 @@ function renderModal(){
     overlay.innerHTML=`
     <div class="modal" style="max-width:480px;">
       <h3>${state.modal.isNew?'Nouvelle règle — '+ALERT_TYPE_INFO[rd.type].title:'Modifier la règle'}</h3>
+      ${!state.modal.isNew ? `
+      <div class="field"><label>Type de règle</label>
+        <select id="arType" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14.5px;background:#FBFCFE;">
+          ${Object.entries(ALERT_TYPE_INFO).map(([t,info])=>`<option value="${t}" ${rd.type===t?'selected':''}>${escapeHtml(info.title)}</option>`).join('')}
+        </select>
+      </div>
+      ` : ''}
       <div class="legend-hint" style="margin:-6px 0 14px;">${ALERT_TYPE_INFO[rd.type].desc}</div>
       <div class="field"><label>Nom de la règle</label><input id="arLabel" value="${escapeHtml(rd.label)}" placeholder="Ex : Effectif Matin CDQ+Responsables"></div>
       <div class="field"><label>Service</label>
@@ -7845,6 +7874,18 @@ function renderModal(){
     </div>`;
     document.body.appendChild(overlay);
     document.getElementById('arCancel').addEventListener('click',closeModal);
+    const arType=document.getElementById('arType');
+    if(arType) arType.addEventListener('change',(e)=>{
+      // Change de type : les champs affichés dépendent entièrement du type
+      // (seuils min/max en tête d'effectif vs heures de repos, codes
+      // d'exclusion propres au type hebdomadaire...) — on garde nom/service/
+      // fonctions/codes déjà saisis, mais on réinitialise les seuils pour
+      // éviter de garder une valeur qui n'a plus de sens dans le nouveau type.
+      rd.type=e.target.value;
+      rd.min=null; rd.max=null;
+      state.modal={...state.modal, data:rd};
+      render();
+    });
     document.getElementById('arService').addEventListener('change',(e)=>{
       rd.service=e.target.value; rd.fonctions=[];
       const box=document.getElementById('arFonctions');
@@ -8425,6 +8466,72 @@ function renderModal(){
         await resetTestData(y, m-1);
         toast('Données de test effacées à partir de '+MOIS[m-1]+' '+y+'.');
       }
+      closeModal();
+    });
+  }
+
+  if(state.modal.type==='export-planning'){
+    const scopeExp=getAdminScope(state.currentUser);
+    overlay.innerHTML=`
+    <div class="modal" style="max-width:420px;">
+      <h3>Exporter le planning</h3>
+      <div class="legend-hint" style="margin:-6px 0 14px;">Génère un fichier CSV avec le code de chaque salarié pour chaque jour de la période choisie — pratique pour récupérer un planning déjà saisi (ex : janvier → octobre 2026).</div>
+      <div class="field"><label>Service</label>
+        <select id="expService" style="width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:9px;font-size:14.5px;background:#FBFCFE;">
+          <option value="ALL" ${state.modal.service==='ALL'?'selected':''}>Tous les services</option>
+          ${(scopeExp||state.services).map(s=>`<option value="${escapeHtml(s)}" ${state.modal.service===s?'selected':''}>${escapeHtml(s)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Du</label><input type="date" id="expDateStart" value="${state.modal.dateStart}"></div>
+        <div class="field"><label>Au</label><input type="date" id="expDateEnd" value="${state.modal.dateEnd}"></div>
+      </div>
+      <div id="expError" style="color:var(--danger);font-size:12.5px;font-weight:600;display:none;margin-bottom:6px;"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="expCancel">Annuler</button>
+        <button class="btn btn-primary" id="expConfirm">Télécharger le CSV</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('expCancel').addEventListener('click',closeModal);
+    document.getElementById('expService').addEventListener('change',e=>{ state.modal.service=e.target.value; });
+    document.getElementById('expDateStart').addEventListener('change',e=>{ state.modal.dateStart=e.target.value; });
+    document.getElementById('expDateEnd').addEventListener('change',e=>{ state.modal.dateEnd=e.target.value; });
+    document.getElementById('expConfirm').addEventListener('click',()=>{
+      const err=document.getElementById('expError');
+      const ds=document.getElementById('expDateStart').value, de=document.getElementById('expDateEnd').value;
+      if(!ds || !de){ err.textContent='Merci de choisir les deux dates.'; err.style.display='block'; return; }
+      if(ds>de){ err.textContent='La date de fin doit être après la date de début.'; err.style.display='block'; return; }
+      const svc=document.getElementById('expService').value;
+      const employees=state.users.filter(u=>u.role==='employee' && (svc==='ALL' || u.team===svc)).sort((a,b)=>a.name.localeCompare(b.name,'fr'));
+      if(!employees.length){ err.textContent='Aucun salarié pour ce service.'; err.style.display='block'; return; }
+      // Construit la liste des jours (dates ISO complètes en en-tête, plus
+      // robuste que des numéros de jour puisque la période peut couvrir
+      // plusieurs mois avec des nombres de jours différents).
+      const days=[];
+      let cursor=new Date(ds+'T00:00:00');
+      const end=new Date(de+'T00:00:00');
+      while(cursor<=end){ days.push(dkey(cursor)); cursor=addDays(cursor,1); }
+      const rows=[['Salarié', ...days].join(',')];
+      employees.forEach(u=>{
+        const cells=days.map(dk=>{
+          const [yy,mm,dd]=dk.split('-').map(Number);
+          const code=getDayCode(u.username, yy, mm-1, dd) || '';
+          return code.includes(',') ? `"${code}"` : code; // échappement basique si jamais un code contenait une virgule
+        });
+        rows.push([u.name.includes(',')?`"${u.name}"`:u.name, ...cells].join(','));
+      });
+      const csvContent='\ufeff'+rows.join('\n'); // \ufeff = BOM, pour qu'Excel affiche correctement les accents
+      const blob=new Blob([csvContent], {type:'text/csv;charset=utf-8;'});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      a.href=url;
+      a.download=`planning_${svc==='ALL'?'tous_services':svc}_${ds}_a_${de}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast('Export téléchargé.');
       closeModal();
     });
   }
